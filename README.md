@@ -1,3 +1,7 @@
+﻿# Nexus
+
+Vibe Coding
+
 # D-Design 美工任务管理系统
 
 > 电商公司内部美工任务管理 — 企业级 Windows 桌面客户端
@@ -305,3 +309,4 @@ A: 存储在软件安装目录下的 `upload/` 文件夹中，按日期分子目
 ## 📄 License
 
 Copyright © 2024 D-Design. All rights reserved.
+
