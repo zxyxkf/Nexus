@@ -1,0 +1,112 @@
+{
+  "name": "nexus",
+  "version": "15.1.9",
+  "description": "Nexus",
+  "main": "electron/main.js",
+  "scripts": {
+    "dev": "vite",
+    "dev:full": "concurrently \"cd standalone-server && npm start\" \"vite\"",
+    "build": "vite build",
+    "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
+    "electron:build": "vite build && electron-builder --win --x64",
+    "electron:build:dir": "vite build && electron-builder --win --x64 --dir",
+    "docker:build": "docker compose build",
+    "docker:up": "docker compose up -d",
+    "docker:down": "docker compose down",
+    "server:start": "cd standalone-server && npm run start:prod"
+  },
+  "dependencies": {
+    "@element-plus/icons-vue": "^2.3.1",
+    "axios": "^1.7.2",
+    "bcryptjs": "^2.4.3",
+    "dayjs": "^1.11.11",
+    "echarts": "^5.5.0",
+    "electron-updater": "^6.8.3",
+    "element-plus": "^2.7.0",
+    "exceljs": "^4.4.0",
+    "express": "^4.19.2",
+    "jsonwebtoken": "^9.0.2",
+    "multer": "^1.4.5-lts.1",
+    "mysql2": "^3.9.0",
+    "pinia": "^2.1.7",
+    "playwright": "^1.60.0",
+    "socket.io-client": "^4.8.3",
+    "sql.js": "^1.14.1",
+    "uuid": "^9.0.1",
+    "vue": "^3.4.0",
+    "vue-router": "^4.3.0"
+  },
+  "devDependencies": {
+    "@playwright/test": "^1.60.0",
+    "@vitejs/plugin-vue": "^5.0.0",
+    "concurrently": "^8.2.2",
+    "cross-env": "^7.0.3",
+    "docx": "^9.7.1",
+    "electron": "^29.1.0",
+    "electron-builder": "^24.13.0",
+    "pdf-parse": "^2.4.5",
+    "png-to-ico": "^3.0.1",
+    "pptxgenjs": "^4.0.1",
+    "sharp": "^0.34.5",
+    "vite": "^5.2.0",
+    "wait-on": "^7.2.0"
+  },
+  "build": {
+    "appId": "com.nexus.app",
+    "productName": "Nexus",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/**/*",
+      "upload/**/*",
+      "database/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "upload",
+        "to": "upload"
+      },
+      {
+        "from": "database",
+        "to": "database"
+      },
+      {
+        "from": "build/app-update.yml",
+        "to": "app-update.yml"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "build/icon.ico",
+      "artifactName": "${productName}-v${version}-Setup.${ext}",
+      "signDlls": false,
+      "signAndEditExecutable": false
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "Nexus",
+      "uninstallDisplayName": "Nexus",
+      "installerIcon": "build/icon.ico",
+      "uninstallerIcon": "build/icon.ico",
+      "installerHeaderIcon": "build/icon.ico",
+      "include": "build/installer.nsh"
+    },
+    "publish": {
+      "provider": "generic",
+      "url": "http://192.168.101.78:18632/releases"
+    }
+  }
+}

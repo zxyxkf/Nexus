@@ -1,0 +1,304 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  body {
+    font-family: "Microsoft YaHei", "微软雅黑", SimSun, sans-serif;
+    font-size: 14px;
+    color: #333;
+    line-height: 1.6;
+    width: 794px; /* A4 width */
+    margin: 0 auto;
+  }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+  }
+  td {
+    padding: 6px 8px;
+    vertical-align: top;
+    border: 1px solid #999;
+  }
+  .no-border td {
+    border: none;
+    padding: 0;
+  }
+
+  /* Header */
+  .header-table td {
+    border: 1px solid #999;
+  }
+  .name-cell {
+    width: 85px;
+    text-align: center;
+    font-size: 16px;
+    font-weight: bold;
+    padding: 10px 6px;
+    vertical-align: middle;
+  }
+  .info-label {
+    background: #f0f0f0;
+    width: 75px;
+    text-align: center;
+    font-size: 12px;
+  }
+  .info-label2 {
+    background: #f0f0f0;
+    width: 95px;
+    text-align: center;
+    font-size: 12px;
+  }
+  .section-header {
+    background: #e8e8e8;
+    width: 98px;
+    text-align: center;
+    font-weight: bold;
+    font-size: 14px;
+    vertical-align: middle;
+    padding: 8px 4px;
+  }
+
+  /* Content area */
+  .item-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: baseline;
+    margin-bottom: 4px;
+  }
+  .item-company {
+    font-weight: bold;
+  }
+  .item-role {
+    font-weight: bold;
+    color: #555;
+  }
+  .item-date {
+    color: #666;
+    font-size: 13px;
+    white-space: nowrap;
+  }
+  ul {
+    margin: 4px 0 4px 18px;
+    padding: 0;
+  }
+  li {
+    margin-bottom: 2px;
+    text-align: justify;
+  }
+
+  /* Sub tables */
+  .inner-table td {
+    border: 1px solid #ccc;
+    padding: 5px 8px;
+  }
+  .project-name {
+    font-weight: bold;
+    min-width: 130px;
+    vertical-align: middle;
+  }
+  .project-role {
+    min-width: 110px;
+    vertical-align: middle;
+    color: #555;
+  }
+  .project-date {
+    width: 110px;
+    text-align: center;
+    vertical-align: middle;
+    color: #666;
+    font-size: 13px;
+  }
+
+  /* Cert row */
+  .cert-row td {
+    padding: 8px;
+  }
+</style>
+</head>
+<body>
+
+<!-- ==================== 个人信息 ==================== -->
+<table class="header-table">
+  <tr>
+    <td class="name-cell">朱想意</td>
+    <td style="width:75px;" class="info-label">性别</td>
+    <td style="width:50px;">男</td>
+    <td class="info-label">年龄</td>
+    <td style="width:50px;">25岁</td>
+    <td class="info-label" style="width:85px;">联系电话</td>
+    <td style="width:130px;">15871308201</td>
+    <td class="info-label" style="width:75px;">电子邮箱</td>
+    <td style="width:170px;">ZXY15871308201@163.com</td>
+  </tr>
+  <tr>
+    <td class="info-label2" colspan="2">工作经验</td>
+    <td>3年</td>
+    <td class="info-label">求职意向</td>
+    <td>实施工程师</td>
+    <td class="info-label" style="width:85px;">期望薪资</td>
+    <td>4-8K</td>
+    <td class="info-label" style="width:75px;">期望城市</td>
+    <td>武汉</td>
+  </tr>
+</table>
+
+<!-- ==================== 个人优势 ==================== -->
+<table>
+  <tr>
+    <td class="section-header">个人优势</td>
+    <td style="padding:8px 12px; text-align:justify;">
+      <p style="margin-bottom:6px;">精通 <b>MySQL</b> 数据库设计与优化，熟悉 <b>Linux</b> 系统运维与 <b>Nginx</b> 反向代理配置，熟练掌握 <b>SQL Server</b>。</p>
+      <p style="margin-bottom:6px;">全栈开发能力：前端熟练使用 <b>Vue 3</b>（Composition API + Pinia + Vue Router）、<b>Element Plus</b>、<b>Vite</b>、HTML5/CSS3/JavaScript（ES6+）；后端熟练使用 <b>Node.js + Express</b> 框架开发 RESTful API，熟悉 <b>JWT</b> 鉴权与 <b>RBAC</b> 角色权限设计。</p>
+      <p style="margin-bottom:6px;">桌面端开发：具备 <b>Electron</b> 跨平台桌面应用开发经验，掌握 Electron Builder 打包、NSIS 安装器制作及 Electron Updater 自动更新体系搭建。</p>
+      <p style="margin-bottom:6px;">数据库双引擎方案：实现 <b>MySQL + SQLite</b> 双引擎兼容架构，支持生产环境与离线场景无缝切换，熟练编写自动化数据库迁移脚本。</p>
+      <p style="margin-bottom:6px;">实时通信与数据可视化：掌握 <b>Socket.IO</b> WebSocket 实时推送，熟练使用 <b>ECharts</b> 构建多维度数据仪表盘与统计看板。</p>
+      <p style="margin-bottom:6px;">掌握 Java 后端技术栈：<b>JavaWeb、jQuery、MyBatis、Spring、Spring MVC、JavaEE</b>，熟练使用 SSM 框架进行 Web 开发。</p>
+      <p style="margin-bottom:6px;">掌握 <b>Git</b> 版本控制，熟悉 <b>Python</b> 基础知识与高级特性，熟悉禅道测试管理工具与软件测试流程。</p>
+      <p>在校期间获达梦数据库大赛三等奖。学习能力强，抗压能力好，良好的团队协作意识，对编程充满热情，能快速掌握新技术。</p>
+    </td>
+  </tr>
+</table>
+
+<!-- ==================== 工作经历 ==================== -->
+<table>
+  <tr>
+    <td class="section-header">工作经历</td>
+    <td style="padding:8px 12px;">
+      <div class="item-header">
+        <span class="item-company">武汉亿方云科技有限公司</span>
+        <span class="item-role">运维</span>
+        <span class="item-date">2023.12 - 2024.10</span>
+      </div>
+      <ul>
+        <li>负责网络及安全设备设施的调试与维护</li>
+        <li>对客户监控设备、机房设备、平台系统进行巡检维护，确保设备设施处于良好运行状态</li>
+        <li>对监控设备、机房设备、平台系统进行系统分析与故障排查</li>
+        <li>定期对故障进行整理分析，提出改善措施并跟踪落实</li>
+        <li>填写日常维护记录单，编写操作规程及保养报告，对所管辖区域设备进行数据收集、统计、整理与分析</li>
+      </ul>
+    </td>
+  </tr>
+</table>
+
+<!-- ==================== 实习经历 ==================== -->
+<table>
+  <tr>
+    <td class="section-header">实习经历</td>
+    <td style="padding:8px 12px;">
+      <div class="item-header">
+        <span class="item-company">极蕊科技（武汉）有限公司</span>
+        <span class="item-role">运维工程师</span>
+        <span class="item-date">2023.06 - 2023.12</span>
+      </div>
+      <ul>
+        <li>负责与各地医疗机构的医保系统进行运维对接，确保系统稳定高效运行</li>
+        <li>协助制作医疗机构申报医保定点所需的各类资料，确保信息准确无误</li>
+        <li>组织医疗机构医护人员进行系统培训，涵盖医保政策法规，提升团队整体能力</li>
+        <li>指导医疗机构实施医保报销流程，确保流程合规且高效</li>
+        <li>接待和处理日常系统及医保相关咨询，提供及时有效的支持</li>
+        <li>完成领导交办的其他任务，确保团队目标的实现</li>
+      </ul>
+    </td>
+  </tr>
+</table>
+
+<!-- ==================== 项目经历 ==================== -->
+<table>
+  <tr>
+    <td class="section-header" style="vertical-align:middle;">项目经历</td>
+    <td style="padding:4px;">
+
+      <!-- 项目一：Nexus -->
+      <table class="inner-table" style="margin-bottom:6px;">
+        <tr>
+          <td class="project-name" style="font-size:15px;">Nexus 企业级多角色任务管理系统</td>
+          <td class="project-role">全栈独立开发</td>
+          <td class="project-date">2024.06 - 2026.05</td>
+        </tr>
+        <tr>
+          <td colspan="3" style="padding:8px 12px;">
+            <p style="margin-bottom:4px;"><b>技术栈：</b>Vue 3 + Element Plus + Pinia + Electron + Express.js + MySQL + SQLite + Socket.IO + ECharts</p>
+            <p style="margin-bottom:6px;"><b>项目概述：</b>面向电商设计团队的桌面端任务管理系统，覆盖超级管理员、子管理员、运营、运营助理、美工、基础美工、客服共 <b>7 个角色</b>，实现从任务发布、接单、提交审核到积分统计的完整业务闭环。采用 Electron 构建跨平台桌面客户端，服务端基于 Express + MySQL/SQLite 双引擎架构。</p>
+            <p style="margin-bottom:4px;"><b>核心职责与成果：</b></p>
+            <ul>
+              <li><b>全栈架构设计：</b>独立完成前后端技术选型与架构设计，采用 <b>MVC 分层模式</b>（Route → Service → DAO），实现业务逻辑与数据访问解耦，代码可维护性强。</li>
+              <li><b>权限系统：</b>基于 <b>JWT</b> 实现无状态鉴权，结合角色白名单中间件实现细粒度 <b>RBAC</b> 权限控制，覆盖 7 种角色共 30+ 页面路由的权限隔离，设计数据归属校验中间件防止越权操作。</li>
+              <li><b>任务工作流引擎：</b>设计任务全生命周期管理（草稿 → 待接单 → 已接单 → 进行中 → 待审核 → 已完成/已驳回），支持发布、指派、接单、转交、撤回编辑再发布、批量审核等完整操作流程。</li>
+              <li><b>多维度数据统计：</b>利用 <b>ECharts</b> 构建数据仪表盘，实现个人/管理员双视角的积分统计、月度趋势图表、人员排名看板；设计三套独立积分项目体系（设计/客服/运营），支持动态配置。</li>
+              <li><b>工程化部署：</b>配置 Electron Builder 生成 NSIS 安装包，集成 <b>Electron Updater</b> 自动更新系统（latest.yml + blockmap 增量更新）；服务端配置 Nginx 反向代理 + PM2 进程守护，实现平滑升级。</li>
+              <li><b>实时通知：</b>基于 <b>Socket.IO</b> 实现 WebSocket 长连接推送，任务状态变更、审核结果等事件实时触达相关人员，支持按用户/按任务组精准推送。</li>
+              <li>项目累计迭代至 <b>v15.0.5</b>，稳定支撑团队日常任务管理与协作。</li>
+            </ul>
+          </td>
+        </tr>
+      </table>
+
+      <!-- 项目二：学生管理系统 -->
+      <table class="inner-table" style="margin-bottom:6px;">
+        <tr>
+          <td class="project-name">学生管理系统</td>
+          <td class="project-role">主导UI及数据库、后台事件</td>
+          <td class="project-date">2022.02</td>
+        </tr>
+        <tr>
+          <td colspan="3" style="padding:8px 12px;">
+            <p style="margin-bottom:4px;"><b>内容：</b>涵盖学生信息管理、学籍管理、成绩管理、考勤管理、课程管理、教师管理、统计分析、安全管理、班级管理、通知沟通、报表统计等完整功能模块。</p>
+            <p style="margin-bottom:4px;"><b>业绩：</b>负责全部数据库设计及前端界面开发，实现学生信息、学籍、成绩、考勤等模块的增删改查功能，支持多维度统计报表与图表展示。设计用户权限管理界面，包括登录注册、密码修改、数据备份恢复与加密等安全功能。</p>
+          </td>
+        </tr>
+      </table>
+
+      <!-- 项目三：网上商城 -->
+      <table class="inner-table">
+        <tr>
+          <td class="project-name">网上商城管理系统</td>
+          <td class="project-role">后端开发 + 数据库</td>
+          <td class="project-date">2021.12 - 2022.02</td>
+        </tr>
+        <tr>
+          <td colspan="3" style="padding:8px 12px;">
+            <p style="margin-bottom:4px;"><b>技术栈：</b>SSM（Spring + Spring MVC + MyBatis）框架，前后端分离架构</p>
+            <p style="margin-bottom:4px;"><b>内容：</b>面向汽车配件等商品的在线商城系统，提供商品信息浏览、订单管理、后台商品管理、客户管理、结算等功能，区分用户与管理员两种角色。</p>
+            <p><b>业绩：</b>实现商城各功能模块的正常运行，满足用户基本需求。后台可实时监控用户信息、管理员信息、商品信息的增删改查，支持购物车管理与物流信息反馈。</p>
+          </td>
+        </tr>
+      </table>
+
+    </td>
+  </tr>
+</table>
+
+<!-- ==================== 教育经历 ==================== -->
+<table>
+  <tr>
+    <td class="section-header">教育经历</td>
+    <td style="padding:8px 12px;">
+      <div class="item-header">
+        <span class="item-company">鄂州职业大学</span>
+        <span class="item-role">大专 | 移动互联应用技术</span>
+        <span class="item-date">2020 - 2023</span>
+      </div>
+      <ul>
+        <li>学生会优秀干事</li>
+        <li>专业期中/期末成绩平均分 90 分以上</li>
+        <li>专业内开发类竞赛多次名列前茅</li>
+        <li>国产数据库大赛（达梦）三等奖</li>
+      </ul>
+    </td>
+  </tr>
+</table>
+
+<!-- ==================== 资格证书 ==================== -->
+<table>
+  <tr>
+    <td class="section-header">资格证书</td>
+    <td class="cert-row" style="padding:8px 12px;">
+      UI设计工程师 &nbsp;&nbsp;|&nbsp;&nbsp; 中级网络安全管理员
+    </td>
+  </tr>
+</table>
+
+</body>
+</html>

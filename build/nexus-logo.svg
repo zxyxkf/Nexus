@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#4f46e5"/>
+      <stop offset="100%" stop-color="#7c3aed"/>
+    </linearGradient>
+    <linearGradient id="node" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#a78bfa"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+  </defs>
+
+  <!-- Background circle -->
+  <circle cx="128" cy="128" r="120" fill="url(#bg)"/>
+
+  <!-- Central hub diamond -->
+  <rect x="96" y="96" width="64" height="64" rx="10" fill="white" opacity="0.95" transform="rotate(45 128 128)"/>
+
+  <!-- Hub inner dot -->
+  <circle cx="128" cy="128" r="12" fill="url(#bg)"/>
+
+  <!-- Connecting lines to outer nodes -->
+  <line x1="128" y1="68" x2="128" y2="88" stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  <line x1="128" y1="168" x2="128" y2="188" stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  <line x1="68" y1="128" x2="88" y2="128" stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+  <line x1="168" y1="128" x2="188" y2="128" stroke="white" stroke-width="3" stroke-linecap="round" opacity="0.7"/>
+
+  <!-- Diagonal lines -->
+  <line x1="86" y1="86" x2="98" y2="98" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+  <line x1="170" y1="86" x2="158" y2="98" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+  <line x1="86" y1="170" x2="98" y2="158" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+  <line x1="170" y1="170" x2="158" y2="158" stroke="white" stroke-width="2.5" stroke-linecap="round" opacity="0.5"/>
+
+  <!-- Outer nodes (cardinal) -->
+  <circle cx="128" cy="58" r="8" fill="white" opacity="0.85"/>
+  <circle cx="128" cy="198" r="8" fill="white" opacity="0.85"/>
+  <circle cx="58" cy="128" r="8" fill="white" opacity="0.85"/>
+  <circle cx="198" cy="128" r="8" fill="white" opacity="0.85"/>
+
+  <!-- Outer nodes (diagonal) -->
+  <circle cx="80" cy="80" r="6" fill="white" opacity="0.55"/>
+  <circle cx="176" cy="80" r="6" fill="white" opacity="0.55"/>
+  <circle cx="80" cy="176" r="6" fill="white" opacity="0.55"/>
+  <circle cx="176" cy="176" r="6" fill="white" opacity="0.55"/>
+</svg>

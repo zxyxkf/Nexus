@@ -1,0 +1,30 @@
+node_modules/
+node_modules_full/
+node_modules_prod/
+dist/
+dist.before-src-restore-check/
+release/
+standalone-server/releases/
+logs/
+upload/
+src.before-server-src-check/
+src_tmp/
+*.db
+*.db-journal
+*.db-wal
+data/
+backups/
+
+# 环境变量
+.env
+.env.*
+!.env.example
+
+# IDE
+.idea/
+.vscode/
+
+# OS
+Thumbs.db
+.DS_Store
+desktop.ini

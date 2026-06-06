@@ -1,0 +1,345 @@
+<template>
+  <div class="sidebar-nav" :class="{ 'is-collapsed': isCollapsed }">
+    <!-- 管理员菜单 -->
+    <template v-if="store.isAdmin">
+      <template v-for="(item, i) in ADMIN_MENU" :key="'am-' + i">
+        <div v-if="item.section" class="nav-section-label">{{ item.section }}</div>
+        <div
+          v-else
+          class="nav-item"
+          :class="{ active: activeMenu === item.path }"
+          @click="nav(item.path)"
+        >
+          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+          <span class="nav-text">{{ item.label }}</span>
+        </div>
+      </template>
+
+      <template v-if="store.isSuperAdmin">
+        <template v-for="(item, i) in SUPER_ADMIN_MENU" :key="'sam-' + i">
+          <div v-if="item.separator" class="nav-separator"></div>
+          <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+          <div
+            v-else
+            class="nav-item"
+            :class="{ active: activeMenu === item.path }"
+            @click="nav(item.path)"
+          >
+            <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+            <span class="nav-text">{{ item.label }}</span>
+          </div>
+        </template>
+      </template>
+
+      <template v-for="(item, i) in ADMIN_EXTRA_MENU" :key="'aem-' + i">
+        <div v-if="item.separator" class="nav-separator"></div>
+        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+        <div
+          v-else
+          class="nav-item"
+          :class="{ active: activeMenu === item.path }"
+          @click="nav(item.path)"
+        >
+          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+          <span class="nav-text">{{ item.label }}</span>
+        </div>
+      </template>
+
+      <template v-if="store.isSuperAdmin">
+        <template v-for="(item, i) in SUPER_ADMIN_EXTRA_MENU" :key="'saem-' + i">
+          <div
+            class="nav-item"
+            :class="{ active: activeMenu === item.path }"
+            @click="nav(item.path)"
+          >
+            <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+            <span class="nav-text">{{ item.label }}</span>
+          </div>
+        </template>
+      </template>
+
+      <!-- 子管理员：基础美工分值审核 -->
+      <template v-if="store.isSubAdmin">
+        <template v-for="(item, i) in subAdminScoreItems" :key="'sal-' + i">
+          <div v-if="item.separator" class="nav-separator"></div>
+          <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+          <div
+            v-else
+            class="nav-item"
+            :class="{ active: activeMenu === item.path }"
+            @click="nav(item.path)"
+          >
+            <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+            <span class="nav-text">{{ item.label }}</span>
+          </div>
+        </template>
+      </template>
+    </template>
+
+    <!-- 运营菜单 -->
+    <template v-if="store.isOperator">
+      <template v-for="(item, i) in operatorItems" :key="'op-' + i">
+        <div v-if="item.separator" class="nav-separator"></div>
+        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+        <div
+          v-else
+          class="nav-item"
+          :class="{ active: activeMenu === item.path }"
+          @click="nav(item.path)"
+        >
+          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+          <span class="nav-text">{{ item.label }}</span>
+        </div>
+      </template>
+      <template v-for="(item, i) in operatorExtraItems" :key="'op-ex-' + i">
+        <div v-if="item.separator" class="nav-separator"></div>
+        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+        <div
+          v-else
+          class="nav-item"
+          :class="{ active: activeMenu === item.path }"
+          @click="nav(item.path)"
+        >
+          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+          <span class="nav-text">{{ item.label }}</span>
+        </div>
+      </template>
+      <template v-for="(item, i) in operatorDataItems" :key="'op-dt-' + i">
+        <div v-if="item.separator" class="nav-separator"></div>
+        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+        <div
+          v-else
+          class="nav-item"
+          :class="{ active: activeMenu === item.path }"
+          @click="nav(item.path)"
+        >
+          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+          <span class="nav-text">{{ item.label }}</span>
+        </div>
+      </template>
+    </template>
+
+    <!-- 客服菜单 -->
+    <template v-if="store.isCsAgent">
+      <template v-for="(item, i) in csAgentItems" :key="'cs-' + i">
+        <div v-if="item.separator" class="nav-separator"></div>
+        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+        <div
+          v-else
+          class="nav-item"
+          :class="{ active: activeMenu === item.path }"
+          @click="nav(item.path)"
+        >
+          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+          <span class="nav-text">{{ item.label }}</span>
+        </div>
+      </template>
+      <template v-for="(item, i) in csAgentDataItems" :key="'cs-dt-' + i">
+        <div v-if="item.separator" class="nav-separator"></div>
+        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+        <div
+          v-else
+          class="nav-item"
+          :class="{ active: activeMenu === item.path }"
+          @click="nav(item.path)"
+        >
+          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+          <span class="nav-text">{{ item.label }}</span>
+        </div>
+      </template>
+    </template>
+
+    <!-- 美工菜单 -->
+    <template v-if="store.isDesigner">
+      <template v-for="(item, i) in designerItems" :key="'de-' + i">
+        <div v-if="item.separator" class="nav-separator"></div>
+        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+        <div
+          v-else
+          class="nav-item"
+          :class="{ active: activeMenu === item.path }"
+          @click="nav(item.path)"
+        >
+          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+          <span class="nav-text">{{ item.label }}</span>
+        </div>
+      </template>
+    </template>
+
+    <!-- 基础美工菜单 -->
+    <template v-if="store.isBasicDesigner">
+      <template v-for="(item, i) in basicDesignerItems" :key="'bd-' + i">
+        <div v-if="item.separator" class="nav-separator"></div>
+        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+        <div
+          v-else
+          class="nav-item"
+          :class="{ active: activeMenu === item.path }"
+          @click="nav(item.path)"
+        >
+          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+          <span class="nav-text">{{ item.label }}</span>
+        </div>
+      </template>
+      <!-- 基础美工组长额外菜单 -->
+      <template v-if="store.isBasicDesignerLead">
+        <template v-for="(item, i) in basicDesignerLeadItems" :key="'bdl-' + i">
+          <div v-if="item.separator" class="nav-separator"></div>
+          <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+          <div
+            v-else
+            class="nav-item"
+            :class="{ active: activeMenu === item.path }"
+            @click="nav(item.path)"
+          >
+            <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+            <span class="nav-text">{{ item.label }}</span>
+          </div>
+        </template>
+      </template>
+    </template>
+
+    <!-- 运营助理菜单 -->
+    <template v-if="store.isOperatorAssistant">
+      <template v-for="(item, i) in operatorAssistantItems" :key="'oa-' + i">
+        <div v-if="item.separator" class="nav-separator"></div>
+        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+        <div
+          v-else
+          class="nav-item"
+          :class="{ active: activeMenu === item.path }"
+          @click="nav(item.path)"
+        >
+          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+          <span class="nav-text">{{ item.label }}</span>
+        </div>
+      </template>
+    </template>
+  </div>
+</template>
+
+<script setup>
+import { computed } from 'vue'
+import { DataAnalysis, User, List, Document, Setting, Plus, Select, DataLine, ShoppingCart } from '@element-plus/icons-vue'
+import { useUserStore } from '@/store'
+import {
+  ADMIN_MENU, SUPER_ADMIN_MENU, ADMIN_EXTRA_MENU, SUPER_ADMIN_EXTRA_MENU,
+  publisherMenu, operatorExtraMenu, operatorDataMenu, designerMenu, csAgentDataMenu, basicDesignerLeadMenu
+} from '@/config/menus'
+
+const props = defineProps({
+  activePath: { type: String, default: '' },
+  isCollapsed: { type: Boolean, default: false }
+})
+
+const emit = defineEmits(['navigate'])
+
+const store = useUserStore()
+const activeMenu = computed(() => props.activePath)
+
+const iconMap = { DataAnalysis, User, List, Document, Setting, Plus, Select, DataLine, ShoppingCart }
+
+const operatorItems = publisherMenu('operator', '美工任务管理')
+const operatorExtraItems = operatorExtraMenu()
+const operatorDataItems = operatorDataMenu('operator')
+const csAgentItems = publisherMenu('cs', '客服任务')
+const designerItems = designerMenu('designer', '任务管理')
+const basicDesignerItems = designerMenu('basic', '基础任务')
+const basicDesignerLeadItems = basicDesignerLeadMenu()
+const subAdminScoreItems = basicDesignerLeadMenu('基础美工分值审核')
+const operatorAssistantItems = designerMenu('operator-assistant', '运营任务')
+const csAgentDataItems = csAgentDataMenu('cs')
+
+function nav(path) { emit('navigate', path) }
+</script>
+
+<style scoped>
+.sidebar-nav {
+  flex: 1;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  height: 36px;
+  padding: 0 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  color: rgba(255, 255, 255, 0.55);
+  transition: all 0.15s ease;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.nav-item:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: rgba(255, 255, 255, 0.9);
+}
+
+.nav-item:active {
+  transform: scale(0.97);
+}
+
+.nav-item.active {
+  background: rgba(67, 97, 238, 0.2);
+  color: #6c83f5;
+}
+
+.nav-item.active::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  top: 6px;
+  bottom: 6px;
+  width: 3px;
+  background: #4361ee;
+  border-radius: 0 3px 3px 0;
+}
+
+.nav-item :deep(.el-icon) {
+  flex-shrink: 0;
+}
+
+.nav-text {
+  margin-left: 10px;
+  font-size: 13px;
+  font-weight: 500;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.15s ease 0.05s;
+}
+
+.sidebar-nav:not(.is-collapsed) .nav-text {
+  opacity: 1;
+}
+
+.nav-section-label {
+  font-size: 10px;
+  font-weight: 600;
+  color: rgba(255, 255, 255, 0.2);
+  text-transform: uppercase;
+  letter-spacing: 1.5px;
+  padding: 12px 10px 4px;
+  white-space: nowrap;
+  overflow: hidden;
+  opacity: 0;
+  transition: opacity 0.15s ease 0.05s;
+  flex-shrink: 0;
+}
+
+.sidebar-nav:not(.is-collapsed) .nav-section-label {
+  opacity: 1;
+}
+
+.nav-separator {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 4px 8px;
+  flex-shrink: 0;
+}
+</style>

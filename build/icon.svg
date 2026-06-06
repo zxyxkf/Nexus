@@ -1,0 +1,28 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" style="stop-color:#4361ee"/>
+      <stop offset="100%" style="stop-color:#2ec4b6"/>
+    </linearGradient>
+  </defs>
+
+  <!-- 背景圆角方形 -->
+  <rect x="16" y="16" width="480" height="480" rx="120" fill="url(#bgGrad)"/>
+
+  <!-- 笔尖主体：象征设计创意 -->
+  <path d="M120 400L256 48L392 400Z" fill="white" opacity="0.95"/>
+
+  <!-- 笔尖中缝 -->
+  <line x1="256" y1="128" x2="256" y2="340" stroke="url(#bgGrad)" stroke-width="20" stroke-linecap="round"/>
+
+  <!-- 笔尖顶部光点 -->
+  <circle cx="256" cy="104" r="22" fill="white"/>
+
+  <!-- 笔尖底部装饰 -->
+  <circle cx="156" cy="384" r="18" fill="#4361ee" opacity="0.4"/>
+  <circle cx="356" cy="384" r="18" fill="#2ec4b6" opacity="0.4"/>
+
+  <!-- 背景装饰：浅色几何圆环 -->
+  <circle cx="256" cy="256" r="220" stroke="white" stroke-width="2" fill="none" opacity="0.06"/>
+  <circle cx="256" cy="256" r="200" stroke="white" stroke-width="1" fill="none" opacity="0.04"/>
+</svg>
