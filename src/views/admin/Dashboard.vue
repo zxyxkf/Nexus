@@ -102,9 +102,9 @@
             <template #header>
               <div class="card-header"><span class="card-title">美工日统计 ({{ currentMonthTitle }}，完成 / 待审核)</span></div>
             </template>
-            <el-table :data="designerDailyData" stripe size="small" style="width:100%;">
+            <el-table :data="designerDailyData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
               <el-table-column prop="name" label="美工" fixed="left" min-width="90" />
-              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" min-width="92" align="center" />
+              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center" />
             </el-table>
           </el-card>
         </el-col>
@@ -117,9 +117,9 @@
             <template #header>
               <div class="card-header"><span class="card-title">项目类型完成统计</span></div>
             </template>
-            <el-table :data="projectFlatData" stripe size="small" style="width:100%;">
+            <el-table :data="projectFlatData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
               <el-table-column prop="designer_name" label="美工" fixed="left" min-width="80" />
-              <el-table-column v-for="p in allProjectNames" :key="p" :prop="p" :label="p" sortable align="center" />
+              <el-table-column v-for="p in allProjectNames" :key="p" :prop="p" :label="p" width="150" sortable align="center" show-overflow-tooltip />
             </el-table>
           </el-card>
         </el-col>
@@ -231,9 +231,9 @@
             <template #header>
               <div class="card-header"><span class="card-title">运营助理日统计 ({{ currentMonthTitle }}，完成 / 待审核)</span></div>
             </template>
-            <el-table :data="operatorAssistantDailyData" stripe size="small" style="width:100%;">
+            <el-table :data="operatorAssistantDailyData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
               <el-table-column prop="name" label="助理" fixed="left" min-width="90" />
-              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" min-width="92" align="center" />
+              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center" />
             </el-table>
           </el-card>
         </el-col>
@@ -330,9 +330,9 @@
             <template #header>
               <div class="card-header"><span class="card-title">基础美工日统计 ({{ currentMonthTitle }}，完成 / 待审核)</span></div>
             </template>
-            <el-table :data="basicDesignerDailyData" stripe size="small" style="width:100%;">
+            <el-table :data="basicDesignerDailyData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
               <el-table-column prop="name" label="基础美工" fixed="left" min-width="90" />
-              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" min-width="92" align="center" />
+              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center" />
             </el-table>
           </el-card>
         </el-col>
@@ -879,6 +879,23 @@ onUnmounted(() => {
 
 .chart-row {
   margin-top: 20px;
+}
+
+.dashboard-wide-table {
+  width: 100%;
+}
+
+.dashboard-wide-table :deep(.el-table__header-wrapper) {
+  overflow: hidden;
+}
+
+.dashboard-wide-table :deep(.el-table__body-wrapper) {
+  overflow-x: auto;
+}
+
+.dashboard-wide-table :deep(.el-scrollbar__bar.is-horizontal) {
+  display: block;
+  opacity: 1;
 }
 
 /* 分区底色区分 */
