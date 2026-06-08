@@ -58,6 +58,7 @@ let mainWindow = null;
 let toastWindow = null;
 let isUpdating = false;
 let isQuitting = false;
+let lastToastSoundAt = 0;
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
 
 // ===== 服务器配置管理 =====
@@ -170,6 +171,15 @@ function sendToastToWindow(data) {
   }
 }
 
+function playToastSound() {
+  const now = Date.now()
+  if (now - lastToastSoundAt < 1200) return
+  lastToastSoundAt = now
+  try {
+    shell.beep()
+  } catch (_) {}
+}
+
 // ===== IPC 通信 =====
 ipcMain.on('flash-frame', () => {
   if (mainWindow) mainWindow.flashFrame(true)
@@ -192,6 +202,7 @@ ipcMain.on('desktop-notification', (event, { title, body, type }) => {
 // ===== Toast 独立窗口 =====
 ipcMain.on('show-toast', (event, data) => {
   sendToastToWindow(data)
+  playToastSound()
 })
 
 ipcMain.on('toast:show-window', () => {
