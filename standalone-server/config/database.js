@@ -578,7 +578,10 @@ function generateScoreSeed(mode) {
   const operatorSqls = operatorItems.map(([name, score, desc]) =>
     `${insert} sys_score_item_operator (name, score, score_desc) VALUES ('${name}', ${score}, '${desc}')`
   );
-  return [...designSqls, ...operatorSqls];
+  const csSqls = [
+    `${insert} sys_score_item_cs (name, score, score_desc) VALUES ('默认1分', 1, '客服基础美工默认积分')`
+  ];
+  return [...designSqls, ...operatorSqls, ...csSqls];
 }
 
 /**

@@ -14,16 +14,6 @@
         label-width="80px"
         style="max-width:700px;"
       >
-        <el-form-item label="工作项目" prop="scoreItemId">
-          <el-select v-model="form.scoreItemId" placeholder="请选择工作项目" filterable @change="onScoreItemChange" style="width:100%;">
-            <el-option v-for="item in scoreItems" :key="item.id" :label="item.name" :value="item.id" />
-          </el-select>
-        </el-form-item>
-
-        <el-form-item label="分值">
-          <el-input :model-value="form.score" disabled placeholder="选择工作项目后自动填充" />
-        </el-form-item>
-
         <el-form-item label="旺旺ID">
           <el-input v-model="form.wangwangId" />
         </el-form-item>
@@ -112,7 +102,6 @@ function handleRefPaste(event) {
 }
 
 // 监听表单变化
-watch(() => form.scoreItemId, () => { hasUnsavedData.value = true })
 watch(() => form.description, () => { hasUnsavedData.value = true })
 watch(() => refImages.value, () => { hasUnsavedData.value = true }, { deep: true })
 
@@ -139,8 +128,11 @@ onUnmounted(() => {
 
 async function loadScoreItems() {
   try {
-    const res = await getScoreItemsApi()
-    if (res.code === 0) scoreItems.value = res.data || []
+    const res = await getScoreItemsApi({ taskGroup: 'cs' })
+    if (res.code === 0) {
+      scoreItems.value = res.data || []
+      applyDefaultScoreItem()
+    }
   } catch (e) {}
 }
 
@@ -168,6 +160,16 @@ function onScoreItemChange(val) {
   }
 }
 
+function applyDefaultScoreItem() {
+  const item = scoreItems.value.find(s => s.name === '默认1分')
+    || scoreItems.value.find(s => Number(s.score) === 1)
+    || scoreItems.value[0]
+    || { id: null, name: '默认1分', score: 1 }
+  form.scoreItemId = item.id
+  form.title = item.name
+  form.score = item.score
+}
+
 function handleKeydown(e) {
   if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') {
     handlePublish()
@@ -187,11 +189,7 @@ const form = reactive({
 const scoreItems = ref([])
 const designers = ref([])
 
-const rules = {
-  scoreItemId: [
-    { required: true, message: '请选择工作项目', trigger: 'change' }
-  ]
-}
+const rules = {}
 
 async function handlePublish() {
   const valid = await formRef.value.validate().catch(() => false)
@@ -203,7 +201,7 @@ async function handlePublish() {
       title: form.title,
       description: form.description,
       score: form.score,
-      scoreItemId: form.scoreItemId,
+      scoreItemId: form.scoreItemId || undefined,
       wangwangId: form.wangwangId,
       styleNumber: form.styleNumber,
       designerId: form.designerId || undefined
@@ -237,7 +235,6 @@ async function handlePublish() {
 }
 
 function resetForm() {
-  form.title = ''
   form.description = ''
   form.wangwangId = ''
   form.styleNumber = ''
@@ -245,6 +242,7 @@ function resetForm() {
   hasUnsavedData.value = false
   refImages.value = []
   formRef.value?.resetFields()
+  applyDefaultScoreItem()
 }
 </script>
 

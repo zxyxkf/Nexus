@@ -89,6 +89,34 @@
             <label>{{ designerLabel }}</label>
             <span>{{ currentTask.designer_name || '未接单' }}</span>
           </div>
+          <div class="inline-detail-stat-card">
+            <label>工作项目</label>
+            <span>{{ currentTask.title || '-' }}</span>
+          </div>
+          <div class="inline-detail-stat-card">
+            <label>分值</label>
+            <span>{{ currentTask.score || '-' }}</span>
+          </div>
+          <div v-if="taskGroup === 'operator'" class="inline-detail-stat-card">
+            <label>任务数量</label>
+            <span>{{ currentTask.quantity || 1 }}</span>
+          </div>
+          <div v-if="taskGroup === 'operator'" class="inline-detail-stat-card">
+            <label>完成次数</label>
+            <span>{{ currentTask.actual_quantity || 0 }}</span>
+          </div>
+          <div v-if="taskGroup === 'operator'" class="inline-detail-stat-card full-width">
+            <label>任务文件地址</label>
+            <span>{{ currentTask.task_file_path || '-' }}</span>
+          </div>
+          <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
+            <label>申请分数</label>
+            <span>{{ currentTask.applied_score || currentTask.score || '-' }}</span>
+          </div>
+          <div v-if="taskGroup === 'design' || taskGroup === 'operator'" class="inline-detail-stat-card full-width">
+            <label>上传路径</label>
+            <span>{{ currentTask.work_path || '无' }}</span>
+          </div>
           <div v-if="currentTask.status==='rejected'" class="inline-detail-stat-card full-width">
             <label>驳回原因</label>
             <div class="value" style="color:#e63946;">{{ currentTask.reject_reason }}</div>
@@ -99,21 +127,44 @@
           </div>
 
           <template v-if="currentTask.files && currentTask.files.length > 0">
-            <div v-if="imageFiles.length > 0" class="inline-detail-files">
-              <h4>图片 ({{ imageFiles.length }})</h4>
-              <div v-for="file in imageFiles" :key="file.id" style="position:relative;display:inline-block;" draggable="true" @dragstart="setupFileDrag($event, file)">
+            <div v-if="refImageFiles.length > 0" class="inline-detail-files">
+              <h4>参考图 ({{ refImageFiles.length }})</h4>
+              <div v-for="file in refImageFiles" :key="file.id" style="position:relative;display:inline-block;" draggable="true" @dragstart="setupFileDrag($event, file)">
                 <el-image
                   :src="file._previewSrc || getFileUrl(file)"
                   fit="contain"
-                  :preview-src-list="imagePreviewList"
+                  :preview-src-list="refImagePreviewList"
                   preview-teleported
                   style="width:150px;height:150px;border-radius:8px;margin-right:8px;margin-bottom:8px;border:1px solid #e4e7ed;"
                 />
               </div>
             </div>
-            <div v-if="attachmentFiles.length > 0" class="inline-detail-files">
-              <h4>附件 ({{ attachmentFiles.length }})</h4>
-              <div v-for="file in attachmentFiles" :key="file.id" class="file-card" draggable="true" @dragstart="setupFileDrag($event, file)">
+            <div v-if="refAttachmentFiles.length > 0" class="inline-detail-files">
+              <h4>参考附件 ({{ refAttachmentFiles.length }})</h4>
+              <div v-for="file in refAttachmentFiles" :key="file.id" class="file-card" draggable="true" @dragstart="setupFileDrag($event, file)">
+                <el-icon :size="28" color="#909399"><Document /></el-icon>
+                <div class="file-card-info">
+                  <span class="file-card-name">{{ file.file_name }}</span>
+                  <span class="file-card-size">{{ formatSize(file.file_size) }}</span>
+                </div>
+                <el-button type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
+              </div>
+            </div>
+            <div v-if="workImageFiles.length > 0" class="inline-detail-files">
+              <h4>{{ taskGroup === 'operator' ? '完成凭证图片' : '作品图片' }} ({{ workImageFiles.length }})</h4>
+              <div v-for="file in workImageFiles" :key="file.id" style="position:relative;display:inline-block;" draggable="true" @dragstart="setupFileDrag($event, file)">
+                <el-image
+                  :src="file._previewSrc || getFileUrl(file)"
+                  fit="contain"
+                  :preview-src-list="workImagePreviewList"
+                  preview-teleported
+                  style="width:150px;height:150px;border-radius:8px;margin-right:8px;margin-bottom:8px;border:1px solid #e4e7ed;"
+                />
+              </div>
+            </div>
+            <div v-if="workAttachmentFiles.length > 0" class="inline-detail-files">
+              <h4>{{ taskGroup === 'operator' ? '完成凭证附件' : '作品附件' }} ({{ workAttachmentFiles.length }})</h4>
+              <div v-for="file in workAttachmentFiles" :key="file.id" class="file-card" draggable="true" @dragstart="setupFileDrag($event, file)">
                 <el-icon :size="28" color="#909399"><Document /></el-icon>
                 <div class="file-card-info">
                   <span class="file-card-name">{{ file.file_name }}</span>
@@ -151,7 +202,6 @@ const designerList = ref([])
 
 const detailVisible = ref(false)
 const currentTask = ref(null)
-const imagePreviewList = ref([])
 
 const taskGroup = computed(() => route.meta.taskGroup || 'design')
 const pageTitle = computed(() => `${route.meta.title || '全量任务'}管理`)
@@ -163,14 +213,24 @@ const designerLabel = computed(() => taskGroup.value === 'cs' ? '基础美工' :
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
 
-const imageFiles = computed(() => {
+const refImageFiles = computed(() => {
   if (!currentTask.value?.files) return []
-  return currentTask.value.files.filter(f => f.file_type === 'image')
+  return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type === 'image')
 })
-const attachmentFiles = computed(() => {
+const refAttachmentFiles = computed(() => {
   if (!currentTask.value?.files) return []
-  return currentTask.value.files.filter(f => f.file_type !== 'image')
+  return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type !== 'image')
 })
+const workImageFiles = computed(() => {
+  if (!currentTask.value?.files) return []
+  return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_type === 'image')
+})
+const workAttachmentFiles = computed(() => {
+  if (!currentTask.value?.files) return []
+  return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_type !== 'image')
+})
+const refImagePreviewList = computed(() => refImageFiles.value.map(f => f._previewSrc || getFileUrl(f)))
+const workImagePreviewList = computed(() => workImageFiles.value.map(f => f._previewSrc || getFileUrl(f)))
 const formatSize = formatFileSize
 
 async function loadData() {
@@ -249,7 +309,6 @@ async function viewDetail(row) {
       }))
       preloadFilesForDrag(files)
       currentTask.value = { ...res.data, files }
-      imagePreviewList.value = imageFiles.map(f => f._previewSrc || getFileUrl(f))
       detailVisible.value = true
     }
   } catch (e) {
