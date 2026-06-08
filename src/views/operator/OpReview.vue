@@ -307,13 +307,13 @@ async function loadData(options = {}) {
     const res = await getMyPublishedApi({
       page: page.value,
       pageSize: pageSize.value,
-      status: undefined,
+      status: 'doing',
       taskGroup: 'operator',
       selfOnly: '1'
     })
     if (res.code === 0) {
-      list.value = (res.data.list || []).filter(item => item.status === 'doing')
-      total.value = list.value.length
+      list.value = res.data.list || []
+      total.value = res.data.total || 0
     }
   } catch (e) {
     console.error('[OpReview] 加载失败:', e)

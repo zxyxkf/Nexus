@@ -319,13 +319,13 @@ async function loadData(options = {}) {
     const res = await getMyPublishedApi({
       page: page.value,
       pageSize: pageSize.value,
-      status: undefined,
+      status: 'doing',
       taskGroup: taskGroup.value,
       selfOnly: '1'
     })
     if (res.code === 0) {
-      list.value = (res.data.list || []).filter(item => item.status === 'doing')
-      total.value = list.value.length
+      list.value = res.data.list || []
+      total.value = res.data.total || 0
     }
   } catch (e) {
     console.error('[Review] 加载审核列表失败:', e)
