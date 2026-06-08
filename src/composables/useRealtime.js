@@ -54,13 +54,26 @@ export function useRealtime(fetchFn, interval = 3000) {
   const loading = ref(false)
   let pollTimer = null
   let wsConnected = false
+  let running = false
+  let pendingOptions = null
 
   async function execute(options = {}) {
+    if (running) {
+      pendingOptions = { silent: true, ...options }
+      return
+    }
+    running = true
     try {
       loading.value = !options.silent
       await fetchFn(options)
     } finally {
+      running = false
       loading.value = false
+      if (pendingOptions) {
+        const nextOptions = pendingOptions
+        pendingOptions = null
+        execute(nextOptions)
+      }
     }
   }
 
@@ -93,7 +106,6 @@ export function useRealtime(fetchFn, interval = 3000) {
       const onConnect = () => {
         wsConnected = true
         stopPolling()
-        execute({ silent: true })
       }
 
       const onDisconnect = () => {

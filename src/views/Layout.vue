@@ -274,7 +274,6 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store'
 import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, deleteNotification, onConnectionChange, getOnlineStatus } from '@/api'
 import { ROLE_LABEL, ROLE_TAG_TYPE } from '@/utils/format'
-import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { HomeFilled, Bell, Moon, Sunny, User, Connection, WarningFilled } from '@element-plus/icons-vue'
 import InfiniteGridBg from '@/components/InfiniteGridBg.vue'
@@ -396,8 +395,6 @@ function updateClock() {
   const wd = weekdays[now.getDay()]
   currentTime.value = `${h}:${m}:${s} 周${wd}`
 }
-
-const { refresh: refreshUnread } = useRealtime(loadUnreadCount, 5000)
 
 onMounted(() => {
   useConfig().ensureLoaded()

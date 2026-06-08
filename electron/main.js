@@ -152,6 +152,24 @@ function createToastWindow() {
   })
 }
 
+function sendToastToWindow(data) {
+  if (!toastWindow || toastWindow.isDestroyed()) {
+    createToastWindow()
+  }
+
+  const send = () => {
+    if (toastWindow && !toastWindow.isDestroyed()) {
+      toastWindow.webContents.send('toast:show', data)
+    }
+  }
+
+  if (toastWindow.webContents.isLoading()) {
+    toastWindow.webContents.once('did-finish-load', send)
+  } else {
+    send()
+  }
+}
+
 // ===== IPC 通信 =====
 ipcMain.on('flash-frame', () => {
   if (mainWindow) mainWindow.flashFrame(true)
@@ -173,13 +191,7 @@ ipcMain.on('desktop-notification', (event, { title, body, type }) => {
 
 // ===== Toast 独立窗口 =====
 ipcMain.on('show-toast', (event, data) => {
-  console.log('[Main] show-toast IPC:', JSON.stringify(data))
-  if (toastWindow && !toastWindow.isDestroyed()) {
-    toastWindow.webContents.send('toast:show', data)
-    console.log('[Main] 已转发到 toast window')
-  } else {
-    console.log('[Main] toastWindow 不存在或已销毁:', { exists: !!toastWindow, destroyed: toastWindow?.isDestroyed() })
-  }
+  sendToastToWindow(data)
 })
 
 ipcMain.on('toast:show-window', () => {

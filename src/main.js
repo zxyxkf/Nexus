@@ -14,24 +14,28 @@ const app = createApp(App)
 const pinia = createPinia()
 app.component('Pagination', Pagination)
 
-// ===== 全局错误处理 =====
+function isResizeObserverNoise(value) {
+  const message = String(value?.message || value || '')
+  return message.includes('ResizeObserver loop completed with undelivered notifications') ||
+    message.includes('ResizeObserver loop limit exceeded')
+}
 
 app.config.errorHandler = (err, instance, info) => {
+  if (isResizeObserverNoise(err)) return
   console.error('[Vue Error]', err, info)
 }
 
 window.onerror = (msg, url, line, col, err) => {
+  if (isResizeObserverNoise(msg) || isResizeObserverNoise(err)) return true
   console.error('[Window Error]', msg, url, line, col, err)
   return false
 }
 
 window.addEventListener('unhandledrejection', (event) => {
+  if (isResizeObserverNoise(event.reason)) return
   console.error('[Promise Rejection]', event.reason)
 })
 
-// ===== 注册 & 挂载 =====
-
-// 注册所有Element Plus图标
 for (const [key, component] of Object.entries(ElementPlusIconsVue)) {
   app.component(key, component)
 }
