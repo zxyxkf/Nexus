@@ -234,6 +234,7 @@ async function getMyAccepted(query, user) {
     userId: user.id, role: user.role,
     status: query.status, keyword: query.keyword,
     publisherId: query.publisherId,
+    scoreItemId: query.scoreItemId,
     dateStart: query.dateStart, dateEnd: query.dateEnd,
     shopName: query.shopName,
     page, pageSize

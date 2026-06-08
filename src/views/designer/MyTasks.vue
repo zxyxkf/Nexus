@@ -22,6 +22,26 @@
               <el-option label="已完成" value="finished" />
               <el-option label="已驳回" value="rejected" />
             </el-select>
+            <el-date-picker
+              v-model="dateRange"
+              type="daterange"
+              range-separator="至"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              format="YYYY-MM-DD"
+              value-format="YYYY-MM-DD"
+              clearable
+              style="width:240px;"
+              @change="loadData"
+            />
+            <el-select v-model="publisherFilter" placeholder="发布人筛选" clearable filterable style="width:150px;" @change="loadData">
+              <el-option label="全部" value="" />
+              <el-option v-for="p in publisherList" :key="p.id" :label="p.real_name || p.username" :value="p.id" />
+            </el-select>
+            <el-select v-model="scoreItemFilter" placeholder="工作项目筛选" clearable filterable style="width:180px;" @change="loadData">
+              <el-option label="全部" value="" />
+              <el-option v-for="item in scoreItems" :key="item.id" :label="item.name" :value="item.id" />
+            </el-select>
           </div>
         </div>
       </template>
@@ -288,11 +308,11 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document, Search } from '@element-plus/icons-vue'
-import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, undoSubmitApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, undoSubmitApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag, getPublisherListApi, getScoreItemsApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
@@ -310,6 +330,11 @@ const page = ref(1)
 const pageSize = ref(15)
 const statusFilter = ref('')
 const styleNumberFilter = ref('')
+const dateRange = ref(null)
+const publisherFilter = ref('')
+const scoreItemFilter = ref('')
+const publisherList = ref([])
+const scoreItems = ref([])
 const fixedStatus = computed(() => route.meta.fixedStatus || '')
 const pageTitle = computed(() => route.meta.title || '我的任务')
 
@@ -360,7 +385,11 @@ async function loadData(options = {}) {
       page: page.value,
       pageSize: pageSize.value,
       status: fixedStatus.value || statusFilter.value || undefined,
-      keyword: styleNumberFilter.value || undefined
+      keyword: styleNumberFilter.value || undefined,
+      dateStart: dateRange.value?.[0] || undefined,
+      dateEnd: dateRange.value?.[1] || undefined,
+      publisherId: publisherFilter.value || undefined,
+      scoreItemId: scoreItemFilter.value || undefined
     })
     if (res.code === 0) {
       list.value = res.data.list
@@ -503,6 +532,23 @@ async function handleUndoSubmit(row) {
     }
   } catch {}
 }
+
+async function loadFilterOptions() {
+  try {
+    const [publisherRes, scoreRes] = await Promise.all([
+      getPublisherListApi(),
+      getScoreItemsApi({ taskGroup: 'design' })
+    ])
+    if (publisherRes.code === 0) publisherList.value = publisherRes.data || []
+    if (scoreRes.code === 0) scoreItems.value = scoreRes.data || []
+  } catch (e) {
+    console.error('[MyTasks] 加载筛选项失败:', e)
+  }
+}
+
+onMounted(() => {
+  loadFilterOptions()
+})
 
 const { getInt, configMap } = useConfig()
 const maxFileCount = computed(() => getInt('upload.max_file_count', 10))

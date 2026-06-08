@@ -262,7 +262,7 @@ async function queryMyPublished({ userId, role, filterGroup, selfOnly, status, s
 }
 
 /** 我接单的任务 */
-async function queryMyAccepted({ userId, role, status, keyword, publisherId, dateStart, dateEnd, shopName, page, pageSize }) {
+async function queryMyAccepted({ userId, role, status, keyword, publisherId, scoreItemId, dateStart, dateEnd, shopName, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE 1=1';
   const params = [];
@@ -279,6 +279,7 @@ async function queryMyAccepted({ userId, role, status, keyword, publisherId, dat
   if (status) { where += ' AND t.status = ?'; params.push(status); }
   if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`); }
   if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
+  if (scoreItemId) { where += ' AND t.score_item_id = ?'; params.push(scoreItemId); }
   if (dateStart) { where += ' AND t.create_time >= ?'; params.push(dateStart + ' 00:00:00'); }
   if (dateEnd) { where += ' AND t.create_time <= ?'; params.push(dateEnd + ' 23:59:59'); }
   if (shopName) { where += ' AND t.shop_name = ?'; params.push(shopName); }
