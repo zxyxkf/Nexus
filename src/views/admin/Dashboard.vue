@@ -358,7 +358,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick } from 'vue'
+import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import * as echarts from 'echarts/core'
 import { PieChart, LineChart, BarChart } from 'echarts/charts'
@@ -391,6 +391,19 @@ let opAssistantCurrentMonthChart = null
 let opAssistantLastMonthChart = null
 let designerChart = null
 let refreshTimer = null
+
+function disposeCharts() {
+  ;[designerCurrentMonthChart, designerLastMonthChart, basicCurrentMonthChart, basicLastMonthChart, opAssistantCurrentMonthChart, opAssistantLastMonthChart, designerChart].forEach(chart => {
+    chart?.dispose()
+  })
+  designerCurrentMonthChart = null
+  designerLastMonthChart = null
+  basicCurrentMonthChart = null
+  basicLastMonthChart = null
+  opAssistantCurrentMonthChart = null
+  opAssistantLastMonthChart = null
+  designerChart = null
+}
 
 const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
 const allowedGroups = computed(() => route.meta.dashboardGroups || ['design', 'operator', 'cs'])
@@ -812,13 +825,18 @@ onMounted(() => {
   refreshTimer = setInterval(() => { loadData({ silent: true }); loadDetailStats() }, 60000)
 })
 
+watch(() => route.meta.dashboardGroups, async () => {
+  disposeCharts()
+  await nextTick()
+  loadData({ silent: true })
+  loadDetailStats()
+})
+
 onUnmounted(() => {
   window.removeEventListener('resize', handleResize)
   document.removeEventListener('visibilitychange', handleVisibility)
   if (refreshTimer) clearInterval(refreshTimer)
-  ;[designerCurrentMonthChart, designerLastMonthChart, basicCurrentMonthChart, basicLastMonthChart, opAssistantCurrentMonthChart, opAssistantLastMonthChart, designerChart].forEach(chart => {
-    chart?.dispose()
-  })
+  disposeCharts()
 })
 </script>
 

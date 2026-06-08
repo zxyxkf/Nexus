@@ -228,7 +228,19 @@ const routes = [
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '数据仪表盘', roles: ['admin', 'sub_admin'] }
+        meta: { title: '高级美工仪表盘', roles: ['admin', 'sub_admin'], dashboardGroups: ['design'] }
+      },
+      {
+        path: 'dashboard/operator-assistant',
+        name: 'OperatorAssistantDashboard',
+        component: () => import('@/views/admin/Dashboard.vue'),
+        meta: { title: '运营助理仪表盘', roles: ['admin', 'sub_admin'], dashboardGroups: ['operator'] }
+      },
+      {
+        path: 'dashboard/basic-designer',
+        name: 'BasicDesignerDashboard',
+        component: () => import('@/views/admin/Dashboard.vue'),
+        meta: { title: '基础美工仪表盘', roles: ['admin', 'sub_admin'], dashboardGroups: ['cs'] }
       },
       {
         path: 'admin/users',

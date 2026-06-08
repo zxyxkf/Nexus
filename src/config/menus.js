@@ -4,7 +4,9 @@
 
 export const ADMIN_MENU = [
   { section: '概览' },
-  { path: '/dashboard', icon: 'DataAnalysis', label: '数据仪表盘' }
+  { path: '/dashboard', icon: 'DataAnalysis', label: '高级美工仪表盘' },
+  { path: '/dashboard/operator-assistant', icon: 'DataAnalysis', label: '运营助理仪表盘' },
+  { path: '/dashboard/basic-designer', icon: 'DataAnalysis', label: '基础美工仪表盘' }
 ]
 
 export const SUPER_ADMIN_MENU = [
