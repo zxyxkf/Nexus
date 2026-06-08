@@ -109,7 +109,7 @@ describe('POST /api/config/delete', () => {
     const createOp = await request(app)
       .post('/api/user/create')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ username: `cfg_op_${Date.now()}`, password: 'test123456', realName: '配置测试运营', role: 'operator' });
+      .send({ username: `cfg_op_${Date.now()}`, password: 'test123456', realName: '配置测试运营', role: 'operator', store: '测试店铺' });
     expect(createOp.body.code).toBe(0);
 
     const opLogin = await request(app)

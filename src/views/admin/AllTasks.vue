@@ -111,7 +111,7 @@
           </div>
           <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
             <label>申请分数</label>
-            <span>{{ currentTask.applied_score || currentTask.score || '-' }}</span>
+            <span>{{ currentTask.applied_score || '-' }}</span>
           </div>
           <div v-if="taskGroup === 'design' || taskGroup === 'operator'" class="inline-detail-stat-card full-width">
             <label>上传路径</label>

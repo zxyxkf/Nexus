@@ -33,7 +33,7 @@ beforeAll(async () => {
   const createOp = await request(app)
     .post('/api/user/create')
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ username: testOperator, password: 'test123456', realName: '测试运营', role: 'operator' });
+    .send({ username: testOperator, password: 'test123456', realName: '测试运营', role: 'operator', store: '测试店铺' });
   expect(createOp.body.code).toBe(0);
   const opList = await request(app)
     .get('/api/user/list?role=operator')
