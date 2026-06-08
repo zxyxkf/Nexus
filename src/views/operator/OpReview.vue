@@ -308,8 +308,7 @@ async function loadData(options = {}) {
       page: page.value,
       pageSize: pageSize.value,
       status: 'doing',
-      taskGroup: 'operator',
-      selfOnly: '1'
+      taskGroup: 'operator'
     })
     if (res.code === 0) {
       list.value = res.data.list || []

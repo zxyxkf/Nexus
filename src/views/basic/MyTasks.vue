@@ -32,6 +32,15 @@
                 :value="p.id"
               />
             </el-select>
+            <el-date-picker
+              v-model="dateFilter"
+              type="date"
+              placeholder="任务日期"
+              value-format="YYYY-MM-DD"
+              clearable
+              style="width:150px;"
+              @change="loadData"
+            />
             <el-select v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
               <el-option label="全部" value="" />
               <el-option label="已接单" value="accepted" />
@@ -345,6 +354,7 @@ const pageSize = ref(15)
 const statusFilter = ref('')
 const keyword = ref('')
 const publisherFilter = ref('')
+const dateFilter = ref('')
 const publisherList = ref([])
 
 const uploadVisible = ref(false)
@@ -419,7 +429,9 @@ async function loadData(options = {}) {
       pageSize: pageSize.value,
       status: statusFilter.value || undefined,
       keyword: keyword.value || undefined,
-      publisherId: publisherFilter.value || undefined
+      publisherId: publisherFilter.value || undefined,
+      dateStart: dateFilter.value || undefined,
+      dateEnd: dateFilter.value || undefined
     })
     if (res.code === 0) {
       list.value = res.data.list
