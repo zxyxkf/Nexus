@@ -226,8 +226,9 @@
               <div class="inline-detail-files">
                 <h4>参考图 ({{ detailRefImages.length }})</h4>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                  <div v-for="file in detailRefImages" :key="file.id" draggable="true" @dragstart="setupFileDrag($event, file)">
+                  <div v-for="file in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
                     <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="detailRefPreviewList" preview-teleported style="width:120px;height:120px;border-radius:8px;border:1px solid #e4e7ed;" />
+                    <el-button class="file-download-btn" type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
                   </div>
                 </div>
               </div>
@@ -249,7 +250,10 @@
               <h4>完成凭证</h4>
               <div class="file-grid">
                 <div v-for="file in workFiles" :key="file.id" class="file-item" draggable="true" @dragstart="setupFileDrag($event, file)">
-                  <el-image v-if="file.file_type === 'image'" :src="file._previewSrc || getFileUrl(file)" fit="cover" :preview-src-list="imagePreviewList" preview-teleported style="width:120px;height:120px;border-radius:8px;" />
+                  <template v-if="file.file_type === 'image'">
+                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="cover" :preview-src-list="imagePreviewList" preview-teleported style="width:120px;height:120px;border-radius:8px;" />
+                    <el-button type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
+                  </template>
                   <div v-else class="attachment-item">
                     <el-icon :size="28" color="#909399"><Document /></el-icon>
                     <div class="file-card-info">
@@ -286,6 +290,21 @@
         <el-form-item label="任务描述" prop="description">
           <el-input v-model="editForm.description" type="textarea" :rows="5" maxlength="2000" show-word-limit placeholder="请详细描述任务要求" />
         </el-form-item>
+        <el-form-item label="参考图">
+          <el-upload
+            ref="editUploadRef"
+            v-model:file-list="editRefImages"
+            list-type="picture-card"
+            multiple
+            :limit="10"
+            accept="image/*"
+            :auto-upload="false"
+            @change="onEditRefFileChange"
+          >
+            <el-icon :size="28"><Plus /></el-icon>
+          </el-upload>
+          <p class="form-hint">重新上传后会替换原有参考图，支持截图粘贴</p>
+        </el-form-item>
         <el-form-item label="指定运营助理">
           <el-select v-model="editForm.designerId" placeholder="可选，留空则进入任务大厅" clearable filterable style="width:100%;">
             <el-option v-for="d in designerList" :key="d.id" :label="d.real_name || d.username" :value="d.id" />
@@ -301,15 +320,16 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Document } from '@element-plus/icons-vue'
-import { getMyPublishedApi, getTaskDetailApi, urgeTaskApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, setupFileDrag, preloadFilesForDrag, getOperatorAssistantListApi, getScoreItemsApi, getPublisherListApi } from '@/api'
+import { Close, Document, Plus } from '@element-plus/icons-vue'
+import { getMyPublishedApi, getTaskDetailApi, urgeTaskApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag, getOperatorAssistantListApi, getScoreItemsApi, getPublisherListApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { getUser } from '@/utils/auth'
+import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 
 const route = useRoute()
 const router = useRouter()
@@ -438,14 +458,30 @@ async function handleWithdraw(row) {
 const editVisible = ref(false)
 const editSaving = ref(false)
 const editFormRef = ref(null)
+const editUploadRef = ref(null)
 const editForm = ref({ taskId: null, scoreItemId: null, score: 0, quantity: 1, taskFilePath: '', description: '', designerId: null })
+const editRefImages = ref([])
+const editRefRawFiles = ref([])
 const scoreItems = ref([])
 const designerList = ref([])
 
 const editRules = {
   scoreItemId: [{ required: true, message: '请选择工作项目', trigger: 'change' }],
   quantity: [{ required: true, message: '请输入任务数量', trigger: 'blur' }],
-  description: [{ required: true, message: '请输入任务描述', trigger: 'blur' }]
+  description: []
+}
+
+function onEditRefFileChange(uploadFile, uploadFiles) {
+  editRefRawFiles.value = syncRawFiles(uploadFiles)
+}
+
+function handleEditRefPaste(event) {
+  if (!editVisible.value) return
+  appendClipboardImages(event, editRefImages, editRefRawFiles, {
+    prefix: 'operator-reference',
+    maxCount: 10,
+    maxSizeMB: 50
+  })
 }
 
 async function loadScoreItems() {
@@ -475,6 +511,8 @@ function openEditDialog(row) {
   if (scoreItems.value.length === 0) loadScoreItems()
   if (designerList.value.length === 0) loadDesigners()
 
+  editRefImages.value = []
+  editRefRawFiles.value = []
   editForm.value = {
     taskId: row.id,
     scoreItemId: row.score_item_id || null,
@@ -485,6 +523,7 @@ function openEditDialog(row) {
     designerId: row.designer_id || null
   }
   editVisible.value = true
+  editFormRef.value?.clearValidate?.()
 }
 
 async function handleEditSave() {
@@ -505,8 +544,22 @@ async function handleEditSave() {
       designerId: f.designerId
     })
     if (res.code === 0) {
+      if (editRefImages.value.length) {
+        const rawFiles = editRefRawFiles.value.length
+          ? editRefRawFiles.value
+          : editRefImages.value.map(file => file.raw).filter(Boolean)
+        if (rawFiles.length) {
+          const uploadRes = await uploadFilesApi(f.taskId, rawFiles, 'reference', { replaceExisting: true })
+          if (uploadRes.code !== 0) {
+            ElMessage.error('参考图上传失败: ' + (uploadRes.msg || '未知错误'))
+            return
+          }
+        }
+      }
       ElMessage.success(res.msg)
       editVisible.value = false
+      editRefImages.value = []
+      editRefRawFiles.value = []
       loadData()
     } else {
       ElMessage.error(res.msg)
@@ -532,6 +585,15 @@ loadAssistantList()
 loadPublisherList()
 
 const formatSize = formatFileSize
+
+onMounted(() => {
+  window.addEventListener('paste', handleEditRefPaste)
+})
+
+onUnmounted(() => {
+  window.removeEventListener('paste', handleEditRefPaste)
+})
+
 useRealtime(loadData, 3000)
 </script>
 
@@ -556,4 +618,6 @@ useRealtime(loadData, 3000)
 .status-cell { display: flex; flex-direction: column; gap: 4px; }
 .task-progress-bar { height: 3px; background: var(--dd-border-light); border-radius: 2px; overflow: hidden; }
 .task-progress-fill { height: 100%; background: linear-gradient(90deg, var(--dd-primary), var(--dd-success)); border-radius: 2px; transition: width 0.5s ease; }
+.file-download-btn { position: absolute; right: 4px; bottom: 4px; background: rgba(255, 255, 255, 0.9); border-radius: 4px; }
+.form-hint { font-size: 12px; color: var(--dd-text-muted); margin: 4px 0 0; }
 </style>

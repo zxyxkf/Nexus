@@ -294,7 +294,7 @@ async function acceptTask(taskId, user) {
   });
 }
 
-async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedScore, workPath, user) {
+async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedScore, workPath, user, options = {}) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
   appliedScore = parseFloat(appliedScore) || 0;
   workPath = (workPath || '').trim();
@@ -344,6 +344,10 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
     }
 
     const isBasicDesigner = user.role === 'basic_designer';
+
+    if (fileCategory === 'reference' && options.replaceExisting) {
+      await taskDao.deleteFilesByCategory(conn, taskId, 'reference');
+    }
 
     // 非参考图且非基础美工 → 覆盖旧文件
     if (fileCategory !== 'reference' && !isBasicDesigner) {

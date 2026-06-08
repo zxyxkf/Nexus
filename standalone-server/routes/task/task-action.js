@@ -54,7 +54,8 @@ router.post('/upload-files', requireRole('designer', 'basic_designer', 'operator
         const actualQuantity = parseInt(req.body.actualQuantity) || 0;
         const appliedScore = parseFloat(req.body.appliedScore) || 0;
         const workPath = (req.body.workPath || '').trim();
-        const result = await taskService.uploadFiles(taskId, req.files, fileCategory, actualQuantity, appliedScore, workPath, req.user);
+        const replaceExisting = req.body.replaceExisting === '1' || req.body.replaceExisting === 'true';
+        const result = await taskService.uploadFiles(taskId, req.files, fileCategory, actualQuantity, appliedScore, workPath, req.user, { replaceExisting });
         res.json({ code: 0, ...result });
       } catch (err) { next(err); }
     });

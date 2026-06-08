@@ -137,6 +137,7 @@
                   preview-teleported
                   style="width:150px;height:150px;border-radius:8px;margin-right:8px;margin-bottom:8px;border:1px solid #e4e7ed;"
                 />
+                <el-button class="file-download-btn" type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
               </div>
             </div>
             <div v-if="refAttachmentFiles.length > 0" class="inline-detail-files">
@@ -160,6 +161,7 @@
                   preview-teleported
                   style="width:150px;height:150px;border-radius:8px;margin-right:8px;margin-bottom:8px;border:1px solid #e4e7ed;"
                 />
+                <el-button class="file-download-btn" type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
               </div>
             </div>
             <div v-if="workAttachmentFiles.length > 0" class="inline-detail-files">
@@ -350,4 +352,5 @@ onMounted(() => { loadData(); loadUsers() })
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .file-card-size { font-size: 11px; color: var(--dd-text-secondary); }
+.file-download-btn { position: absolute; right: 12px; bottom: 12px; background: rgba(255, 255, 255, 0.9); border-radius: 4px; }
 </style>

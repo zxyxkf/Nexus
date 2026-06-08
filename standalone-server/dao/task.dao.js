@@ -179,10 +179,9 @@ async function insertFileRecord(conn, data) {
   );
 }
 
-/** 删除作品文件记录及物理文件（事务内） */
-async function deleteWorkFiles(conn, taskId) {
+async function deleteFilesByCategory(conn, taskId, fileCategory) {
   const [oldFiles] = await conn.execute(
-    `SELECT * FROM task_file WHERE task_id = ? AND file_category = 'work'`, [taskId]
+    `SELECT * FROM task_file WHERE task_id = ? AND file_category = ?`, [taskId, fileCategory]
   );
   for (const f of oldFiles) {
     try {
@@ -191,6 +190,11 @@ async function deleteWorkFiles(conn, taskId) {
     } catch (_) {}
     await conn.execute(`DELETE FROM task_file WHERE id = ?`, [f.id]);
   }
+}
+
+/** 删除作品文件记录及物理文件（事务内） */
+async function deleteWorkFiles(conn, taskId) {
+  await deleteFilesByCategory(conn, taskId, 'work');
 }
 
 /** 更新任务状态（事务内） */
@@ -581,6 +585,7 @@ module.exports = {
   batchReassignTasks,
   // 文件
   insertFileRecord,
+  deleteFilesByCategory,
   deleteWorkFiles,
   updateTaskStatus,
   getTaskBrief,

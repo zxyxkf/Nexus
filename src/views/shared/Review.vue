@@ -176,7 +176,7 @@
             <div class="inline-detail-files">
               <h4>参考图 ({{ detailRefImages.length }})</h4>
               <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                <div v-for="file in detailRefImages" :key="file.id" draggable="true" @dragstart="setupFileDrag($event, file)">
+                <div v-for="file in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
                   <el-image
                     :src="file._previewSrc || getFileUrl(file)"
                     fit="contain"
@@ -184,6 +184,7 @@
                     preview-teleported
                     style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;"
                   />
+                  <el-button class="file-download-btn" type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
                 </div>
               </div>
             </div>
@@ -413,4 +414,5 @@ useRealtime(loadData, 3000)
   background: #f5f7fa; border-radius: 8px; border: 1px solid #e4e7ed;
 }
 .multiline-value { white-space: pre-wrap; word-break: break-word; }
+.file-download-btn { position: absolute; right: 4px; bottom: 4px; background: rgba(255, 255, 255, 0.9); border-radius: 4px; }
 </style>
