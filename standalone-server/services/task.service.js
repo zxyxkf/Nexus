@@ -726,9 +726,8 @@ function buildDesignerStats(users, tasks, scoreItems, refDate, taskGroup) {
       const actualQty = Number(task.actual_quantity) || 0;
       const scorePending = task.score_review_status === 'pending';
       const score = scorePending ? 0 : Math.round((Number(task.score) || 0) * (actualQty > 0 ? actualQty : 1) * 100) / 100;
-      // 积分统计以上传时间（submit_time）为标准，避免审核不及时导致的日期偏移。
-      // 历史任务无 submit_time 时回退到 finish_time → update_time → create_time
-      const timeStr = task.submit_time || task.finish_time || task.update_time || task.create_time;
+      // 已完成积分按审核通过时间统计；finish_time 在审核通过时写入。
+      const timeStr = task.finish_time;
       const ft = timeStr ? new Date(timeStr.replace(' ', 'T')) : null;
       const isValidFt = ft && !isNaN(ft.getTime());
 
@@ -741,8 +740,8 @@ function buildDesignerStats(users, tasks, scoreItems, refDate, taskGroup) {
         }
       }
 
-      // 月度明细表同样以上传时间为准，与卡片统计保持一致
-      const mt = task.submit_time || task.finish_time || task.update_time || task.create_time;
+      // 月度明细表同样按审核通过时间，与卡片统计保持一致。
+      const mt = task.finish_time;
       const mDate = mt ? new Date(mt.replace(' ', 'T')) : null;
       if (mDate && !isNaN(mDate.getTime()) && mDate.getFullYear() === thisYear) {
         const m = mDate.getMonth() + 1;
@@ -818,7 +817,7 @@ function buildDailyScoreStats(users, tasks, refDate, taskGroup) {
   }
 
   function parseTaskDate(task) {
-    const timeStr = task.submit_time || task.finish_time || task.update_time || task.create_time;
+    const timeStr = task.status === 'finished' ? task.finish_time : task.submit_time;
     const date = timeStr ? new Date(timeStr.replace(' ', 'T')) : null;
     return date && !isNaN(date.getTime()) ? date : null;
   }

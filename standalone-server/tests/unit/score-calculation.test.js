@@ -58,7 +58,7 @@ function buildDesignerStats(users, tasks, scoreItems, refDate) {
         }
       }
 
-      const ct = task.create_time ? new Date(task.create_time) : null;
+      const ct = task.finish_time ? new Date(task.finish_time) : null;
       if (ct && !isNaN(ct.getTime()) && ct.getFullYear() === thisYear) {
         const m = ct.getMonth() + 1;
         monthlyMap[m].total += 1;
@@ -181,6 +181,17 @@ describe('积分计算', () => {
       ];
       const stats = buildDesignerStats(users, tasks, scoreItems, refDate);
       expect(stats[0].current_month_score).toBe(10); // 只有五月
+    });
+
+    it('跨日提交审核时按审核通过时间统计积分', () => {
+      const tasks = [
+        { id: 1, designer_id: 1, status: 'finished', score: 10, actual_quantity: 1, submit_time: '2026-05-03', finish_time: '2026-05-05', create_time: '2026-05-01', score_item_id: 1 },
+        { id: 2, designer_id: 1, status: 'finished', score: 5, actual_quantity: 1, submit_time: '2026-05-05', finish_time: '2026-05-04', create_time: '2026-05-01', score_item_id: 1 },
+      ];
+      const stats = buildDesignerStats(users, tasks, scoreItems, new Date('2026-05-05'));
+      expect(stats[0].today_score).toBe(10);
+      expect(stats[0].yesterday_score).toBe(5);
+      expect(stats[0].current_month_score).toBe(15);
     });
 
     it('完成率精确到小数点后一位', () => {

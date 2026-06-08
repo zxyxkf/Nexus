@@ -173,6 +173,11 @@
               <span class="detail-header-time">{{ currentTask.create_time }}</span>
             </div>
             <div class="detail-header-right">
+              <el-button
+                v-if="currentTask.status === 'accepted' || currentTask.status === 'rejected'"
+                type="warning"
+                @click="openUploadDialog(currentTask)"
+              >{{ currentTask.status === 'rejected' ? '重新上传' : '上传' }}</el-button>
               <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
             </div>
           </div>
@@ -469,6 +474,7 @@ async function handleUpload() {
       ElMessage.success('上传成功')
       uploadVisible.value = false
       workPath.value = ''
+      detailVisible.value = false
       loadData()
     } else {
       ElMessage.error(res.msg || '上传失败')
@@ -490,6 +496,7 @@ async function handleUndoSubmit(row) {
     const res = await undoSubmitApi({ taskId: row.id })
     if (res.code === 0) {
       ElMessage.success(res.msg)
+      detailVisible.value = false
       loadData()
     } else {
       ElMessage.error(res.msg)

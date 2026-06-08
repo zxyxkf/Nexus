@@ -459,7 +459,7 @@ async function getDesignerSummary(userId) {
 async function getDesignerDetailRows(userId) {
   const pool = getPool();
   const [rows] = await pool.execute(
-    `SELECT COALESCE(submit_time, finish_time, update_time) as finish_time, create_time, score, actual_quantity, status, score_review_status
+    `SELECT finish_time, create_time, score, actual_quantity, status, score_review_status
      FROM task_info WHERE designer_id = ?`, [userId]
   );
   return rows;
@@ -483,7 +483,7 @@ async function getFinishedDesignerScores(role) {
   const pool = getPool();
   const [rows] = await pool.execute(
     `SELECT u.id, u.real_name as name, t.score, t.actual_quantity,
-            COALESCE(t.submit_time, t.finish_time, t.update_time, t.create_time) as finish_time
+            t.finish_time
      FROM sys_user u
      INNER JOIN task_info t ON u.id = t.designer_id AND t.status = 'finished'
        AND (t.score_review_status IS NULL OR t.score_review_status = '' OR t.score_review_status = 'approved')
