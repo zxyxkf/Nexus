@@ -1,6 +1,6 @@
 {
   "name": "nexus",
-  "version": "15.1.9",
+  "version": "15.2.0",
   "description": "Nexus",
   "main": "electron/main.js",
   "scripts": {
