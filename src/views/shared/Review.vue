@@ -171,6 +171,10 @@
             <label>上传路径</label>
             <span>{{ currentTask.work_path || '无' }}</span>
           </div>
+          <div v-if="isCsAgent && currentTask.reject_reason" class="inline-detail-stat-card full-width">
+            <label>驳回原因</label>
+            <div class="value reject-reason-text">{{ currentTask.reject_reason }}</div>
+          </div>
 
           <template v-if="detailRefImages.length">
             <div class="inline-detail-files">
@@ -321,7 +325,8 @@ async function loadData(options = {}) {
       page: page.value,
       pageSize: pageSize.value,
       status: 'doing',
-      taskGroup: taskGroup.value
+      taskGroup: taskGroup.value,
+      selfOnly: true
     })
     if (res.code === 0) {
       list.value = res.data.list || []
@@ -357,9 +362,12 @@ async function viewDetail(row) {
 async function handleReview(row, action) {
   const actionLabel = action === 'pass' ? '审核通过' : '驳回'
   try {
-    await ElMessageBox.confirm(`确认${actionLabel}该任务？`, '提示')
+    const rejectReason = await getRejectReason(action)
+    if (!rejectReason) {
+      await ElMessageBox.confirm(`确认${actionLabel}该任务？`, '提示')
+    }
     reviewLoading.value = true
-    const res = await reviewTaskApi({ taskId: row.id, action })
+    const res = await reviewTaskApi({ taskId: row.id, action, rejectReason })
     if (res.code === 0) {
       ElMessage.success(actionLabel)
       list.value = list.value.filter(item => item.id !== row.id)
@@ -375,9 +383,10 @@ async function handleReview(row, action) {
 }
 
 async function doReview(action) {
-  reviewLoading.value = true
   try {
-    const res = await reviewTaskApi({ taskId: currentTask.value.id, action })
+    const rejectReason = await getRejectReason(action)
+    reviewLoading.value = true
+    const res = await reviewTaskApi({ taskId: currentTask.value.id, action, rejectReason })
     if (res.code === 0) {
       ElMessage.success(action === 'pass' ? '审核通过' : '已驳回')
       list.value = list.value.filter(item => item.id !== currentTask.value.id)
@@ -386,9 +395,30 @@ async function doReview(action) {
     } else {
       ElMessage.error(res.msg)
     }
+  } catch {
+    // 用户取消
   } finally {
     reviewLoading.value = false
   }
+}
+
+async function getRejectReason(action) {
+  if (action !== 'reject' || !isCsAgent.value) return ''
+
+  const { value } = await ElMessageBox.prompt('请填写驳回原因', '驳回原因', {
+    confirmButtonText: '确认驳回',
+    cancelButtonText: '取消',
+    inputType: 'textarea',
+    inputPlaceholder: '请填写驳回原因',
+    inputValidator: (value) => {
+      const text = String(value || '').trim()
+      if (!text) return '请填写驳回原因'
+      if (text.length > 500) return '驳回原因不能超过500字'
+      return true
+    }
+  })
+
+  return value.trim()
 }
 
 const formatSize = formatFileSize
@@ -414,5 +444,6 @@ useRealtime(loadData, 3000)
   background: #f5f7fa; border-radius: 8px; border: 1px solid #e4e7ed;
 }
 .multiline-value { white-space: pre-wrap; word-break: break-word; }
+.reject-reason-text { color: #e63946; white-space: pre-wrap; word-break: break-word; }
 .file-download-btn { position: absolute; right: 4px; bottom: 4px; background: rgba(255, 255, 255, 0.9); border-radius: 4px; }
 </style>

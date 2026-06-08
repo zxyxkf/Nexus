@@ -93,7 +93,7 @@ router.post('/review', requireRole('operator', 'admin', 'cs_agent'), async (req,
 // 批量审核
 router.post('/batch-review', requireRole('operator', 'admin', 'cs_agent'), async (req, res, next) => {
   try {
-    const result = await taskService.batchReview(req.body.taskIds);
+    const result = await taskService.batchReview(req.body.taskIds, req.user);
     res.json({ code: 0, ...result });
   } catch (err) { next(err); }
 });

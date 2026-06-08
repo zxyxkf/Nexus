@@ -460,6 +460,10 @@ async function finishTask(taskId, actualQuantity, user) {
 async function reviewTask(taskId, action, rejectReason, user) {
   if (!taskId || !action) throw new AppError(400, '参数不完整');
   if (!['pass', 'reject'].includes(action)) throw new AppError(400, '审核操作无效');
+  const normalizedRejectReason = String(rejectReason || '').trim();
+  if (action === 'reject' && user.role === 'cs_agent' && !normalizedRejectReason) {
+    throw new AppError(400, '请填写驳回原因');
+  }
 
   return withLock(`review:${taskId}`, async () => {
     await executeTransaction(async (conn) => {
@@ -474,7 +478,7 @@ async function reviewTask(taskId, action, rejectReason, user) {
       if (action === 'pass') {
         await taskDao.updateTaskStatus(conn, taskId, 'finished', { finish_time: new Date() });
       } else {
-        await taskDao.updateTaskStatus(conn, taskId, 'rejected', { reject_reason: rejectReason || '' });
+        await taskDao.updateTaskStatus(conn, taskId, 'rejected', { reject_reason: normalizedRejectReason });
       }
     });
 
@@ -486,14 +490,14 @@ async function reviewTask(taskId, action, rejectReason, user) {
     }
 
     logger.info(action === 'pass' ? '任务审核通过' : '任务驳回', {
-      userId: user.id, taskId, action, rejectReason: rejectReason || null
+      userId: user.id, taskId, action, rejectReason: normalizedRejectReason || null
     });
 
     return { msg: action === 'pass' ? '审核通过，任务已完成' : '已驳回' };
   });
 }
 
-async function batchReview(taskIds) {
+async function batchReview(taskIds, user) {
   if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
     throw new AppError(400, '请选择任务');
   }
@@ -501,8 +505,11 @@ async function batchReview(taskIds) {
   const count = await executeTransaction(async (conn) => {
     const placeholders = taskIds.map(() => '?').join(',');
     const [rows] = await conn.execute(
-      `SELECT id, status FROM task_info WHERE id IN (${placeholders})`, taskIds
+      `SELECT id, status, publisher_id FROM task_info WHERE id IN (${placeholders})`, taskIds
     );
+    if ((user.role === 'operator' || user.role === 'cs_agent') && rows.some(r => Number(r.publisher_id) !== Number(user.id))) {
+      throw new AppError(403, '无权审核他人发布的任务');
+    }
     const validIds = rows.filter(r => r.status === 'doing').map(r => r.id);
     if (validIds.length === 0) throw new AppError(400, '所选任务均不可审核');
 
