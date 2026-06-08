@@ -68,6 +68,8 @@ export function designerMenu(prefix, sectionLabel) {
     { section: sectionLabel },
     { path: `/${prefix}/hall`, icon: 'ShoppingCart', label: '任务大厅' },
     { path: `/${prefix}/tasks`, icon: 'List', label: '我的任务' },
+    { path: `/${prefix}/tasks/todo`, icon: 'List', label: '待做任务' },
+    { path: `/${prefix}/tasks/pending`, icon: 'Select', label: '待审核任务' },
     { separator: true },
     { section: '数据' },
     { path: `/${prefix}/stats`, icon: 'DataLine', label: '个人统计' },

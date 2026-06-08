@@ -3,9 +3,9 @@
     <el-card shadow="never" class="page-card">
       <template #header>
         <div class="card-header">
-          <span class="card-title">我的任务</span>
+          <span class="card-title">{{ pageTitle }}</span>
           <div class="header-right">
-            <el-select v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
+            <el-select v-if="!fixedStatus" v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
               <el-option label="全部" value="" />
               <el-option label="已接单" value="accepted" />
               <el-option label="进行中" value="doing" />
@@ -331,6 +331,8 @@ const dateRange = ref(null)
 const publisherFilter = ref('')
 const shopFilter = ref('')
 const publisherList = ref([])
+const fixedStatus = computed(() => route.meta.fixedStatus || '')
+const pageTitle = computed(() => route.meta.title || '我的任务')
 
 const shopOptions = ['店铺A', '店铺B', '店铺C', '店铺D', '店铺E', '店铺F', '店铺G', '店铺H']
 
@@ -387,7 +389,7 @@ async function loadData(options = {}) {
     const res = await getMyAcceptedApi({
       page: page.value,
       pageSize: pageSize.value,
-      status: statusFilter.value || undefined,
+      status: fixedStatus.value || statusFilter.value || undefined,
       dateStart: dateRange.value?.[0] || undefined,
       dateEnd: dateRange.value?.[1] || undefined,
       publisherId: publisherFilter.value || undefined,
@@ -414,6 +416,12 @@ watch(() => route.query.openTask, (newTaskId) => {
     const task = list.value.find(t => t.id == newTaskId)
     if (task) { router.replace({ query: {} }); viewDetail(task) }
   }
+})
+
+watch(() => route.path, () => {
+  page.value = 1
+  detailVisible.value = false
+  loadData()
 })
 
 async function viewDetail(row) {

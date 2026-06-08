@@ -114,6 +114,18 @@ const routes = [
         meta: { title: '我的任务', roles: ['designer', 'admin'] }
       },
       {
+        path: 'designer/tasks/todo',
+        name: 'DesignerTodoTasks',
+        component: () => import('@/views/designer/MyTasks.vue'),
+        meta: { title: '待做任务', roles: ['designer', 'admin'], fixedStatus: 'accepted' }
+      },
+      {
+        path: 'designer/tasks/pending',
+        name: 'DesignerPendingTasks',
+        component: () => import('@/views/designer/MyTasks.vue'),
+        meta: { title: '待审核任务', roles: ['designer', 'admin'], fixedStatus: 'doing' }
+      },
+      {
         path: 'designer/stats',
         name: 'DesignerStats',
         component: () => import('@/views/designer/Stats.vue'),
@@ -137,6 +149,18 @@ const routes = [
         name: 'BasicTasks',
         component: () => import('@/views/basic/MyTasks.vue'),
         meta: { title: '我的任务', roles: ['basic_designer', 'admin'] }
+      },
+      {
+        path: 'basic/tasks/todo',
+        name: 'BasicTodoTasks',
+        component: () => import('@/views/basic/MyTasks.vue'),
+        meta: { title: '待做任务', roles: ['basic_designer', 'admin'], fixedStatus: 'accepted' }
+      },
+      {
+        path: 'basic/tasks/pending',
+        name: 'BasicPendingTasks',
+        component: () => import('@/views/basic/MyTasks.vue'),
+        meta: { title: '待审核任务', roles: ['basic_designer', 'admin'], fixedStatus: 'doing' }
       },
       {
         path: 'basic/stats',
@@ -174,6 +198,18 @@ const routes = [
         name: 'OperatorAssistantTasks',
         component: () => import('@/views/operator-assistant/MyTasks.vue'),
         meta: { title: '我的任务', roles: ['operator_assistant', 'admin'] }
+      },
+      {
+        path: 'operator-assistant/tasks/todo',
+        name: 'OperatorAssistantTodoTasks',
+        component: () => import('@/views/operator-assistant/MyTasks.vue'),
+        meta: { title: '待做任务', roles: ['operator_assistant', 'admin'], fixedStatus: 'accepted' }
+      },
+      {
+        path: 'operator-assistant/tasks/pending',
+        name: 'OperatorAssistantPendingTasks',
+        component: () => import('@/views/operator-assistant/MyTasks.vue'),
+        meta: { title: '待审核任务', roles: ['operator_assistant', 'admin'], fixedStatus: 'doing' }
       },
       {
         path: 'operator-assistant/stats',
