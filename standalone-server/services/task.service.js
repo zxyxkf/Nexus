@@ -222,6 +222,7 @@ async function getMyPublished(query, user) {
     keyword: query.keyword, designerId: query.designerId,
     publisherId: query.publisherId,
     dateStart: query.dateStart, dateEnd: query.dateEnd,
+    dateField: query.dateField,
     page, pageSize
   });
   return result;
@@ -239,6 +240,7 @@ async function getMyAccepted(query, user) {
     publisherId: query.publisherId,
     scoreItemId: query.scoreItemId,
     dateStart: query.dateStart, dateEnd: query.dateEnd,
+    dateField: query.dateField,
     shopName: query.shopName,
     page, pageSize
   });
@@ -266,6 +268,7 @@ async function getAllTasks(query) {
     status: query.status, keyword: query.keyword,
     publisherId: query.publisherId, designerId: query.designerId,
     startDate: query.startDate, endDate: query.endDate,
+    dateField: query.dateField,
     taskGroup: query.taskGroup || undefined,
     page, pageSize
   });

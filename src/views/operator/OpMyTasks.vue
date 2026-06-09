@@ -347,6 +347,7 @@ const assistantFilter = ref('')
 const publisherFilter = ref('')
 const dateRange = ref(null)
 usePersistedFilters('operator_op_my_tasks', { statusFilter, assistantFilter, publisherFilter, dateRange })
+const dateField = ref('')
 const assistantList = ref([])
 const publisherList = ref([])
 
@@ -388,7 +389,8 @@ async function loadData(options = {}) {
       publisherId: publisherFilter.value || undefined,
       taskGroup: 'operator',
       dateStart: dateRange.value?.[0] || undefined,
-      dateEnd: dateRange.value?.[1] || undefined
+      dateEnd: dateRange.value?.[1] || undefined,
+      dateField: dateField.value || undefined
     })
     if (res.code === 0) {
       list.value = res.data.list
@@ -411,6 +413,23 @@ watch(() => route.query.openTask, (newTaskId) => {
     const task = list.value.find(t => t.id == newTaskId)
     if (task) { router.replace({ query: {} }); viewDetail(task) }
   }
+})
+
+function applyDashboardQueryFilters() {
+  if (route.query.status) statusFilter.value = route.query.status
+  if (route.query.designerId) assistantFilter.value = route.query.designerId
+  dateField.value = route.query.dateField === 'finish' ? 'finish' : ''
+  if (route.query.dateStart || route.query.dateEnd || route.query.startDate || route.query.endDate) {
+    const start = route.query.dateStart || route.query.startDate || route.query.dateEnd || route.query.endDate
+    const end = route.query.dateEnd || route.query.endDate || route.query.dateStart || route.query.startDate
+    dateRange.value = [start, end]
+  }
+}
+
+watch(() => [route.query.dateStart, route.query.dateEnd, route.query.startDate, route.query.endDate, route.query.status, route.query.designerId, route.query.dateField], () => {
+  applyDashboardQueryFilters()
+  page.value = 1
+  loadData()
 })
 
 async function viewDetail(row) {
@@ -585,6 +604,7 @@ async function loadPublisherList() {
     if (res.code === 0) publisherList.value = res.data || []
   } catch {}
 }
+applyDashboardQueryFilters()
 loadAssistantList()
 loadPublisherList()
 

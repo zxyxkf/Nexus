@@ -223,6 +223,7 @@ body,
   --el-table-tr-bg-color: transparent;
   font-size: 13px;
   background: transparent;
+  position: relative;
 }
 
 /* 表头 —— 轻量化 */
@@ -286,11 +287,104 @@ body,
 /* 表头包裹器 */
 .el-table__header-wrapper {
   background: transparent;
-  overflow: visible;
 }
 
 .el-table__body-wrapper {
   background: transparent;
+}
+
+.el-table--border::before,
+.el-table--border::after,
+.el-table--border .el-table__inner-wrapper::after,
+.el-table--border .el-table__inner-wrapper::before {
+  background-color: transparent;
+}
+
+.el-table--border .el-table__cell {
+  border-right-color: var(--dd-border-light) !important;
+}
+
+.el-table th.el-table__cell.is-leaf {
+  cursor: col-resize;
+}
+
+.nexus-column-control {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 8;
+  display: flex;
+  justify-content: flex-end;
+  pointer-events: none;
+}
+
+.nexus-column-button {
+  height: 28px;
+  padding: 0 10px;
+  border: 1px solid var(--dd-border-light);
+  border-radius: var(--dd-radius-sm);
+  background: rgba(255, 255, 255, 0.92);
+  color: var(--dd-text-secondary);
+  font-size: 12px;
+  cursor: pointer;
+  pointer-events: auto;
+  box-shadow: var(--dd-shadow-sm);
+}
+
+.nexus-column-button:hover {
+  color: var(--dd-primary);
+  border-color: var(--dd-primary-lighter);
+}
+
+.nexus-column-panel {
+  position: absolute;
+  top: 32px;
+  right: 0;
+  width: 220px;
+  max-height: 360px;
+  overflow-y: auto;
+  display: none;
+  padding: 8px;
+  border: 1px solid var(--dd-border-light);
+  border-radius: var(--dd-radius-md);
+  background: var(--dd-bg-card);
+  box-shadow: var(--dd-shadow-lg);
+  pointer-events: auto;
+}
+
+.nexus-column-panel.is-open {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.nexus-column-actions {
+  display: flex;
+  justify-content: space-between;
+  padding-bottom: 6px;
+  border-bottom: 1px solid var(--dd-border-light);
+}
+
+.nexus-column-actions button {
+  border: 0;
+  background: transparent;
+  color: var(--dd-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.nexus-column-option {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 26px;
+  color: var(--dd-text-primary);
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.nexus-column-option input {
+  margin: 0;
 }
 
 /* 表格单元格内边距优化 */

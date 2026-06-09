@@ -340,6 +340,7 @@ const dateRange = ref(null)
 const publisherFilter = ref('')
 const shopFilter = ref('')
 usePersistedFilters('operator_assistant_my_tasks', { statusFilter, dateRange, publisherFilter, shopFilter })
+const dateField = ref('')
 const publisherList = ref([])
 const fixedStatus = computed(() => route.meta.fixedStatus || '')
 const pageTitle = computed(() => route.meta.title || '我的任务')
@@ -404,6 +405,7 @@ async function loadData(options = {}) {
       taskGroup: 'operator',
       dateStart: dateRange.value?.[0] || undefined,
       dateEnd: dateRange.value?.[1] || undefined,
+      dateField: dateField.value || undefined,
       publisherId: publisherFilter.value || undefined,
       shopName: shopFilter.value || undefined
     })
@@ -430,7 +432,24 @@ watch(() => route.query.openTask, (newTaskId) => {
   }
 })
 
+function applyDashboardQueryFilters() {
+  if (route.query.status && !fixedStatus.value) statusFilter.value = route.query.status
+  dateField.value = route.query.dateField === 'finish' ? 'finish' : ''
+  if (route.query.dateStart || route.query.dateEnd || route.query.startDate || route.query.endDate) {
+    const start = route.query.dateStart || route.query.startDate || route.query.dateEnd || route.query.endDate
+    const end = route.query.dateEnd || route.query.endDate || route.query.dateStart || route.query.startDate
+    dateRange.value = [start, end]
+  }
+}
+
+watch(() => [route.query.dateStart, route.query.dateEnd, route.query.startDate, route.query.endDate, route.query.status, route.query.dateField], () => {
+  applyDashboardQueryFilters()
+  page.value = 1
+  loadData()
+})
+
 watch(() => route.path, () => {
+  applyDashboardQueryFilters()
   page.value = 1
   detailVisible.value = false
   loadData()
@@ -525,6 +544,7 @@ async function loadPublishers() {
     if (res.code === 0) publisherList.value = res.data || []
   } catch {}
 }
+applyDashboardQueryFilters()
 loadPublishers()
 
 watch(uploadAllChecked, (val) => {

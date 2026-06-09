@@ -227,7 +227,7 @@ const list = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(15)
-const filter = reactive({ keyword: '', status: '', publisherId: '', designerId: '', dateRange: null })
+const filter = reactive({ keyword: '', status: '', publisherId: '', designerId: '', dateRange: null, dateField: '' })
 usePersistedFilters(`admin_all_tasks_${route.meta.taskGroup || 'design'}`, filter)
 applyQueryFilters()
 const publisherList = ref([])
@@ -289,6 +289,7 @@ async function loadData() {
       designerId: filter.designerId || undefined,
       startDate: filter.dateRange?.[0] || undefined,
       endDate: filter.dateRange?.[1] || undefined,
+      dateField: filter.dateField || undefined,
       taskGroup: taskGroup.value
     })
     if (res.code === 0) {
@@ -313,7 +314,8 @@ async function exportCurrentTasks() {
     designerId: filter.designerId || undefined,
     taskGroup: taskGroup.value,
     startDate: filter.dateRange?.[0] || undefined,
-    endDate: filter.dateRange?.[1] || undefined
+    endDate: filter.dateRange?.[1] || undefined,
+    dateField: filter.dateField || undefined
   })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
@@ -384,14 +386,20 @@ function resetFilter() {
   filter.publisherId = ''
   filter.designerId = ''
   filter.dateRange = null
+  filter.dateField = ''
   page.value = 1
   loadData()
 }
 
 function applyQueryFilters() {
   if (route.query.status) filter.status = route.query.status
+  if (route.query.publisherId) filter.publisherId = route.query.publisherId
+  if (route.query.designerId) filter.designerId = route.query.designerId
+  filter.dateField = route.query.dateField === 'finish' ? 'finish' : ''
   if (route.query.startDate || route.query.endDate) {
     filter.dateRange = [route.query.startDate || route.query.endDate, route.query.endDate || route.query.startDate]
+  } else if (route.query.dateStart || route.query.dateEnd) {
+    filter.dateRange = [route.query.dateStart || route.query.dateEnd, route.query.dateEnd || route.query.dateStart]
   }
 }
 
@@ -451,6 +459,7 @@ watch(() => route.meta.taskGroup, () => {
   filter.publisherId = ''
   filter.designerId = ''
   filter.dateRange = null
+  filter.dateField = ''
   visibleColumns.value = JSON.parse(localStorage.getItem(`admin_task_columns_${route.meta.taskGroup || 'design'}`) || 'null') || columnOptions.map(c => c.key)
   applyQueryFilters()
   page.value = 1

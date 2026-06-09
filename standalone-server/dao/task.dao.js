@@ -239,12 +239,13 @@ const TASK_JOIN = `LEFT JOIN sys_user u1 ON t.publisher_id = u1.id
                     LEFT JOIN sys_user u2 ON t.designer_id = u2.id`;
 
 /** 我发布的任务 */
-async function queryMyPublished({ userId, role, permissions = [], filterGroup, selfOnly, status, styleNumber, keyword, designerId, publisherId, dateStart, dateEnd, page, pageSize }) {
+async function queryMyPublished({ userId, role, permissions = [], filterGroup, selfOnly, status, styleNumber, keyword, designerId, publisherId, dateStart, dateEnd, dateField, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE 1=1';
   const params = [];
   const group = filterGroup || (role === 'cs_agent' ? 'cs' : 'design');
   const hasPerm = (code) => role === 'admin' || role === 'sub_admin' || permissions.includes(code);
+  const dateColumn = dateField === 'finish' ? 't.finish_time' : 't.create_time';
 
   if (role === 'admin' || role === 'sub_admin') {
     if (group === 'design') where += ' AND (t.task_group = ? OR t.task_group IS NULL OR t.task_group = \'\')';
@@ -270,8 +271,8 @@ async function queryMyPublished({ userId, role, permissions = [], filterGroup, s
   if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`); }
   if (designerId) { where += ' AND t.designer_id = ?'; params.push(designerId); }
   if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
-  if (dateStart) { where += ' AND t.create_time >= ?'; params.push(dateStart + ' 00:00:00'); }
-  if (dateEnd) { where += ' AND t.create_time <= ?'; params.push(dateEnd + ' 23:59:59'); }
+  if (dateStart) { where += ` AND ${dateColumn} >= ?`; params.push(dateStart + ' 00:00:00'); }
+  if (dateEnd) { where += ` AND ${dateColumn} <= ?`; params.push(dateEnd + ' 23:59:59'); }
 
   const result = await paginate({
     countSql: `SELECT COUNT(*) as total FROM task_info t ${where}`,
@@ -285,13 +286,14 @@ async function queryMyPublished({ userId, role, permissions = [], filterGroup, s
 }
 
 /** 我接单的任务 */
-async function queryMyAccepted({ userId, role, permissions = [], taskGroup, status, keyword, publisherId, scoreItemId, dateStart, dateEnd, shopName, page, pageSize }) {
+async function queryMyAccepted({ userId, role, permissions = [], taskGroup, status, keyword, publisherId, scoreItemId, dateStart, dateEnd, dateField, shopName, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE t.designer_id = ?';
   const params = [userId];
   const group = taskGroup || (role === 'basic_designer' ? 'cs' : role === 'operator_assistant' ? 'operator' : 'design');
   const hasPerm = (code) => role === 'admin' || role === 'sub_admin' || permissions.includes(code);
   const requiredPerm = group === 'cs' ? 'basic.tasks.cs' : group === 'operator' ? 'assistant.tasks.operator' : 'designer.tasks.design';
+  const dateColumn = dateField === 'finish' ? 't.finish_time' : 't.create_time';
 
   if (!hasPerm(requiredPerm)) {
     where += ' AND 1=0';
@@ -309,8 +311,8 @@ async function queryMyAccepted({ userId, role, permissions = [], taskGroup, stat
   if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`); }
   if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
   if (scoreItemId) { where += ' AND t.score_item_id = ?'; params.push(scoreItemId); }
-  if (dateStart) { where += ' AND t.create_time >= ?'; params.push(dateStart + ' 00:00:00'); }
-  if (dateEnd) { where += ' AND t.create_time <= ?'; params.push(dateEnd + ' 23:59:59'); }
+  if (dateStart) { where += ` AND ${dateColumn} >= ?`; params.push(dateStart + ' 00:00:00'); }
+  if (dateEnd) { where += ` AND ${dateColumn} <= ?`; params.push(dateEnd + ' 23:59:59'); }
   if (shopName) { where += ' AND t.shop_name = ?'; params.push(shopName); }
 
   const result = await paginate({
@@ -374,17 +376,18 @@ async function queryTaskHall({ role, permissions = [], taskGroup, keyword, page,
 }
 
 /** 全量任务（管理端） */
-async function queryAllTasks({ status, keyword, publisherId, designerId, startDate, endDate, taskGroup, page, pageSize }) {
+async function queryAllTasks({ status, keyword, publisherId, designerId, startDate, endDate, dateField, taskGroup, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE 1=1';
   const params = [];
+  const dateColumn = dateField === 'finish' ? 't.finish_time' : 't.create_time';
 
   if (status) { where += ' AND t.status = ?'; params.push(status); }
   if (keyword) { where += ' AND (t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`); }
   if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
   if (designerId) { where += ' AND t.designer_id = ?'; params.push(designerId); }
-  if (startDate) { where += ' AND t.create_time >= ?'; params.push(startDate); }
-  if (endDate) { where += ' AND t.create_time <= ?'; params.push(endDate + ' 23:59:59'); }
+  if (startDate) { where += ` AND ${dateColumn} >= ?`; params.push(startDate + ' 00:00:00'); }
+  if (endDate) { where += ` AND ${dateColumn} <= ?`; params.push(endDate + ' 23:59:59'); }
   if (taskGroup) {
     if (taskGroup === 'design') {
       where += ' AND (t.task_group = ? OR t.task_group IS NULL OR t.task_group = \'\')';

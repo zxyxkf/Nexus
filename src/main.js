@@ -1,5 +1,6 @@
 import { createApp } from 'vue'
 import ElementPlus from 'element-plus'
+import { ElTable } from 'element-plus'
 import 'element-plus/dist/index.css'
 import zhCn from 'element-plus/dist/locale/zh-cn.mjs'
 import * as ElementPlusIconsVue from '@element-plus/icons-vue'
@@ -9,10 +10,18 @@ import { createPinia } from 'pinia'
 import Pagination from './components/Pagination.vue'
 import './utils/auth'
 import './assets/styles/global.css'
+import { installTableEnhancements } from './utils/table-enhancements'
 
 const app = createApp(App)
 const pinia = createPinia()
 app.component('Pagination', Pagination)
+
+// Element Plus requires border mode before table columns can be resized by dragging.
+if (ElTable?.props?.border === Boolean) {
+  ElTable.props.border = { type: Boolean, default: true }
+} else if (ElTable?.props?.border) {
+  ElTable.props.border.default = true
+}
 
 function isResizeObserverNoise(value) {
   const message = String(value?.message || value || '')
@@ -44,3 +53,4 @@ app.use(ElementPlus, { locale: zhCn })
 app.use(pinia)
 app.use(router)
 app.mount('#app')
+installTableEnhancements()

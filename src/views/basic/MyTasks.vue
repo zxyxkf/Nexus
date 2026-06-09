@@ -365,6 +365,7 @@ const keyword = ref('')
 const publisherFilter = ref('')
 const dateFilter = ref('')
 usePersistedFilters('basic_my_tasks', { statusFilter, keyword, publisherFilter, dateFilter })
+const dateField = ref('')
 const publisherList = ref([])
 const fixedStatus = computed(() => route.meta.fixedStatus || '')
 const pageTitle = computed(() => route.meta.title || '我的任务')
@@ -445,7 +446,8 @@ async function loadData(options = {}) {
       keyword: keyword.value || undefined,
       publisherId: publisherFilter.value || undefined,
       dateStart: dateFilter.value || undefined,
-      dateEnd: dateFilter.value || undefined
+      dateEnd: dateFilter.value || undefined,
+      dateField: dateField.value || undefined
     })
     if (res.code === 0) {
       list.value = res.data.list
@@ -470,7 +472,21 @@ watch(() => route.query.openTask, (newTaskId) => {
   }
 })
 
+function applyDashboardQueryFilters() {
+  if (route.query.status && !fixedStatus.value) statusFilter.value = route.query.status
+  dateField.value = route.query.dateField === 'finish' ? 'finish' : ''
+  const date = route.query.dateStart || route.query.startDate || route.query.dateEnd || route.query.endDate
+  if (date) dateFilter.value = date
+}
+
+watch(() => [route.query.dateStart, route.query.dateEnd, route.query.startDate, route.query.endDate, route.query.status, route.query.dateField], () => {
+  applyDashboardQueryFilters()
+  page.value = 1
+  loadData()
+})
+
 watch(() => route.path, () => {
+  applyDashboardQueryFilters()
   page.value = 1
   detailVisible.value = false
   loadData()
@@ -646,6 +662,7 @@ async function loadPublisherList() {
 }
 
 onMounted(() => {
+  applyDashboardQueryFilters()
   loadPublisherList()
 })
 
