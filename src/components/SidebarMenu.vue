@@ -20,11 +20,8 @@
 import { computed } from 'vue'
 import { DataAnalysis, User, List, Document, Setting, Plus, Select, DataLine, ShoppingCart, Bell } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store'
-import {
-  ADMIN_MENU, SUPER_ADMIN_MENU, ADMIN_EXTRA_MENU, SUPER_ADMIN_EXTRA_MENU,
-  publisherMenu, operatorExtraMenu, operatorDataMenu, designerMenu, csAgentDataMenu, basicDesignerLeadMenu
-} from '@/config/menus'
-import { filterMenuByPermission } from '@/utils/permissions'
+import { buildSidebarMenu } from '@/config/menus'
+import { hasPermission } from '@/utils/permissions'
 
 const props = defineProps({
   activePath: { type: String, default: '' },
@@ -38,50 +35,7 @@ const activeMenu = computed(() => props.activePath)
 
 const iconMap = { DataAnalysis, User, List, Document, Setting, Plus, Select, DataLine, ShoppingCart, Bell }
 
-const adminItems = computed(() => filterMenuByPermission(ADMIN_MENU, store.userInfo))
-const superAdminItems = computed(() => filterMenuByPermission(SUPER_ADMIN_MENU, store.userInfo))
-const adminExtraItems = computed(() => filterMenuByPermission(ADMIN_EXTRA_MENU, store.userInfo))
-const superAdminExtraItems = computed(() => filterMenuByPermission(SUPER_ADMIN_EXTRA_MENU, store.userInfo))
-const operatorItems = computed(() => filterMenuByPermission(publisherMenu('operator', '美工任务管理'), store.userInfo))
-const operatorExtraItems = computed(() => filterMenuByPermission(operatorExtraMenu(), store.userInfo))
-const operatorDataItems = computed(() => filterMenuByPermission(operatorDataMenu('operator'), store.userInfo))
-const csAgentItems = computed(() => filterMenuByPermission(publisherMenu('cs', '客服任务'), store.userInfo))
-const designerItems = computed(() => filterMenuByPermission(designerMenu('designer', '任务管理'), store.userInfo))
-const basicDesignerItems = computed(() => filterMenuByPermission(designerMenu('basic', '基础任务'), store.userInfo))
-const basicDesignerLeadItems = computed(() => filterMenuByPermission(basicDesignerLeadMenu(), store.userInfo))
-const subAdminScoreItems = computed(() => filterMenuByPermission(basicDesignerLeadMenu('基础美工分值审核'), store.userInfo))
-const operatorAssistantItems = computed(() => filterMenuByPermission(designerMenu('operator-assistant', '运营任务'), store.userInfo))
-const csAgentDataItems = computed(() => filterMenuByPermission(csAgentDataMenu('cs'), store.userInfo))
-const isAdminMenu = computed(() => ['admin', 'sub_admin'].includes(store.userInfo?.role))
-
-function withStableKeys(items, prefix) {
-  return items.map((item, index) => ({
-    ...item,
-    _key: `${prefix}:${item.path || item.label || item.section || 'separator'}:${index}`
-  }))
-}
-
-const adminMenuItems = computed(() => [
-  ...withStableKeys(adminItems.value, 'admin-main'),
-  ...withStableKeys(superAdminItems.value, 'admin-system'),
-  ...withStableKeys(adminExtraItems.value, 'admin-tasks'),
-  ...withStableKeys(superAdminExtraItems.value, 'admin-config'),
-  ...withStableKeys(subAdminScoreItems.value, 'sub-admin-score')
-])
-
-const businessMenuItems = computed(() => [
-  ...withStableKeys(operatorItems.value, 'operator-main'),
-  ...withStableKeys(operatorExtraItems.value, 'operator-extra'),
-  ...withStableKeys(operatorDataItems.value, 'operator-data'),
-  ...withStableKeys(csAgentItems.value, 'cs-main'),
-  ...withStableKeys(csAgentDataItems.value, 'cs-data'),
-  ...withStableKeys(designerItems.value, 'designer-main'),
-  ...withStableKeys(basicDesignerItems.value, 'basic-main'),
-  ...withStableKeys(basicDesignerLeadItems.value, 'basic-lead'),
-  ...withStableKeys(operatorAssistantItems.value, 'assistant-main')
-])
-
-const menuItems = computed(() => isAdminMenu.value ? adminMenuItems.value : businessMenuItems.value)
+const menuItems = computed(() => buildSidebarMenu(store.userInfo, hasPermission))
 
 function nav(path) { emit('navigate', path) }
 </script>
