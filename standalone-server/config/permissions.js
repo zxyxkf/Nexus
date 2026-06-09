@@ -79,10 +79,51 @@ const ROLE_DEFAULTS = {
 
 const TEAM_LEAD_EXTRA = ['score.review.basic', 'score.records.basic'];
 
-function defaultPermissionsFor(role, isTeamLead = 0) {
-  const set = new Set(ROLE_DEFAULTS[role] || []);
-  if (role === 'basic_designer' && Number(isTeamLead)) TEAM_LEAD_EXTRA.forEach(p => set.add(p));
+const PERMISSION_IMPLICATIONS = {
+  'operator.publish.design': ['task.create.design', 'task.view.store', 'task.download.file'],
+  'operator.tasks.design': ['task.view.store', 'task.download.file'],
+  'operator.review.design': ['task.review.own', 'task.view.store', 'task.download.file'],
+  'operator.publish.assistant': ['task.create.operator', 'task.view.store', 'task.download.file'],
+  'operator.tasks.assistant': ['task.view.store', 'task.download.file'],
+  'operator.review.assistant': ['task.review.own', 'task.view.store', 'task.download.file'],
+  'cs.publish.basic': ['task.create.cs', 'task.view.own', 'task.download.file'],
+  'cs.tasks.basic': ['task.view.own', 'task.download.file'],
+  'cs.review.basic': ['task.review.own', 'task.view.own', 'task.download.file'],
+  'designer.hall.design': ['task.view.own', 'task.download.file'],
+  'designer.tasks.design': ['task.upload.work', 'task.view.own', 'task.download.file'],
+  'basic.hall.cs': ['task.view.own', 'task.download.file'],
+  'basic.tasks.cs': ['task.upload.work', 'task.view.own', 'task.download.file'],
+  'assistant.hall.operator': ['task.view.own', 'task.download.file'],
+  'assistant.tasks.operator': ['task.upload.work', 'task.view.own', 'task.download.file'],
+  'admin.tasks.design': ['task.view.all', 'task.download.file', 'task.export'],
+  'admin.tasks.operator': ['task.view.all', 'task.download.file', 'task.export'],
+  'admin.tasks.cs': ['task.view.all', 'task.download.file', 'task.export'],
+  'dashboard.design': ['dashboard.export'],
+  'dashboard.operator': ['dashboard.export'],
+  'dashboard.cs': ['dashboard.export']
+};
+
+function expandPermissions(codes = []) {
+  const set = new Set(codes);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    for (const code of [...set]) {
+      for (const implied of PERMISSION_IMPLICATIONS[code] || []) {
+        if (!set.has(implied)) {
+          set.add(implied);
+          changed = true;
+        }
+      }
+    }
+  }
   return [...set];
 }
 
-module.exports = { PERMISSIONS, ROLE_DEFAULTS, defaultPermissionsFor };
+function defaultPermissionsFor(role, isTeamLead = 0) {
+  const set = new Set(ROLE_DEFAULTS[role] || []);
+  if (role === 'basic_designer' && Number(isTeamLead)) TEAM_LEAD_EXTRA.forEach(p => set.add(p));
+  return expandPermissions([...set]);
+}
+
+module.exports = { PERMISSIONS, ROLE_DEFAULTS, PERMISSION_IMPLICATIONS, expandPermissions, defaultPermissionsFor };

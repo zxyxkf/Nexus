@@ -1,5 +1,5 @@
 const { execute } = require('../config/database');
-const { PERMISSIONS, defaultPermissionsFor } = require('../config/permissions');
+const { PERMISSIONS, defaultPermissionsFor, expandPermissions } = require('../config/permissions');
 
 async function seedPermissions() {
   for (const p of PERMISSIONS) {
@@ -48,7 +48,7 @@ async function getEffectivePermissions(user) {
     if (row.effect === 'deny') set.delete(row.permission_code);
     else set.add(row.permission_code);
   }
-  return [...set];
+  return expandPermissions([...set]);
 }
 
 async function saveUserPermissions(userId, permissions = [], deniedPermissions = []) {

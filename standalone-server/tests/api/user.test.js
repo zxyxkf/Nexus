@@ -161,3 +161,56 @@ describe('GET /api/user/publishers', () => {
     expect(res.body.code).toBe(0);
   });
 });
+
+describe('用户权限配置', () => {
+  let permissionUser;
+
+  afterAll(async () => {
+    if (permissionUser?.id) {
+      await request(app)
+        .post('/api/user/delete')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ id: permissionUser.id });
+    }
+  });
+
+  it('页面权限会自动继承对应的动作权限', async () => {
+    const username = `perm_user_${Date.now()}`;
+    await request(app)
+      .post('/api/user/create')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username,
+        password: 'test123456',
+        realName: '权限继承测试',
+        role: 'designer'
+      })
+      .expect(200);
+
+    const listRes = await request(app)
+      .get('/api/user/list?role=designer')
+      .set('Authorization', `Bearer ${adminToken}`);
+    permissionUser = listRes.body.data.list.find(u => u.username === username);
+    expect(permissionUser).toBeDefined();
+
+    const saveRes = await request(app)
+      .post('/api/user/permissions/save')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        userId: permissionUser.id,
+        permissions: ['operator.publish.design'],
+        deniedPermissions: ['designer.hall.design']
+      });
+    expect(saveRes.body.code).toBe(0);
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username, password: 'test123456' });
+
+    expect(loginRes.body.code).toBe(0);
+    expect(loginRes.body.data.user.permissions).toContain('operator.publish.design');
+    expect(loginRes.body.data.user.permissions).toContain('task.create.design');
+    expect(loginRes.body.data.user.permissions).toContain('task.view.store');
+    expect(loginRes.body.data.user.permissions).not.toContain('designer.hall.design');
+  });
+});
