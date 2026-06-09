@@ -51,6 +51,7 @@ onMounted(async () => {
     }
   }
   userStore.initFromStorage()
+  userStore.bindAuthStorage()
   setupUpdateListeners()
 })
 </script>

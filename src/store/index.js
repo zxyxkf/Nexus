@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia'
-import { getToken, setToken, getRefreshToken, setRefreshToken, getUser, setUser, clearAuth } from '@/utils/auth'
+import { getToken, getRefreshToken, setRefreshToken, getUser, clearAuth, setAuth, onAuthChange } from '@/utils/auth'
 import { loginApi, getUserListApi } from '@/api'
 import request from '@/api/http'
 import { withCache, invalidate } from './cache'
@@ -35,27 +35,43 @@ export const useUserStore = defineStore('user', {
   },
 
   actions: {
+    applyAuth(token, user) {
+      this.token = token || ''
+      this.userInfo = user || null
+      this.permissions = user?.permissions || []
+      if (token && user) setAuth(token, user)
+    },
+
     initFromStorage() {
       const token = getToken()
       const user = getUser()
       if (token && user) {
-        this.token = token
-        this.userInfo = user
-        this.permissions = user.permissions || []
+        this.applyAuth(token, user)
+      } else {
+        this.token = token || ''
+        this.userInfo = null
+        this.permissions = []
       }
+    },
+
+    bindAuthStorage() {
+      if (this._unbindAuthStorage) return
+      this._unbindAuthStorage = onAuthChange(() => {
+        const token = getToken()
+        const user = getUser()
+        this.token = token || ''
+        this.userInfo = user || null
+        this.permissions = user?.permissions || []
+      })
     },
 
     async login(loginData) {
       const res = await loginApi(loginData)
       if (res.code === 0) {
-        this.token = res.data.token
-        this.userInfo = res.data.user
-        this.permissions = res.data.user?.permissions || []
-        setToken(res.data.token)
+        this.applyAuth(res.data.token, res.data.user)
         if (res.data.refreshToken) {
           setRefreshToken(res.data.refreshToken)
         }
-        setUser(res.data.user)
       }
       return res
     },

@@ -194,6 +194,8 @@ import { useUserStore } from '@/store'
 import EyeBall from './EyeBall.vue'
 import Pupil from './Pupil.vue'
 import InfiniteGridBg from '@/components/InfiniteGridBg.vue'
+import { MENU_REGISTRY } from '@/config/menus'
+import { hasPermission } from '@/utils/permissions'
 
 // ==================== 子组件：Pupil & EyeBall ====================
 // 使用 Vue renderless 模式，直接在模板中通过内联样式实现
@@ -214,6 +216,25 @@ const form = reactive({
 const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }]
+}
+
+const DEFAULT_ROUTE_BY_ROLE = {
+  admin: '/dashboard',
+  sub_admin: '/dashboard',
+  operator: '/operator/publish',
+  cs_agent: '/cs/publish',
+  designer: '/designer/hall',
+  basic_designer: '/basic/hall',
+  operator_assistant: '/operator-assistant/hall'
+}
+
+function firstAllowedPath(user) {
+  const item = MENU_REGISTRY.find(entry => {
+    if (!entry.path) return false
+    if (entry.permission === 'admin.users' && user.role !== 'admin') return false
+    return hasPermission(entry.permission, user)
+  })
+  return item?.path || DEFAULT_ROUTE_BY_ROLE[user.role] || '/dashboard'
 }
 
 // ==================== 角色动画状态 ====================
@@ -499,20 +520,7 @@ async function handleLogin() {
         localStorage.removeItem('d_design_remember_pwd')
       }
 
-      const role = res.data.user.role
-      if (role === 'admin' || role === 'sub_admin') {
-        router.push('/dashboard')
-      } else if (role === 'operator') {
-        router.push('/operator/publish')
-      } else if (role === 'cs_agent') {
-        router.push('/cs/publish')
-      } else if (role === 'designer') {
-        router.push('/designer/hall')
-      } else if (role === 'basic_designer') {
-        router.push('/basic/hall')
-      } else if (role === 'operator_assistant') {
-        router.push('/operator-assistant/hall')
-      }
+      router.push(firstAllowedPath(res.data.user))
     } else {
       loginError.value = res.msg || '登录失败'
       ElMessage.error(res.msg)

@@ -21,7 +21,6 @@ import { computed } from 'vue'
 import { DataAnalysis, User, List, Document, Setting, Plus, Select, DataLine, ShoppingCart, Bell } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store'
 import { buildSidebarMenu } from '@/config/menus'
-import { hasPermission } from '@/utils/permissions'
 
 const props = defineProps({
   activePath: { type: String, default: '' },
@@ -35,7 +34,7 @@ const activeMenu = computed(() => props.activePath)
 
 const iconMap = { DataAnalysis, User, List, Document, Setting, Plus, Select, DataLine, ShoppingCart, Bell }
 
-const menuItems = computed(() => buildSidebarMenu(store.userInfo, hasPermission))
+const menuItems = computed(() => buildSidebarMenu(store.userInfo, (permission) => store.hasPermission(permission)))
 
 function nav(path) { emit('navigate', path) }
 </script>

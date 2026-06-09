@@ -2,7 +2,7 @@
  * HTTP 客户端 — axios 实例 + 拦截器 + 健康检查 + 重试
  */
 import axios from 'axios'
-import { getToken, getRefreshToken, setToken, setRefreshToken, setUser, clearAuth } from '@/utils/auth'
+import { getToken, getRefreshToken, setToken, setRefreshToken, setUser, clearAuth, setAuth } from '@/utils/auth'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
 
@@ -28,6 +28,11 @@ function addRefreshSubscriber(cb) {
   refreshSubscribers.push(cb)
 }
 
+function applyRefreshedAuth(token, user) {
+  if (user) setAuth(token, user)
+  else setToken(token)
+}
+
 function getTokenExpiry(token) {
   try {
     const payload = JSON.parse(atob(token.split('.')[1]))
@@ -49,8 +54,7 @@ function scheduleProactiveRefresh(token) {
       if (!rt) return
       const res = await request.post('/api/auth/refresh', { refreshToken: rt })
       if (res.code === 0) {
-        setToken(res.data.token)
-        if (res.data.user) setUser(res.data.user)
+        applyRefreshedAuth(res.data.token, res.data.user)
         scheduleProactiveRefresh(res.data.token)
       }
     } catch { /* 静默失败，等 401 兜底 */ }
@@ -64,8 +68,7 @@ async function doRefreshToken() {
   try {
     const res = await request.post('/api/auth/refresh', { refreshToken })
     if (res.code === 0) {
-      setToken(res.data.token)
-      if (res.data.user) setUser(res.data.user)
+      applyRefreshedAuth(res.data.token, res.data.user)
       scheduleProactiveRefresh(res.data.token)
       return res.data.token
     }
