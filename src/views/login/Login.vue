@@ -194,7 +194,7 @@ import { useUserStore } from '@/store'
 import EyeBall from './EyeBall.vue'
 import Pupil from './Pupil.vue'
 import InfiniteGridBg from '@/components/InfiniteGridBg.vue'
-import { MENU_REGISTRY } from '@/config/menus'
+import { buildSidebarMenu } from '@/config/menus'
 import { hasPermission } from '@/utils/permissions'
 
 // ==================== 子组件：Pupil & EyeBall ====================
@@ -229,11 +229,8 @@ const DEFAULT_ROUTE_BY_ROLE = {
 }
 
 function firstAllowedPath(user) {
-  const item = MENU_REGISTRY.find(entry => {
-    if (!entry.path) return false
-    if (entry.permission === 'admin.users' && user.role !== 'admin') return false
-    return hasPermission(entry.permission, user)
-  })
+  const item = buildSidebarMenu(user, (permission) => hasPermission(permission, user))
+    .find(entry => entry.path)
   return item?.path || DEFAULT_ROUTE_BY_ROLE[user.role] || '/dashboard'
 }
 

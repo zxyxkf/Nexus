@@ -9,7 +9,19 @@
         :class="{ active: activeMenu === item.path }"
         @click="nav(item.path)"
       >
-        <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+        <el-icon :size="18">
+          <DataAnalysis v-if="item.icon === 'DataAnalysis'" />
+          <User v-else-if="item.icon === 'User'" />
+          <List v-else-if="item.icon === 'List'" />
+          <Document v-else-if="item.icon === 'Document'" />
+          <Setting v-else-if="item.icon === 'Setting'" />
+          <Plus v-else-if="item.icon === 'Plus'" />
+          <Select v-else-if="item.icon === 'Select'" />
+          <DataLine v-else-if="item.icon === 'DataLine'" />
+          <ShoppingCart v-else-if="item.icon === 'ShoppingCart'" />
+          <Bell v-else-if="item.icon === 'Bell'" />
+          <List v-else />
+        </el-icon>
         <span class="nav-text">{{ item.label }}</span>
       </div>
     </template>
@@ -31,8 +43,6 @@ const emit = defineEmits(['navigate'])
 
 const store = useUserStore()
 const activeMenu = computed(() => props.activePath)
-
-const iconMap = { DataAnalysis, User, List, Document, Setting, Plus, Select, DataLine, ShoppingCart, Bell }
 
 const menuItems = computed(() => buildSidebarMenu(store.userInfo, (permission) => store.hasPermission(permission)))
 

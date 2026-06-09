@@ -109,13 +109,14 @@ export function buildSidebarMenu(user, hasPermission) {
   const grouped = new Map(sectionOrder.map(key => [key, []]))
 
   for (const item of MENU_REGISTRY) {
+    if (!grouped.has(item.group)) continue
     if (!canShowForRole(item, user.role)) continue
     if (!hasPermission(item.permission, user)) continue
 
     const uniqueKey = item.path || item.permission
     if (seen.has(uniqueKey)) continue
     seen.add(uniqueKey)
-    grouped.get(item.group)?.push(item)
+    grouped.get(item.group).push(item)
   }
 
   const sectionLabels = new Map(MENU_SECTIONS.map(s => [s.key, s.label]))
