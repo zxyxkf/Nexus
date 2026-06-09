@@ -84,13 +84,11 @@ export function userPermissions(user = getUser()) {
 
 export function hasPermission(permission, user = getUser()) {
   if (!permission) return true
-  if (user?.role === 'admin') return true
   return userPermissions(user).includes(permission)
 }
 
 export function hasAnyPermission(permissions = [], user = getUser()) {
   if (!permissions || permissions.length === 0) return true
-  if (user?.role === 'admin') return true
   return permissions.some(p => hasPermission(p, user))
 }
 

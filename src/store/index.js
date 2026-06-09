@@ -3,6 +3,7 @@ import { getToken, setToken, getRefreshToken, setRefreshToken, getUser, setUser,
 import { loginApi, getUserListApi } from '@/api'
 import request from '@/api/http'
 import { withCache, invalidate } from './cache'
+import { hasPermission as checkPermission } from '@/utils/permissions'
 
 export const useUserStore = defineStore('user', {
   state: () => ({
@@ -29,8 +30,7 @@ export const useUserStore = defineStore('user', {
     ,
     hasPermission: (state) => (permission) => {
       if (!permission) return true
-      if (state.userInfo?.role === 'admin') return true
-      return (state.userInfo?.permissions || []).includes(permission)
+      return checkPermission(permission, state.userInfo)
     }
   },
 

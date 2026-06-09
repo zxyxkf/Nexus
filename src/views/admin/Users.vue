@@ -172,7 +172,7 @@
                 v-for="p in group.items"
                 :key="p.code"
                 :label="p.code"
-                :disabled="permissionDefaults.includes(p.code)"
+                :disabled="permissionDefaults.includes(p.code) || isProtectedPermission(p.code)"
               >
                 {{ p.name }}
                 <span class="permission-code">{{ p.code }}</span>
@@ -184,7 +184,7 @@
           <el-checkbox-group v-model="permissionForm.deny">
             <div v-for="group in defaultPermissionGroups" :key="'deny-' + group.name" class="permission-group">
               <div class="permission-group-title">{{ group.name }}</div>
-              <el-checkbox v-for="p in group.items" :key="p.code" :label="p.code">
+              <el-checkbox v-for="p in group.items" :key="p.code" :label="p.code" :disabled="isProtectedPermission(p.code)">
                 {{ p.name }}
                 <span class="permission-code">{{ p.code }}</span>
               </el-checkbox>
@@ -236,6 +236,7 @@ const permissionUser = ref(null)
 const permissionCatalog = ref([])
 const permissionDefaults = ref([])
 const permissionForm = reactive({ allow: [], deny: [] })
+const PROTECTED_ADMIN_PERMISSIONS = ['admin.users']
 
 async function loadShops() {
   try {
@@ -291,8 +292,13 @@ const effectivePermissionGroups = computed(() => {
   const effective = new Set(permissionDefaults.value)
   permissionForm.allow.forEach(p => effective.add(p))
   permissionForm.deny.forEach(p => effective.delete(p))
+  if (permissionUser.value?.role === 'admin') PROTECTED_ADMIN_PERMISSIONS.forEach(p => effective.add(p))
   return groupPermissions(permissionCatalog.value, [...effective])
 })
+
+function isProtectedPermission(code) {
+  return permissionUser.value?.role === 'admin' && PROTECTED_ADMIN_PERMISSIONS.includes(code)
+}
 
 async function loadData() {
   loading.value = true
@@ -454,10 +460,18 @@ async function savePermissions() {
   if (!permissionUser.value) return
   permissionLoading.value = true
   try {
+    const allow = new Set(permissionForm.allow)
+    const deny = new Set(permissionForm.deny)
+    if (permissionUser.value.role === 'admin') {
+      PROTECTED_ADMIN_PERMISSIONS.forEach(code => {
+        allow.add(code)
+        deny.delete(code)
+      })
+    }
     const res = await saveUserPermissionsApi({
       userId: permissionUser.value.id,
-      permissions: permissionForm.allow,
-      deniedPermissions: permissionForm.deny
+      permissions: [...allow],
+      deniedPermissions: [...deny]
     })
     if (res.code === 0) {
       ElMessage.success(res.msg || '权限已保存')

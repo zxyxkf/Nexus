@@ -213,4 +213,30 @@ describe('用户权限配置', () => {
     expect(loginRes.body.data.user.permissions).toContain('task.view.store');
     expect(loginRes.body.data.user.permissions).not.toContain('designer.hall.design');
   });
+
+  it('超级管理员可以配置自身权限但始终保留用户管理权限', async () => {
+    const listRes = await request(app)
+      .get('/api/user/list?role=admin')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const adminUser = listRes.body.data.list.find(u => u.username === 'admin');
+    expect(adminUser).toBeDefined();
+
+    const saveRes = await request(app)
+      .post('/api/user/permissions/save')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        userId: adminUser.id,
+        permissions: [],
+        deniedPermissions: ['dashboard.design', 'admin.users']
+      });
+    expect(saveRes.body.code).toBe(0);
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: 'admin', password: 'admin123' });
+
+    expect(loginRes.body.code).toBe(0);
+    expect(loginRes.body.data.user.permissions).toContain('admin.users');
+    expect(loginRes.body.data.user.permissions).not.toContain('dashboard.design');
+  });
 });

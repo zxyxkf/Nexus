@@ -91,7 +91,6 @@ function requireRole(...roles) {
 function requirePermission(permission, ...fallbackRoles) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ code: 401, msg: '未登录' });
-    if (req.user.role === 'admin') return next();
     if (fallbackRoles.includes(req.user.role)) return next();
     if ((req.user.permissions || []).includes(permission)) return next();
     console.warn(`[越权警告] 用户 ${req.user.username}(${req.user.role}) 缺少权限 ${permission} 访问 ${req.originalUrl}`);
@@ -102,7 +101,6 @@ function requirePermission(permission, ...fallbackRoles) {
 function requireAnyPermission(permissions = [], ...fallbackRoles) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ code: 401, msg: '未登录' });
-    if (req.user.role === 'admin') return next();
     if (fallbackRoles.includes(req.user.role)) return next();
     const owned = req.user.permissions || [];
     if (permissions.some(p => owned.includes(p))) return next();
