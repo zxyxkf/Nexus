@@ -280,6 +280,7 @@ describe('用户权限配置', () => {
         deniedPermissions: []
       });
     expect(saveRes.body.code).toBe(0);
+    expect(saveRes.body.data.effective).toEqual(expect.arrayContaining(['admin.logs', 'admin.config']));
 
     const loginRes = await request(app)
       .post('/api/auth/login')
@@ -307,5 +308,42 @@ describe('用户权限配置', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ id: editableConfig.id, configValue: editableConfig.config_value || 'test-value' });
     expect(configUpdateRes.body.code).toBe(0);
+  });
+
+  it('保存权限会撤销目标用户旧 refresh token', async () => {
+    const username = `perm_revoke_${Date.now()}`;
+    await request(app)
+      .post('/api/user/create')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username,
+        password: 'test123456',
+        realName: '权限刷新测试',
+        role: 'designer'
+      })
+      .expect(200);
+
+    const listRes = await request(app)
+      .get('/api/user/list?role=designer')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const user = listRes.body.data.list.find(u => u.username === username);
+    expect(user).toBeDefined();
+    permissionUsers.push(user);
+
+    const oldLoginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username, password: 'test123456' });
+    expect(oldLoginRes.body.code).toBe(0);
+
+    const saveRes = await request(app)
+      .post('/api/user/permissions/save')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: user.id, permissions: ['admin.logs'], deniedPermissions: [] });
+    expect(saveRes.body.code).toBe(0);
+
+    const refreshRes = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: oldLoginRes.body.data.refreshToken });
+    expect(refreshRes.body.code).toBe(401);
   });
 });

@@ -97,6 +97,11 @@ async function updatePassword(id, hashedPwd) {
   await pool.execute(`UPDATE sys_user SET password = ? WHERE id = ?`, [hashedPwd, id]);
 }
 
+async function revokeRefreshTokens(id) {
+  const pool = getPool();
+  await pool.execute(`DELETE FROM sys_refresh_token WHERE user_id = ?`, [id]);
+}
+
 async function updateStatus(id, status) {
   const pool = getPool();
   await pool.execute(`UPDATE sys_user SET status = ? WHERE id = ?`, [status, id]);
@@ -174,6 +179,7 @@ module.exports = {
   createUser,
   updateUser,
   updatePassword,
+  revokeRefreshTokens,
   updateStatus,
   deleteUserRelatedData,
   unlinkUserFromTasks,

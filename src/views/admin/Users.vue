@@ -474,7 +474,12 @@ async function savePermissions() {
       deniedPermissions: [...deny]
     })
     if (res.code === 0) {
-      ElMessage.success(res.msg || '权限已保存')
+      const saved = res.data || {}
+      permissionDefaults.value = saved.defaults || permissionDefaults.value
+      permissionForm.allow = saved.allow || [...allow]
+      permissionForm.deny = saved.deny || [...deny]
+      const effectiveCount = Array.isArray(saved.effective) ? saved.effective.length : 0
+      ElMessage.success(effectiveCount ? `${res.msg || '权限已保存'}，最终权限 ${effectiveCount} 项` : (res.msg || '权限已保存'))
       permissionVisible.value = false
     } else {
       ElMessage.error(res.msg)

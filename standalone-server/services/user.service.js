@@ -40,6 +40,8 @@ async function getUserPermissions(userId) {
 async function saveUserPermissions(userId, permissions, deniedPermissions) {
   if (!userId) throw new AppError(400, '用户ID不能为空');
   await permissionService.saveUserPermissions(userId, permissions || [], deniedPermissions || []);
+  await userDao.revokeRefreshTokens(userId);
+  return getUserPermissions(userId);
 }
 
 async function getDesignerList() {

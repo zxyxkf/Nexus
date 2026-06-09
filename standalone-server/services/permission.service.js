@@ -1,5 +1,6 @@
 const { execute } = require('../config/database');
 const { PERMISSIONS, defaultPermissionsFor, expandPermissions } = require('../config/permissions');
+const AppError = require('../utils/AppError');
 
 const LEGACY_BOARD_PERMISSIONS = {
   'board.design': 'dashboard.design',
@@ -83,16 +84,22 @@ async function getEffectivePermissions(user) {
 }
 
 async function saveUserPermissions(userId, permissions = [], deniedPermissions = []) {
-  await execute(`DELETE FROM sys_user_permission WHERE user_id = ?`, [userId]);
+  const allowSet = new Set(permissions);
+  const denySet = new Set(deniedPermissions);
+  const validCodes = new Set(PERMISSIONS.map(p => p.code));
+  const invalidCodes = [...allowSet, ...denySet].filter(code => !validCodes.has(code));
+  if (invalidCodes.length > 0) {
+    throw new AppError(400, `未知权限码: ${invalidCodes.join(', ')}`);
+  }
 
   const [users] = await execute(`SELECT role FROM sys_user WHERE id = ?`, [userId]);
   const isAdmin = users[0]?.role === 'admin';
-  const allowSet = new Set(permissions);
-  const denySet = new Set(deniedPermissions);
   if (isAdmin) {
     allowSet.add('admin.users');
     denySet.delete('admin.users');
   }
+
+  await execute(`DELETE FROM sys_user_permission WHERE user_id = ?`, [userId]);
 
   const rows = [
     ...[...allowSet].map(code => [userId, code, 'allow']),

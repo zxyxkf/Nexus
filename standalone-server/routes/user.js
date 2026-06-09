@@ -44,8 +44,8 @@ router.get('/permissions/:userId', requireRole('admin'), async (req, res, next) 
 
 router.post('/permissions/save', requireRole('admin'), async (req, res, next) => {
   try {
-    await userService.saveUserPermissions(req.body.userId, req.body.permissions, req.body.deniedPermissions);
-    res.json({ code: 0, msg: '权限已保存，用户重新登录后生效' });
+    const data = await userService.saveUserPermissions(req.body.userId, req.body.permissions, req.body.deniedPermissions);
+    res.json({ code: 0, msg: '权限已保存，用户重新登录后生效', data });
   } catch (err) {
     next(err);
   }
