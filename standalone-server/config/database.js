@@ -28,6 +28,12 @@ const CREATE_TABLES_SQL = {
       create_time TEXT DEFAULT (datetime('now', 'localtime')),
       update_time TEXT DEFAULT (datetime('now', 'localtime'))
     )`,
+    `CREATE TABLE IF NOT EXISTS sys_shop (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      sort_order INTEGER DEFAULT 0,
+      create_time TEXT DEFAULT (datetime('now', 'localtime'))
+    )`,
     `CREATE TABLE IF NOT EXISTS sys_log (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       user_id INTEGER,
@@ -503,6 +509,12 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN score_review_reason TEXT DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN work_path TEXT DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN submit_time TEXT`,
+      `CREATE TABLE IF NOT EXISTS sys_shop (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        name TEXT NOT NULL UNIQUE,
+        sort_order INTEGER DEFAULT 0,
+        create_time TEXT DEFAULT (datetime('now', 'localtime'))
+      )`,
       `CREATE TABLE IF NOT EXISTS sys_score_item_cs (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,
