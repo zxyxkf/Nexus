@@ -52,6 +52,7 @@ const basicDesignerLeadItems = computed(() => filterMenuByPermission(basicDesign
 const subAdminScoreItems = computed(() => filterMenuByPermission(basicDesignerLeadMenu('基础美工分值审核'), store.userInfo))
 const operatorAssistantItems = computed(() => filterMenuByPermission(designerMenu('operator-assistant', '运营任务'), store.userInfo))
 const csAgentDataItems = computed(() => filterMenuByPermission(csAgentDataMenu('cs'), store.userInfo))
+const isAdminMenu = computed(() => ['admin', 'sub_admin'].includes(store.userInfo?.role))
 
 function withStableKeys(items, prefix) {
   return items.map((item, index) => ({
@@ -60,12 +61,15 @@ function withStableKeys(items, prefix) {
   }))
 }
 
-const menuItems = computed(() => [
+const adminMenuItems = computed(() => [
   ...withStableKeys(adminItems.value, 'admin-main'),
   ...withStableKeys(superAdminItems.value, 'admin-system'),
   ...withStableKeys(adminExtraItems.value, 'admin-tasks'),
   ...withStableKeys(superAdminExtraItems.value, 'admin-config'),
-  ...withStableKeys(subAdminScoreItems.value, 'sub-admin-score'),
+  ...withStableKeys(subAdminScoreItems.value, 'sub-admin-score')
+])
+
+const businessMenuItems = computed(() => [
   ...withStableKeys(operatorItems.value, 'operator-main'),
   ...withStableKeys(operatorExtraItems.value, 'operator-extra'),
   ...withStableKeys(operatorDataItems.value, 'operator-data'),
@@ -76,6 +80,8 @@ const menuItems = computed(() => [
   ...withStableKeys(basicDesignerLeadItems.value, 'basic-lead'),
   ...withStableKeys(operatorAssistantItems.value, 'assistant-main')
 ])
+
+const menuItems = computed(() => isAdminMenu.value ? adminMenuItems.value : businessMenuItems.value)
 
 function nav(path) { emit('navigate', path) }
 </script>
