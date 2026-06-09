@@ -50,22 +50,24 @@ function releaseSocket() {
   }
 }
 
-export function useRealtime(fetchFn, interval = 3000) {
+export function useRealtime(fetchFn, interval = 3000, options = {}) {
   const loading = ref(false)
   let pollTimer = null
   let wsConnected = false
   let running = false
   let pendingOptions = null
 
-  async function execute(options = {}) {
+  async function execute(runOptions = {}) {
+    const shouldPause = runOptions.shouldPause || options.shouldPause
+    if (runOptions.silent && typeof shouldPause === 'function' && shouldPause()) return
     if (running) {
-      pendingOptions = { silent: true, ...options }
+      pendingOptions = { silent: true, ...runOptions, shouldPause }
       return
     }
     running = true
     try {
-      loading.value = !options.silent
-      await fetchFn(options)
+      loading.value = !runOptions.silent
+      await fetchFn(runOptions)
     } finally {
       running = false
       loading.value = false
@@ -79,7 +81,7 @@ export function useRealtime(fetchFn, interval = 3000) {
 
   function startPolling() {
     if (pollTimer) return
-    pollTimer = setInterval(() => execute({ silent: true }), interval)
+    pollTimer = setInterval(() => execute({ silent: true, shouldPause: options.shouldPause }), interval)
   }
 
   function stopPolling() {
@@ -100,7 +102,7 @@ export function useRealtime(fetchFn, interval = 3000) {
       const onUpdate = () => {
         wsConnected = true
         stopPolling()
-        execute({ silent: true })
+        execute({ silent: true, shouldPause: options.shouldPause })
       }
 
       const onConnect = () => {

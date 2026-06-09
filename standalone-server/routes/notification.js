@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const { execute } = require('../config/database');
 const { requireAuth } = require('../middleware/auth');
+const { createLogMiddleware } = require('../utils/operLog');
 
 /**
  * GET /api/notification/list - 获取用户通知列表
@@ -44,7 +45,7 @@ router.get('/list', requireAuth, async (req, res) => {
 /**
  * POST /api/notification/read - 标记已读
  */
-router.post('/read', requireAuth, async (req, res) => {
+router.post('/read', requireAuth, createLogMiddleware('标记通知已读', '通知中心'), async (req, res) => {
   try {
     const { id, all } = req.body;
     if (all) {
@@ -67,7 +68,7 @@ router.post('/read', requireAuth, async (req, res) => {
 /**
  * POST /api/notification/delete - 删除通知
  */
-router.post('/delete', requireAuth, async (req, res) => {
+router.post('/delete', requireAuth, createLogMiddleware('删除通知', '通知中心'), async (req, res) => {
   try {
     const { id, all } = req.body;
     if (all) {
@@ -105,7 +106,7 @@ router.get('/unread-count', requireAuth, async (req, res) => {
 /**
  * POST /api/notification/urge - 催促提醒（客服/运营均可使用）
  */
-router.post('/urge', requireAuth, async (req, res) => {
+router.post('/urge', requireAuth, createLogMiddleware('催促任务', '通知中心'), async (req, res) => {
   try {
     const { taskId, taskTitle, designerId } = req.body;
     if (!taskId || !designerId) return res.json({ code: 400, msg: '参数不完整' });

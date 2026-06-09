@@ -21,12 +21,28 @@ function sendExcel(res, workbook, filename) {
  */
 router.get('/tasks', async (req, res) => {
   try {
-    const { keyword, status } = req.query;
+    const { keyword, status, taskGroup, publisherId, designerId, startDate, endDate, taskIds } = req.query;
     let sql = `SELECT * FROM task_info WHERE 1=1`;
     const params = [];
 
+    if (taskIds) {
+      const ids = String(taskIds).split(',').map(v => Number(v)).filter(Boolean);
+      if (ids.length) {
+        sql += ` AND id IN (${ids.map(() => '?').join(',')})`;
+        params.push(...ids);
+      }
+    }
     if (keyword) { sql += ` AND (title LIKE ? OR task_no LIKE ?)`; params.push(`%${keyword}%`, `%${keyword}%`); }
     if (status) { sql += ` AND status = ?`; params.push(status); }
+    if (taskGroup) {
+      if (taskGroup === 'design') sql += ` AND (task_group = ? OR task_group IS NULL OR task_group = '')`;
+      else sql += ` AND task_group = ?`;
+      params.push(taskGroup);
+    }
+    if (publisherId) { sql += ` AND publisher_id = ?`; params.push(publisherId); }
+    if (designerId) { sql += ` AND designer_id = ?`; params.push(designerId); }
+    if (startDate) { sql += ` AND create_time >= ?`; params.push(`${startDate} 00:00:00`); }
+    if (endDate) { sql += ` AND create_time <= ?`; params.push(`${endDate} 23:59:59`); }
     sql += ` ORDER BY create_time DESC`;
 
     const [rows] = await execute(sql, params);

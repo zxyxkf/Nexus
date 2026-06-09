@@ -8,14 +8,14 @@ const fs = require('fs');
 const os = require('os');
 const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
-const { requireRole } = require('../../middleware/auth');
+const { requireRole, requireAnyPermission } = require('../../middleware/auth');
 const taskService = require('../../services/task.service');
 const { fixFilenameEncoding } = require('../../utils/upload');
 const { getMaxFileSizeMB, getMaxFileCount } = require('../../utils/share');
 
 // ==================== 接单 ====================
 
-router.post('/accept', requireRole('designer', 'basic_designer', 'operator_assistant'), async (req, res, next) => {
+router.post('/accept', requireAnyPermission(['designer.hall.design', 'basic.hall.cs', 'assistant.hall.operator'], 'designer', 'basic_designer', 'operator_assistant'), async (req, res, next) => {
   try {
     const result = await taskService.acceptTask(req.body.taskId, req.user);
     res.json({ code: 0, ...result });
@@ -24,7 +24,7 @@ router.post('/accept', requireRole('designer', 'basic_designer', 'operator_assis
 
 // ==================== 上传文件 ====================
 
-router.post('/upload-files', requireRole('designer', 'basic_designer', 'operator', 'cs_agent', 'operator_assistant'), (req, res, next) => {
+router.post('/upload-files', requireAnyPermission(['task.upload.work', 'task.create.design', 'task.create.operator', 'task.create.cs'], 'designer', 'basic_designer', 'operator', 'cs_agent', 'operator_assistant'), (req, res, next) => {
   const tmpDir = path.join(os.tmpdir(), 'd-design-tmp');
   try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
 
@@ -72,7 +72,7 @@ router.post('/transfer', requireRole('basic_designer'), async (req, res, next) =
 
 // ==================== 提交完成 ====================
 
-router.post('/finish', requireRole('designer', 'basic_designer', 'operator_assistant'), async (req, res, next) => {
+router.post('/finish', requireAnyPermission(['task.upload.work'], 'designer', 'basic_designer', 'operator_assistant'), async (req, res, next) => {
   try {
     const qty = parseInt(req.body.actualQuantity) || 0;
     const result = await taskService.finishTask(req.body.taskId, qty, req.user);
@@ -82,7 +82,7 @@ router.post('/finish', requireRole('designer', 'basic_designer', 'operator_assis
 
 // ==================== 审核 ====================
 
-router.post('/review', requireRole('operator', 'admin', 'cs_agent'), async (req, res, next) => {
+router.post('/review', requireAnyPermission(['task.review.own', 'task.review.store', 'task.review.all'], 'operator', 'admin', 'cs_agent'), async (req, res, next) => {
   try {
     const { taskId, action, rejectReason } = req.body;
     const result = await taskService.reviewTask(taskId, action, rejectReason, req.user);
@@ -91,7 +91,7 @@ router.post('/review', requireRole('operator', 'admin', 'cs_agent'), async (req,
 });
 
 // 批量审核
-router.post('/batch-review', requireRole('operator', 'admin', 'cs_agent'), async (req, res, next) => {
+router.post('/batch-review', requireAnyPermission(['task.review.own', 'task.review.store', 'task.review.all'], 'operator', 'admin', 'cs_agent'), async (req, res, next) => {
   try {
     const result = await taskService.batchReview(req.body.taskIds, req.user);
     res.json({ code: 0, ...result });
@@ -100,7 +100,7 @@ router.post('/batch-review', requireRole('operator', 'admin', 'cs_agent'), async
 
 // ==================== 撤回任务 ====================
 
-router.post('/withdraw', requireRole('operator', 'admin', 'cs_agent'), async (req, res, next) => {
+router.post('/withdraw', requireAnyPermission(['task.create.design', 'task.create.operator', 'task.create.cs'], 'operator', 'admin', 'cs_agent'), async (req, res, next) => {
   try {
     const result = await taskService.withdrawTask(req.body.taskId, req.user);
     res.json({ code: 0, ...result });
@@ -109,7 +109,7 @@ router.post('/withdraw', requireRole('operator', 'admin', 'cs_agent'), async (re
 
 // ==================== 撤回提交 ====================
 
-router.post('/undo-submit', requireRole('designer', 'basic_designer', 'operator_assistant'), async (req, res, next) => {
+router.post('/undo-submit', requireAnyPermission(['task.upload.work'], 'designer', 'basic_designer', 'operator_assistant'), async (req, res, next) => {
   try {
     const result = await taskService.undoSubmit(req.body.taskId, req.user);
     res.json({ code: 0, ...result });

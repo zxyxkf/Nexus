@@ -192,6 +192,7 @@
           </div>
 
           <div class="inline-detail-body">
+            <TaskStatusTimeline :task="currentTask" task-group="design" />
             <div class="inline-detail-stat-card">
               <label>发布人</label>
               <span>{{ currentTask.publisher_name }}</span>
@@ -296,6 +297,7 @@
           </div>
         </template>
       </el-upload>
+      <el-progress v-if="uploadLoading" :percentage="uploadProgress" style="margin-top:12px;" />
 
       <template #footer>
         <el-button @click="uploadVisible = false">取消</el-button>
@@ -318,7 +320,9 @@ import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { useOverdueSort } from '@/composables/useOverdueSort'
+import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
+import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -333,6 +337,7 @@ const styleNumberFilter = ref('')
 const dateRange = ref(null)
 const publisherFilter = ref('')
 const scoreItemFilter = ref('')
+usePersistedFilters('designer_my_tasks', { statusFilter, styleNumberFilter, dateRange, publisherFilter, scoreItemFilter })
 const publisherList = ref([])
 const scoreItems = ref([])
 const fixedStatus = computed(() => route.meta.fixedStatus || '')
@@ -345,6 +350,7 @@ const uploadUiFiles = ref([])
 const fileList = ref([])
 const uploadRef = ref(null)
 const workPath = ref('')
+const uploadProgress = ref(0)
 
 const detailVisible = ref(false)
 const currentTask = ref(null)
@@ -385,6 +391,7 @@ async function loadData(options = {}) {
       page: page.value,
       pageSize: pageSize.value,
       status: fixedStatus.value || statusFilter.value || undefined,
+      taskGroup: 'design',
       keyword: styleNumberFilter.value || undefined,
       dateStart: dateRange.value?.[0] || undefined,
       dateEnd: dateRange.value?.[1] || undefined,
@@ -482,9 +489,16 @@ async function handleUpload() {
   }
 
   uploadLoading.value = true
+  uploadProgress.value = 0
   try {
-    const res = await uploadFilesApi(uploadTaskId.value, fileList.value, 'work', { workPath: workPath.value })
+    const res = await uploadFilesApi(uploadTaskId.value, fileList.value, 'work', {
+      workPath: workPath.value,
+      onUploadProgress: (event) => {
+        if (event.total) uploadProgress.value = Math.min(99, Math.round((event.loaded * 100) / event.total))
+      }
+    })
     if (res.code === 0) {
+      uploadProgress.value = 100
       ElMessage.success(res.msg || '上传成功')
       uploadUiFiles.value = []
       fileList.value = []
@@ -499,6 +513,7 @@ async function handleUpload() {
     ElMessage.error('上传失败: ' + (err.response?.data?.msg || err.message || '未知错误'))
   } finally {
     uploadLoading.value = false
+    setTimeout(() => { uploadProgress.value = 0 }, 500)
   }
 }
 
@@ -554,7 +569,7 @@ const { getInt, configMap } = useConfig()
 const maxFileCount = computed(() => getInt('upload.max_file_count', 10))
 const maxFileSizeMB = computed(() => getInt('upload.max_file_size_mb', 50))
 const formatSize = formatFileSize
-useRealtime(loadData, 3000)
+useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVisible.value })
 </script>
 
 <style scoped>

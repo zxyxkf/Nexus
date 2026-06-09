@@ -8,7 +8,7 @@ export const useUserStore = defineStore('user', {
   state: () => ({
     token: getToken() || '',
     userInfo: getUser() || null,
-    permissions: []
+    permissions: getUser()?.permissions || []
   }),
 
   getters: {
@@ -26,6 +26,12 @@ export const useUserStore = defineStore('user', {
     isBasicDesigner: (state) => state.userInfo?.role === 'basic_designer',
     isBasicDesignerLead: (state) => state.userInfo?.role === 'basic_designer' && !!state.userInfo?.isTeamLead,
     isOperatorAssistant: (state) => state.userInfo?.role === 'operator_assistant'
+    ,
+    hasPermission: (state) => (permission) => {
+      if (!permission) return true
+      if (state.userInfo?.role === 'admin') return true
+      return (state.userInfo?.permissions || []).includes(permission)
+    }
   },
 
   actions: {
@@ -35,6 +41,7 @@ export const useUserStore = defineStore('user', {
       if (token && user) {
         this.token = token
         this.userInfo = user
+        this.permissions = user.permissions || []
       }
     },
 
@@ -43,6 +50,7 @@ export const useUserStore = defineStore('user', {
       if (res.code === 0) {
         this.token = res.data.token
         this.userInfo = res.data.user
+        this.permissions = res.data.user?.permissions || []
         setToken(res.data.token)
         if (res.data.refreshToken) {
           setRefreshToken(res.data.refreshToken)
@@ -61,6 +69,7 @@ export const useUserStore = defineStore('user', {
       // 再清本机
       this.token = ''
       this.userInfo = null
+      this.permissions = []
       clearAuth()
       invalidate(this, 'userList')
     },

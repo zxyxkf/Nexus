@@ -203,6 +203,7 @@
           </div>
 
           <div class="inline-detail-body">
+            <TaskStatusTimeline :task="currentTask" :task-group="taskGroup" />
             <div class="inline-detail-stat-card">
               <label>{{ designerLabel }}</label>
               <span>{{ currentTask.designer_name || '未接单' }}</span>
@@ -393,7 +394,9 @@ import { getBasicDesignerListApi, getDesignerListApi, getOperatorAssistantListAp
 import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
+import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -421,6 +424,7 @@ const designerFilter = ref('')
 const operatorDesignerFilter = ref('')
 const publisherFilter = ref('')
 const dateRange = ref(null)
+usePersistedFilters(`my_tasks_pub_${taskGroup.value}`, { statusFilter, styleNumberFilter, keywordFilter, designerFilter, operatorDesignerFilter, publisherFilter, dateRange })
 const basicDesignerList = ref([])
 const operatorDesignerList = ref([])
 const publisherList = ref([])
@@ -689,7 +693,7 @@ onUnmounted(() => {
   window.removeEventListener('paste', handleEditRefPaste)
 })
 
-useRealtime(loadData, 3000)
+useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || editVisible.value })
 </script>
 
 <style scoped>

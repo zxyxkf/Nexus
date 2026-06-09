@@ -38,7 +38,7 @@ async function createTask(body, user) {
   for (let retry = 0; retry < 3; retry++) {
     try {
       const result = await executeTransaction(async (conn) => {
-        const taskNo = await taskDao.generateTaskNo(conn);
+        const taskNo = await taskDao.generateTaskNo(conn, taskGroup);
 
         let status = 'wait';
         let designerIdVal = null;
@@ -215,6 +215,7 @@ async function getMyPublished(query, user) {
 
   const result = await taskDao.queryMyPublished({
     userId: user.id, role: user.role,
+    permissions: user.permissions || [],
     filterGroup: query.taskGroup,
     selfOnly: query.selfOnly === '1' || query.selfOnly === 'true',
     status: query.status, styleNumber: query.styleNumber,
@@ -232,6 +233,8 @@ async function getMyAccepted(query, user) {
 
   const result = await taskDao.queryMyAccepted({
     userId: user.id, role: user.role,
+    permissions: user.permissions || [],
+    taskGroup: query.taskGroup,
     status: query.status, keyword: query.keyword,
     publisherId: query.publisherId,
     scoreItemId: query.scoreItemId,
@@ -248,6 +251,8 @@ async function getTaskHall(query, user) {
 
   return taskDao.queryTaskHall({
     role: user.role,
+    permissions: user.permissions || [],
+    taskGroup: query.taskGroup,
     keyword: query.keyword,
     page, pageSize
   });
@@ -263,6 +268,19 @@ async function getAllTasks(query) {
     startDate: query.startDate, endDate: query.endDate,
     taskGroup: query.taskGroup || undefined,
     page, pageSize
+  });
+}
+
+async function searchTasks(query, user) {
+  const keyword = String(query.keyword || '').trim();
+  if (!keyword) return { list: [], total: 0, page: 1, pageSize: 12, totalPages: 0 };
+  return taskDao.searchTasks({
+    userId: user.id,
+    role: user.role,
+    store: user.store,
+    permissions: user.permissions || [],
+    keyword,
+    pageSize: query.pageSize
   });
 }
 
@@ -969,7 +987,7 @@ async function getAdminDetailStats() {
 
 module.exports = {
   createTask, getTaskDetail, deleteTask, updateTask, batchDelete, batchReassign,
-  getMyPublished, getMyAccepted, getTaskHall, getAllTasks,
+  getMyPublished, getMyAccepted, getTaskHall, getAllTasks, searchTasks,
   acceptTask, uploadFiles, transferTask, finishTask, reviewTask, batchReview,
   withdrawTask, undoSubmit,
   getMyStats, getDashboardStats, getAdminDetailStats

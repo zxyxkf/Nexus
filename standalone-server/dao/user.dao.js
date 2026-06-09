@@ -63,6 +63,15 @@ async function findById(id) {
   return rows[0] || null;
 }
 
+async function findFullById(id) {
+  const pool = getPool();
+  const [rows] = await pool.execute(
+    `SELECT id, username, real_name, role, store, is_team_lead, status FROM sys_user WHERE id = ?`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
 // ==================== 写入 ====================
 
 async function createUser({ username, hashedPwd, realName, role, store, isTeamLead, email, phone, remark }) {
@@ -161,6 +170,7 @@ module.exports = {
   getUserList,
   findByUsername,
   findById,
+  findFullById,
   createUser,
   updateUser,
   updatePassword,

@@ -188,6 +188,23 @@ const CREATE_TABLES_SQL = {
       create_time TEXT DEFAULT (datetime('now', 'localtime')),
       update_time TEXT DEFAULT (datetime('now', 'localtime')),
       FOREIGN KEY (created_by) REFERENCES sys_user(id)
+    )`,
+    `CREATE TABLE IF NOT EXISTS sys_permission (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      code TEXT NOT NULL UNIQUE,
+      name TEXT NOT NULL,
+      type TEXT DEFAULT 'page',
+      permission_group TEXT DEFAULT '',
+      description TEXT DEFAULT '',
+      create_time TEXT DEFAULT (datetime('now', 'localtime'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS sys_user_permission (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      user_id INTEGER NOT NULL,
+      permission_code TEXT NOT NULL,
+      effect TEXT DEFAULT 'allow',
+      create_time TEXT DEFAULT (datetime('now', 'localtime')),
+      UNIQUE(user_id, permission_code, effect)
     )`
   ],
   mysql: [
@@ -370,6 +387,23 @@ const CREATE_TABLES_SQL = {
       create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
       update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
       FOREIGN KEY (created_by) REFERENCES sys_user(id)
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    `CREATE TABLE IF NOT EXISTS sys_permission (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      code VARCHAR(100) NOT NULL UNIQUE,
+      name VARCHAR(100) NOT NULL,
+      type VARCHAR(20) DEFAULT 'page',
+      permission_group VARCHAR(100) DEFAULT '',
+      description VARCHAR(500) DEFAULT '',
+      create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    `CREATE TABLE IF NOT EXISTS sys_user_permission (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      user_id INT NOT NULL,
+      permission_code VARCHAR(100) NOT NULL,
+      effect VARCHAR(20) DEFAULT 'allow',
+      create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+      UNIQUE KEY uk_user_permission_effect (user_id, permission_code, effect)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
   ]
 };
@@ -509,6 +543,9 @@ async function initDatabase() {
     for (const sql of configSeeds) {
       try { await dbEngine.execute(sql); } catch (err) {}
     }
+
+    const permissionService = require('../services/permission.service');
+    await permissionService.seedPermissions();
 
     console.log(`[DB] 数据库初始化完成 (${mode})`);
     return { mode, engine: dbEngine };

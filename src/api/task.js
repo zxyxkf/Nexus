@@ -4,6 +4,7 @@ export const createTaskApi = (data) => request.post('/api/task/create', data)
 export const getMyPublishedApi = (params) => request.get('/api/task/my-published', { params })
 export const getMyAcceptedApi = (params) => request.get('/api/task/my-accepted', { params })
 export const getTaskHallApi = (params) => request.get('/api/task/hall', { params })
+export const searchTasksApi = (params) => request.get('/api/task/search', { params })
 export const acceptTaskApi = (data) => request.post('/api/task/accept', data)
 export const uploadFilesApi = (taskId, files, fileCategory = 'work', extraData = {}) => {
   const formData = new FormData()
@@ -16,7 +17,8 @@ export const uploadFilesApi = (taskId, files, fileCategory = 'work', extraData =
   files.forEach(file => formData.append('files', file))
   return request.post('/api/task/upload-files', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
-    timeout: 120000
+    timeout: 120000,
+    onUploadProgress: extraData.onUploadProgress
   })
 }
 export const finishTaskApi = (data) => request.post('/api/task/finish', data)
@@ -34,3 +36,4 @@ export const batchReviewApi = (data) => request.post('/api/task/batch-review', d
 export const deleteTaskApi = (data) => request.post('/api/task/delete', data)
 export const batchDeleteApi = (data) => request.post('/api/task/batch-delete', data)
 export const batchReassignApi = (data) => request.post('/api/task/batch-reassign', data)
+export const batchDownloadFilesApi = (params) => request.get('/api/task/batch-download', { params, responseType: 'blob', timeout: 120000 })

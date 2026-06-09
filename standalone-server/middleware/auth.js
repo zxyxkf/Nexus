@@ -61,7 +61,8 @@ function requireAuth(req, res, next) {
     role: decoded.role,
     realName: decoded.realName,
     store: decoded.store || '',
-    isTeamLead: decoded.isTeamLead || 0
+    isTeamLead: decoded.isTeamLead || 0,
+    permissions: decoded.permissions || []
   };
 
   next();
@@ -84,6 +85,29 @@ function requireRole(...roles) {
     }
 
     next();
+  };
+}
+
+function requirePermission(permission, ...fallbackRoles) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ code: 401, msg: '未登录' });
+    if (req.user.role === 'admin') return next();
+    if (fallbackRoles.includes(req.user.role)) return next();
+    if ((req.user.permissions || []).includes(permission)) return next();
+    console.warn(`[越权警告] 用户 ${req.user.username}(${req.user.role}) 缺少权限 ${permission} 访问 ${req.originalUrl}`);
+    return res.status(403).json({ code: 403, msg: '权限不足，请联系管理员' });
+  };
+}
+
+function requireAnyPermission(permissions = [], ...fallbackRoles) {
+  return (req, res, next) => {
+    if (!req.user) return res.status(401).json({ code: 401, msg: '未登录' });
+    if (req.user.role === 'admin') return next();
+    if (fallbackRoles.includes(req.user.role)) return next();
+    const owned = req.user.permissions || [];
+    if (permissions.some(p => owned.includes(p))) return next();
+    console.warn(`[越权警告] 用户 ${req.user.username}(${req.user.role}) 缺少任一权限 ${permissions.join(',')} 访问 ${req.originalUrl}`);
+    return res.status(403).json({ code: 403, msg: '权限不足，请联系管理员' });
   };
 }
 
@@ -127,7 +151,8 @@ function optionalAuth(req, res, next) {
         role: decoded.role,
         realName: decoded.realName,
         store: decoded.store || '',
-        isTeamLead: decoded.isTeamLead || 0
+        isTeamLead: decoded.isTeamLead || 0,
+        permissions: decoded.permissions || []
       };
       return next();
     }
@@ -144,7 +169,8 @@ function optionalAuth(req, res, next) {
         role: decoded.role,
         realName: decoded.realName,
         store: decoded.store || '',
-        isTeamLead: decoded.isTeamLead || 0
+        isTeamLead: decoded.isTeamLead || 0,
+        permissions: decoded.permissions || []
       };
       return next();
     }
@@ -161,6 +187,8 @@ module.exports = {
   requireAuth,
   optionalAuth,
   requireRole,
+  requirePermission,
+  requireAnyPermission,
   requireAdmin: (...args) => requireRole('admin', ...args),
   checkDataOwnership
 };

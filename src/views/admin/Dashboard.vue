@@ -1,5 +1,8 @@
 <template>
   <div class="page-container" v-loading="loading">
+    <div class="dashboard-actions">
+      <el-button @click="exportDashboardReport">导出仪表盘</el-button>
+    </div>
     <!-- ==================== 运营 & 美工设计师 ==================== -->
     <el-card v-if="showDesignSection" shadow="never" class="page-card section-blue">
       <template #header>
@@ -104,7 +107,11 @@
             </template>
             <el-table :data="designerDailyData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
               <el-table-column prop="name" label="美工" fixed="left" min-width="90" />
-              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center" />
+              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
+                <template #default="{ row }">
+                  <el-button link type="primary" @click="openDailyTasks('design', d.day)">{{ row[d.key] }}</el-button>
+                </template>
+              </el-table-column>
             </el-table>
           </el-card>
         </el-col>
@@ -233,7 +240,11 @@
             </template>
             <el-table :data="operatorAssistantDailyData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
               <el-table-column prop="name" label="助理" fixed="left" min-width="90" />
-              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center" />
+              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
+                <template #default="{ row }">
+                  <el-button link type="primary" @click="openDailyTasks('operator', d.day)">{{ row[d.key] }}</el-button>
+                </template>
+              </el-table-column>
             </el-table>
           </el-card>
         </el-col>
@@ -332,7 +343,11 @@
             </template>
             <el-table :data="basicDesignerDailyData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
               <el-table-column prop="name" label="基础美工" fixed="left" min-width="90" />
-              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center" />
+              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
+                <template #default="{ row }">
+                  <el-button link type="primary" @click="openDailyTasks('cs', d.day)">{{ row[d.key] }}</el-button>
+                </template>
+              </el-table-column>
             </el-table>
           </el-card>
         </el-col>
@@ -367,6 +382,7 @@ import { CanvasRenderer } from 'echarts/renderers'
 
 echarts.use([PieChart, LineChart, BarChart, TitleComponent, TooltipComponent, LegendComponent, GridComponent, CanvasRenderer])
 import { getDashboardStatsApi, getAdminDetailStatsApi } from '@/api'
+import { exportDashboardApi } from '@/api/export'
 
 const route = useRoute()
 
@@ -570,6 +586,24 @@ function buildDailyRows(source, nameKey = 'name') {
 const designerDailyData = computed(() => buildDailyRows(detailStats.value.designerDailyStats))
 const operatorAssistantDailyData = computed(() => buildDailyRows(detailStats.value.operatorAssistantDailyStats))
 const basicDesignerDailyData = computed(() => buildDailyRows(detailStats.value.basicDesignerDailyStats))
+
+async function exportDashboardReport() {
+  const blob = await exportDashboardApi()
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `统计报表_${new Date().toISOString().slice(0, 10)}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+function openDailyTasks(group, day) {
+  const date = `${nowForView.getFullYear()}-${String(nowForView.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  router.push({
+    path: `/admin/tasks/${group}`,
+    query: { startDate: date, endDate: date, status: 'finished' }
+  })
+}
 
 function initCharts(data) {
   nextTick(() => {

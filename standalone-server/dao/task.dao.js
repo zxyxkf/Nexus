@@ -11,10 +11,18 @@ const MIME_MAP = {
 
 // ==================== 工具 ====================
 
-/** 生成任务编号 T+YYYYMMDD+4位序号 */
-async function generateTaskNo(conn) {
-  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
-  const prefix = `T${dateStr}`;
+function localDateString(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  return `${y}${m}${d}`;
+}
+
+/** 生成任务编号：D/O/C + 本地日期 + 4位序号 */
+async function generateTaskNo(conn, taskGroup = 'design') {
+  const prefixMap = { design: 'D', operator: 'O', cs: 'C' };
+  const dateStr = localDateString();
+  const prefix = `${prefixMap[taskGroup] || 'D'}${dateStr}`;
   const [rows] = await conn.execute(
     `SELECT MAX(task_no) as max_no FROM task_info WHERE task_no LIKE ?`,
     [`${prefix}%`]
@@ -229,26 +237,35 @@ const TASK_JOIN = `LEFT JOIN sys_user u1 ON t.publisher_id = u1.id
                     LEFT JOIN sys_user u2 ON t.designer_id = u2.id`;
 
 /** 我发布的任务 */
-async function queryMyPublished({ userId, role, filterGroup, selfOnly, status, styleNumber, keyword, designerId, publisherId, dateStart, dateEnd, page, pageSize }) {
+async function queryMyPublished({ userId, role, permissions = [], filterGroup, selfOnly, status, styleNumber, keyword, designerId, publisherId, dateStart, dateEnd, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE 1=1';
   const params = [];
+  const group = filterGroup || (role === 'cs_agent' ? 'cs' : 'design');
+  const hasPerm = (code) => role === 'admin' || role === 'sub_admin' || permissions.includes(code);
 
-  if (role === 'operator') {
-    if (selfOnly) {
-      where += ' AND t.publisher_id = ? AND t.task_group = ?';
-    } else {
-      where += ' AND t.publisher_id IN (SELECT id FROM sys_user WHERE role = \'operator\' AND store = (SELECT store FROM sys_user WHERE id = ?)) AND t.task_group = ?';
-    }
-    params.push(userId, filterGroup || 'design');
-  } else if (role === 'cs_agent') {
-    where += ' AND t.publisher_id = ? AND t.task_group = \'cs\'';
-    params.push(userId);
+  if (role === 'admin' || role === 'sub_admin') {
+    if (group === 'design') where += ' AND (t.task_group = ? OR t.task_group IS NULL OR t.task_group = \'\')';
+    else where += ' AND t.task_group = ?';
+    params.push(group);
+  } else if (group === 'cs') {
+    where += ' AND t.publisher_id = ? AND t.task_group = ?';
+    params.push(userId, group);
+  } else if (selfOnly || !hasPerm('task.view.store')) {
+    where += ' AND t.publisher_id = ? AND t.task_group = ?';
+    params.push(userId, group);
+  } else {
+    where += ' AND t.publisher_id IN (SELECT id FROM sys_user WHERE role = \'operator\' AND store = (SELECT store FROM sys_user WHERE id = ?)) AND t.task_group = ?';
+    params.push(userId, group);
+  }
+
+  if (!hasPerm(group === 'operator' ? 'operator.tasks.assistant' : group === 'cs' ? 'cs.tasks.basic' : 'operator.tasks.design') && role !== 'admin' && role !== 'sub_admin') {
+    where += ' AND 1=0';
   }
 
   if (status) { where += ' AND t.status = ?'; params.push(status); }
   if (styleNumber) { where += ' AND t.style_number LIKE ?'; params.push(`%${styleNumber}%`); }
-  if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`); }
+  if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`); }
   if (designerId) { where += ' AND t.designer_id = ?'; params.push(designerId); }
   if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
   if (dateStart) { where += ' AND t.create_time >= ?'; params.push(dateStart + ' 00:00:00'); }
@@ -266,22 +283,28 @@ async function queryMyPublished({ userId, role, filterGroup, selfOnly, status, s
 }
 
 /** 我接单的任务 */
-async function queryMyAccepted({ userId, role, status, keyword, publisherId, scoreItemId, dateStart, dateEnd, shopName, page, pageSize }) {
+async function queryMyAccepted({ userId, role, permissions = [], taskGroup, status, keyword, publisherId, scoreItemId, dateStart, dateEnd, shopName, page, pageSize }) {
   const offset = (page - 1) * pageSize;
-  let where = 'WHERE 1=1';
-  const params = [];
+  let where = 'WHERE t.designer_id = ?';
+  const params = [userId];
+  const group = taskGroup || (role === 'basic_designer' ? 'cs' : role === 'operator_assistant' ? 'operator' : 'design');
+  const hasPerm = (code) => role === 'admin' || role === 'sub_admin' || permissions.includes(code);
+  const requiredPerm = group === 'cs' ? 'basic.tasks.cs' : group === 'operator' ? 'assistant.tasks.operator' : 'designer.tasks.design';
 
-  if (role === 'designer') {
-    where += ' AND t.designer_id = ? AND t.task_group = \'design\'';
-  } else if (role === 'basic_designer') {
-    where += ' AND t.designer_id = ? AND t.task_group = \'cs\'';
-  } else if (role === 'operator_assistant') {
-    where += ' AND t.designer_id = ? AND t.task_group = \'operator\'';
+  if (!hasPerm(requiredPerm)) {
+    where += ' AND 1=0';
   }
-  params.push(userId);
+
+  if (group === 'design') {
+    where += ' AND (t.task_group = ? OR t.task_group IS NULL OR t.task_group = \'\')';
+    params.push(group);
+  } else {
+    where += ' AND t.task_group = ?';
+    params.push(group);
+  }
 
   if (status) { where += ' AND t.status = ?'; params.push(status); }
-  if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`); }
+  if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`); }
   if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
   if (scoreItemId) { where += ' AND t.score_item_id = ?'; params.push(scoreItemId); }
   if (dateStart) { where += ' AND t.create_time >= ?'; params.push(dateStart + ' 00:00:00'); }
@@ -300,14 +323,25 @@ async function queryMyAccepted({ userId, role, status, keyword, publisherId, sco
 }
 
 /** 任务大厅 */
-async function queryTaskHall({ role, keyword, page, pageSize }) {
+async function queryTaskHall({ role, permissions = [], taskGroup, keyword, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE t.status = \'wait\'';
   const params = [];
+  const group = taskGroup || (role === 'basic_designer' ? 'cs' : role === 'operator_assistant' ? 'operator' : 'design');
+  const hasPerm = (code) => role === 'admin' || permissions.includes(code);
+  const requiredPerm = group === 'cs' ? 'basic.hall.cs' : group === 'operator' ? 'assistant.hall.operator' : 'designer.hall.design';
 
-  if (role === 'basic_designer') where += ' AND t.task_group = \'cs\'';
-  else if (role === 'designer') where += ' AND t.task_group = \'design\'';
-  else if (role === 'operator_assistant') where += ' AND t.task_group = \'operator\'';
+  if (!hasPerm(requiredPerm)) {
+    where += ' AND 1=0';
+  }
+
+  if (group === 'design') {
+    where += ' AND (t.task_group = ? OR t.task_group IS NULL OR t.task_group = \'\')';
+    params.push(group);
+  } else {
+    where += ' AND t.task_group = ?';
+    params.push(group);
+  }
 
   if (keyword) { where += ' AND (t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`); }
 
@@ -366,6 +400,52 @@ async function queryAllTasks({ status, keyword, publisherId, designerId, startDa
     dataParams: [...params, pageSize, offset],
     page, pageSize
   });
+}
+
+async function searchTasks({ userId, role, store, permissions = [], keyword, pageSize }) {
+  const limit = Math.min(parseInt(pageSize) || 12, 30);
+  const params = [];
+  let where = 'WHERE 1=1';
+  const hasPerm = (code) => role === 'admin' || permissions.includes(code);
+
+  if (role === 'admin' || role === 'sub_admin') {
+    const groups = [];
+    if (hasPerm('admin.tasks.design') || hasPerm('dashboard.design')) groups.push('design');
+    if (hasPerm('admin.tasks.operator') || hasPerm('dashboard.operator')) groups.push('operator');
+    if (hasPerm('admin.tasks.cs') || hasPerm('dashboard.cs')) groups.push('cs');
+    if (groups.length) {
+      where += ` AND COALESCE(t.task_group, 'design') IN (${groups.map(() => '?').join(',')})`;
+      params.push(...groups);
+    }
+  } else {
+    const accessParts = ['(t.publisher_id = ? OR t.designer_id = ?)'];
+    params.push(userId, userId);
+    if (role === 'operator') {
+      accessParts.push(`(COALESCE(t.task_group, 'design') IN ('design','operator') AND t.publisher_id IN (SELECT id FROM sys_user WHERE role = 'operator' AND store = ?))`);
+      params.push(store || '');
+    }
+    where += ` AND (${accessParts.join(' OR ')})`;
+  }
+
+  if (keyword) {
+    const like = `%${keyword}%`;
+    where += ` AND (
+      t.task_no LIKE ? OR t.title LIKE ? OR t.style_number LIKE ? OR
+      t.wangwang_id LIKE ? OR t.shop_name LIKE ? OR t.publisher_name LIKE ? OR t.designer_name LIKE ?
+    )`;
+    params.push(like, like, like, like, like, like, like);
+  }
+
+  const pool = getPool();
+  const [rows] = await pool.execute(
+    `SELECT ${TASK_SELECT}
+     FROM task_info t ${TASK_JOIN}
+     ${where}
+     ORDER BY t.update_time DESC
+     LIMIT ?`,
+    [...params, limit]
+  );
+  return { list: rows, total: rows.length, page: 1, pageSize: limit, totalPages: 1 };
 }
 
 // ==================== 统计 ====================
@@ -594,6 +674,7 @@ module.exports = {
   queryMyAccepted,
   queryTaskHall,
   queryAllTasks,
+  searchTasks,
   // 统计
   getPublisherSummary,
   getGroupCardStats,

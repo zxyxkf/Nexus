@@ -1,8 +1,8 @@
 <template>
   <div class="sidebar-nav" :class="{ 'is-collapsed': isCollapsed }">
     <!-- 管理员菜单 -->
-    <template v-if="store.isAdmin">
-      <template v-for="(item, i) in ADMIN_MENU" :key="'am-' + i">
+    <template v-if="adminItems.length || superAdminItems.length || adminExtraItems.length || superAdminExtraItems.length || subAdminScoreItems.length">
+      <template v-for="(item, i) in adminItems" :key="'am-' + i">
         <div v-if="item.section" class="nav-section-label">{{ item.section }}</div>
         <div
           v-else
@@ -15,23 +15,7 @@
         </div>
       </template>
 
-      <template v-if="store.isSuperAdmin">
-        <template v-for="(item, i) in SUPER_ADMIN_MENU" :key="'sam-' + i">
-          <div v-if="item.separator" class="nav-separator"></div>
-          <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-          <div
-            v-else
-            class="nav-item"
-            :class="{ active: activeMenu === item.path }"
-            @click="nav(item.path)"
-          >
-            <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-            <span class="nav-text">{{ item.label }}</span>
-          </div>
-        </template>
-      </template>
-
-      <template v-for="(item, i) in ADMIN_EXTRA_MENU" :key="'aem-' + i">
+      <template v-for="(item, i) in superAdminItems" :key="'sam-' + i">
         <div v-if="item.separator" class="nav-separator"></div>
         <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
         <div
@@ -45,21 +29,33 @@
         </div>
       </template>
 
-      <template v-if="store.isSuperAdmin">
-        <template v-for="(item, i) in SUPER_ADMIN_EXTRA_MENU" :key="'saem-' + i">
-          <div
-            class="nav-item"
-            :class="{ active: activeMenu === item.path }"
-            @click="nav(item.path)"
-          >
-            <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-            <span class="nav-text">{{ item.label }}</span>
-          </div>
-        </template>
+      <template v-for="(item, i) in adminExtraItems" :key="'aem-' + i">
+        <div v-if="item.separator" class="nav-separator"></div>
+        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+        <div
+          v-else
+          class="nav-item"
+          :class="{ active: activeMenu === item.path }"
+          @click="nav(item.path)"
+        >
+          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+          <span class="nav-text">{{ item.label }}</span>
+        </div>
+      </template>
+
+      <template v-for="(item, i) in superAdminExtraItems" :key="'saem-' + i">
+        <div
+          class="nav-item"
+          :class="{ active: activeMenu === item.path }"
+          @click="nav(item.path)"
+        >
+          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+          <span class="nav-text">{{ item.label }}</span>
+        </div>
       </template>
 
       <!-- 子管理员：基础美工分值审核 -->
-      <template v-if="store.isSubAdmin">
+      <template v-if="subAdminScoreItems.length">
         <template v-for="(item, i) in subAdminScoreItems" :key="'sal-' + i">
           <div v-if="item.separator" class="nav-separator"></div>
           <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
@@ -77,7 +73,7 @@
     </template>
 
     <!-- 运营菜单 -->
-    <template v-if="store.isOperator">
+    <template v-if="operatorItems.length || operatorExtraItems.length || operatorDataItems.length">
       <template v-for="(item, i) in operatorItems" :key="'op-' + i">
         <div v-if="item.separator" class="nav-separator"></div>
         <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
@@ -120,7 +116,7 @@
     </template>
 
     <!-- 客服菜单 -->
-    <template v-if="store.isCsAgent">
+    <template v-if="csAgentItems.length || csAgentDataItems.length">
       <template v-for="(item, i) in csAgentItems" :key="'cs-' + i">
         <div v-if="item.separator" class="nav-separator"></div>
         <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
@@ -150,7 +146,7 @@
     </template>
 
     <!-- 美工菜单 -->
-    <template v-if="store.isDesigner">
+    <template v-if="designerItems.length">
       <template v-for="(item, i) in designerItems" :key="'de-' + i">
         <div v-if="item.separator" class="nav-separator"></div>
         <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
@@ -167,7 +163,7 @@
     </template>
 
     <!-- 基础美工菜单 -->
-    <template v-if="store.isBasicDesigner">
+    <template v-if="basicDesignerItems.length || basicDesignerLeadItems.length">
       <template v-for="(item, i) in basicDesignerItems" :key="'bd-' + i">
         <div v-if="item.separator" class="nav-separator"></div>
         <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
@@ -182,7 +178,7 @@
         </div>
       </template>
       <!-- 基础美工组长额外菜单 -->
-      <template v-if="store.isBasicDesignerLead">
+      <template v-if="basicDesignerLeadItems.length">
         <template v-for="(item, i) in basicDesignerLeadItems" :key="'bdl-' + i">
           <div v-if="item.separator" class="nav-separator"></div>
           <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
@@ -200,7 +196,7 @@
     </template>
 
     <!-- 运营助理菜单 -->
-    <template v-if="store.isOperatorAssistant">
+    <template v-if="operatorAssistantItems.length">
       <template v-for="(item, i) in operatorAssistantItems" :key="'oa-' + i">
         <div v-if="item.separator" class="nav-separator"></div>
         <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
@@ -220,12 +216,13 @@
 
 <script setup>
 import { computed } from 'vue'
-import { DataAnalysis, User, List, Document, Setting, Plus, Select, DataLine, ShoppingCart } from '@element-plus/icons-vue'
+import { DataAnalysis, User, List, Document, Setting, Plus, Select, DataLine, ShoppingCart, Bell } from '@element-plus/icons-vue'
 import { useUserStore } from '@/store'
 import {
   ADMIN_MENU, SUPER_ADMIN_MENU, ADMIN_EXTRA_MENU, SUPER_ADMIN_EXTRA_MENU,
   publisherMenu, operatorExtraMenu, operatorDataMenu, designerMenu, csAgentDataMenu, basicDesignerLeadMenu
 } from '@/config/menus'
+import { filterMenuByPermission } from '@/utils/permissions'
 
 const props = defineProps({
   activePath: { type: String, default: '' },
@@ -237,18 +234,22 @@ const emit = defineEmits(['navigate'])
 const store = useUserStore()
 const activeMenu = computed(() => props.activePath)
 
-const iconMap = { DataAnalysis, User, List, Document, Setting, Plus, Select, DataLine, ShoppingCart }
+const iconMap = { DataAnalysis, User, List, Document, Setting, Plus, Select, DataLine, ShoppingCart, Bell }
 
-const operatorItems = publisherMenu('operator', '美工任务管理')
-const operatorExtraItems = operatorExtraMenu()
-const operatorDataItems = operatorDataMenu('operator')
-const csAgentItems = publisherMenu('cs', '客服任务')
-const designerItems = designerMenu('designer', '任务管理')
-const basicDesignerItems = designerMenu('basic', '基础任务')
-const basicDesignerLeadItems = basicDesignerLeadMenu()
-const subAdminScoreItems = basicDesignerLeadMenu('基础美工分值审核')
-const operatorAssistantItems = designerMenu('operator-assistant', '运营任务')
-const csAgentDataItems = csAgentDataMenu('cs')
+const adminItems = computed(() => filterMenuByPermission(ADMIN_MENU, store.userInfo))
+const superAdminItems = computed(() => filterMenuByPermission(SUPER_ADMIN_MENU, store.userInfo))
+const adminExtraItems = computed(() => filterMenuByPermission(ADMIN_EXTRA_MENU, store.userInfo))
+const superAdminExtraItems = computed(() => filterMenuByPermission(SUPER_ADMIN_EXTRA_MENU, store.userInfo))
+const operatorItems = computed(() => filterMenuByPermission(publisherMenu('operator', '美工任务管理'), store.userInfo))
+const operatorExtraItems = computed(() => filterMenuByPermission(operatorExtraMenu(), store.userInfo))
+const operatorDataItems = computed(() => filterMenuByPermission(operatorDataMenu('operator'), store.userInfo))
+const csAgentItems = computed(() => filterMenuByPermission(publisherMenu('cs', '客服任务'), store.userInfo))
+const designerItems = computed(() => filterMenuByPermission(designerMenu('designer', '任务管理'), store.userInfo))
+const basicDesignerItems = computed(() => filterMenuByPermission(designerMenu('basic', '基础任务'), store.userInfo))
+const basicDesignerLeadItems = computed(() => filterMenuByPermission(basicDesignerLeadMenu(), store.userInfo))
+const subAdminScoreItems = computed(() => filterMenuByPermission(basicDesignerLeadMenu('基础美工分值审核'), store.userInfo))
+const operatorAssistantItems = computed(() => filterMenuByPermission(designerMenu('operator-assistant', '运营任务'), store.userInfo))
+const csAgentDataItems = computed(() => filterMenuByPermission(csAgentDataMenu('cs'), store.userInfo))
 
 function nav(path) { emit('navigate', path) }
 </script>

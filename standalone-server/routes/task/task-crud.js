@@ -3,11 +3,11 @@
  */
 const express = require('express');
 const router = express.Router();
-const { requireRole } = require('../../middleware/auth');
+const { requireRole, requireAnyPermission } = require('../../middleware/auth');
 const taskService = require('../../services/task.service');
 
 // 创建任务
-router.post('/create', requireRole('operator', 'admin', 'cs_agent'), async (req, res, next) => {
+router.post('/create', requireAnyPermission(['task.create.design', 'task.create.operator', 'task.create.cs'], 'operator', 'admin', 'cs_agent'), async (req, res, next) => {
   try {
     const result = await taskService.createTask(req.body, req.user);
     res.json({ code: 0, ...result });
@@ -31,7 +31,7 @@ router.post('/delete', requireRole('admin', 'sub_admin'), async (req, res, next)
 });
 
 // 编辑草稿并重新发布
-router.put('/update', requireRole('operator', 'admin', 'cs_agent'), async (req, res, next) => {
+router.put('/update', requireAnyPermission(['task.create.design', 'task.create.operator', 'task.create.cs'], 'operator', 'admin', 'cs_agent'), async (req, res, next) => {
   try {
     const result = await taskService.updateTask(req.body, req.user);
     res.json({ code: 0, ...result });

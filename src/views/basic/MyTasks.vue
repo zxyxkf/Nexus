@@ -195,6 +195,7 @@
           </div>
 
           <div class="inline-detail-body">
+            <TaskStatusTimeline :task="currentTask" task-group="cs" />
             <div class="inline-detail-stat-card">
               <label>发布人</label>
               <span>{{ currentTask.publisher_name }}</span>
@@ -289,6 +290,7 @@
         <el-input-number v-model="appliedScore" :min="1" :step="0.5" :precision="1" style="width:100%;" placeholder="默认为1分，大于1需组长审核" />
         <div class="form-hint">默认1分无需审核；大于1分需组长审核通过后生效</div>
       </el-form-item>
+      <el-progress v-if="uploadLoading" :percentage="uploadProgress" style="margin-top:12px;" />
       <template #footer>
         <el-button @click="uploadVisible = false">取消</el-button>
         <el-button type="primary" @click="handleUpload" :loading="uploadLoading">
@@ -341,8 +343,10 @@ import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { useOverdueSort } from '@/composables/useOverdueSort'
+import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { getUser } from '@/utils/auth'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
+import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -360,6 +364,7 @@ const statusFilter = ref('')
 const keyword = ref('')
 const publisherFilter = ref('')
 const dateFilter = ref('')
+usePersistedFilters('basic_my_tasks', { statusFilter, keyword, publisherFilter, dateFilter })
 const publisherList = ref([])
 const fixedStatus = computed(() => route.meta.fixedStatus || '')
 const pageTitle = computed(() => route.meta.title || '我的任务')
@@ -370,6 +375,7 @@ const uploadTaskId = ref(null)
 const uploadUiFiles = ref([])
 const fileList = ref([])
 const uploadRef = ref(null)
+const uploadProgress = ref(0)
 
 const appliedScore = ref(1)
 const transferVisible = ref(false)
@@ -435,6 +441,7 @@ async function loadData(options = {}) {
       page: page.value,
       pageSize: pageSize.value,
       status: fixedStatus.value || statusFilter.value || undefined,
+      taskGroup: 'cs',
       keyword: keyword.value || undefined,
       publisherId: publisherFilter.value || undefined,
       dateStart: dateFilter.value || undefined,
@@ -529,11 +536,16 @@ async function handleUpload() {
   }
 
   uploadLoading.value = true
+  uploadProgress.value = 0
   try {
     const res = await uploadFilesApi(uploadTaskId.value, fileList.value, 'work', {
-      appliedScore: appliedScore.value
+      appliedScore: appliedScore.value,
+      onUploadProgress: (event) => {
+        if (event.total) uploadProgress.value = Math.min(99, Math.round((event.loaded * 100) / event.total))
+      }
     })
     if (res.code === 0) {
+      uploadProgress.value = 100
       ElMessage.success(res.msg || '上传成功')
       uploadUiFiles.value = []
       fileList.value = []
@@ -547,6 +559,7 @@ async function handleUpload() {
     ElMessage.error('上传失败: ' + (err.response?.data?.msg || err.message || '未知错误'))
   } finally {
     uploadLoading.value = false
+    setTimeout(() => { uploadProgress.value = 0 }, 500)
   }
 }
 
@@ -640,7 +653,7 @@ const { getInt } = useConfig()
 const maxFileCount = computed(() => getInt('upload.max_file_count', 10))
 const maxFileSizeMB = computed(() => getInt('upload.max_file_size_mb', 50))
 const formatSize = formatFileSize
-useRealtime(loadData, 3000)
+useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVisible.value || transferVisible.value })
 </script>
 
 <style scoped>

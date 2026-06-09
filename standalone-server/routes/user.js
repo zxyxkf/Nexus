@@ -24,6 +24,33 @@ router.get('/list', requireRole('admin', 'sub_admin'), async (req, res, next) =>
   }
 });
 
+router.get('/permissions/catalog', requireRole('admin'), async (req, res, next) => {
+  try {
+    const data = await userService.getPermissionCatalog();
+    res.json({ code: 0, msg: '查询成功', data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/permissions/:userId', requireRole('admin'), async (req, res, next) => {
+  try {
+    const data = await userService.getUserPermissions(req.params.userId);
+    res.json({ code: 0, msg: '查询成功', data });
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.post('/permissions/save', requireRole('admin'), async (req, res, next) => {
+  try {
+    await userService.saveUserPermissions(req.body.userId, req.body.permissions, req.body.deniedPermissions);
+    res.json({ code: 0, msg: '权限已保存，用户重新登录后生效' });
+  } catch (err) {
+    next(err);
+  }
+});
+
 /**
  * POST /api/user/create - 新增用户（仅超级管理员）
  */

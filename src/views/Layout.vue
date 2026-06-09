@@ -54,7 +54,7 @@
           <span class="nav-text">{{ isCollapse ? '展开菜单' : '折叠菜单' }}</span>
         </div>
         <div class="sidebar-version">
-          <span class="version-text">v15.2.0</span>
+          <span class="version-text">v15.2.2</span>
           <span class="version-dot">·</span>
           <span class="version-text">企业版</span>
         </div>
@@ -88,6 +88,10 @@
         <div class="header-right">
           <!-- 实时时钟 -->
           <span class="header-clock">{{ currentTime }}</span>
+
+          <QuickActions />
+
+          <GlobalTaskSearch />
 
           <!-- 通知 -->
           <el-popover
@@ -272,14 +276,17 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store'
-import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, deleteNotification, onConnectionChange, getOnlineStatus } from '@/api'
+import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, deleteNotification, onConnectionChange, getOnlineStatus, getTaskDetailApi } from '@/api'
 import { ROLE_LABEL, ROLE_TAG_TYPE } from '@/utils/format'
 import { useConfig } from '@/composables/useConfig'
 import { HomeFilled, Bell, Moon, Sunny, User, Connection, WarningFilled } from '@element-plus/icons-vue'
 import InfiniteGridBg from '@/components/InfiniteGridBg.vue'
 import SidebarMenu from '@/components/SidebarMenu.vue'
 import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
+import GlobalTaskSearch from '@/components/GlobalTaskSearch.vue'
+import QuickActions from '@/components/QuickActions.vue'
 import { initNotificationToast, destroyNotificationToast } from '@/composables/useNotificationToast'
+import { openTask } from '@/utils/task-navigation'
 
 const route = useRoute()
 const router = useRouter()
@@ -378,7 +385,13 @@ async function handleNotifyClick(item) {
     } catch (e) {}
   }
   if (item.task_id) {
-    router.push(`/admin/tasks?highlight=${item.task_id}`)
+    notifyPopoverVisible.value = false
+    try {
+      const res = await getTaskDetailApi({ taskId: item.task_id })
+      openTask(res.code === 0 ? res.data : { ...item, id: item.task_id })
+    } catch {
+      openTask({ ...item, id: item.task_id })
+    }
   }
 }
 
@@ -849,10 +862,9 @@ async function changePassword() {
 .header-icon-btn:hover {
   background: var(--dd-primary-lighter);
   color: var(--dd-primary);
-  transform: scale(1.08);
 }
 .header-icon-btn:active {
-  transform: scale(0.95);
+  opacity: 0.8;
 }
 
 /* 铃铛角标 */
@@ -974,8 +986,8 @@ async function changePassword() {
 /* 通知脉冲动画 */
 .notify-pulse { animation: notifyPulse 0.6s ease-in-out 2; }
 @keyframes notifyPulse {
-  0%, 100% { transform: scale(1); }
-  50% { transform: scale(1.25); color: var(--dd-primary); }
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.65; color: var(--dd-primary); }
 }
 
 /* 重连状态条 */
@@ -1078,11 +1090,10 @@ async function changePassword() {
 .theme-toggle-btn.is-hovered {
   color: var(--dd-primary);
   box-shadow: 0 0 0 1.5px var(--dd-primary-light);
-  transform: scale(1.1);
 }
 
 .theme-toggle-btn:active,
 .theme-toggle-btn.is-pressed {
-  transform: scale(0.94);
+  opacity: 0.8;
 }
 </style>

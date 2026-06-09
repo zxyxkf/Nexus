@@ -422,7 +422,7 @@ async function getRejectReason(action) {
 }
 
 const formatSize = formatFileSize
-useRealtime(loadData, 3000)
+useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || reviewLoading.value })
 </script>
 
 <style scoped>

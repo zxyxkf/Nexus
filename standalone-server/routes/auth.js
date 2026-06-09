@@ -11,6 +11,7 @@ const { getPool, getMode, executeTransaction } = require('../config/database');
 const { generateToken, generateAccessToken, generateRefreshToken, requireAuth, requireRole } = require('../middleware/auth');
 const { JWT_REFRESH_EXPIRES_IN } = require('../config/env');
 const { writeOperLog } = require('../utils/operLog');
+const permissionService = require('../services/permission.service');
 
 // 登录频率限制：5 次/分钟/IP（测试模式放宽）
 const isTest = process.env.DISABLE_RATE_LIMIT === '1';
@@ -76,13 +77,15 @@ router.post('/login', loginLimiter, async (req, res, next) => {
     }
 
     // 签发 access token + refresh token
+    const permissions = await permissionService.getEffectivePermissions(user);
     const accessToken = generateAccessToken({
       id: user.id,
       username: user.username,
       role: user.role,
       realName: user.real_name,
       store: user.store || '',
-      isTeamLead: user.is_team_lead || 0
+      isTeamLead: user.is_team_lead || 0,
+      permissions
     });
     const refreshToken = generateRefreshToken();
 
@@ -122,7 +125,8 @@ router.post('/login', loginLimiter, async (req, res, next) => {
           realName: user.real_name,
           role: user.role,
           store: user.store || '',
-          isTeamLead: user.is_team_lead || 0
+          isTeamLead: user.is_team_lead || 0,
+          permissions
         }
       }
     });
@@ -146,7 +150,7 @@ router.post('/refresh', async (req, res, next) => {
 
     // 查 DB：token 存在 + 未撤销 + 未过期
     const [rows] = await pool.execute(
-      `SELECT rt.id, rt.user_id, rt.expires_at, u.username, u.real_name, u.role, u.status, u.store
+      `SELECT rt.id, rt.user_id, rt.expires_at, u.username, u.real_name, u.role, u.status, u.store, u.is_team_lead
        FROM sys_refresh_token rt
        JOIN sys_user u ON u.id = rt.user_id
        WHERE rt.token = ? AND rt.revoked = 0`,
@@ -171,12 +175,19 @@ router.post('/refresh', async (req, res, next) => {
     }
 
     // 签发新的 access token（refresh token 不轮转，避免并发竞态）
+    const permissions = await permissionService.getEffectivePermissions({
+      id: record.user_id,
+      role: record.role,
+      isTeamLead: record.is_team_lead || 0
+    });
+
     const accessToken = generateAccessToken({
       id: record.user_id,
       username: record.username,
       role: record.role,
       realName: record.real_name,
-      store: record.store || ''
+      store: record.store || '',
+      permissions
     });
 
     res.json({
@@ -189,7 +200,8 @@ router.post('/refresh', async (req, res, next) => {
           username: record.username,
           realName: record.real_name,
           role: record.role,
-          store: record.store || ''
+          store: record.store || '',
+          permissions
         }
       }
     });

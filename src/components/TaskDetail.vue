@@ -8,6 +8,8 @@
     @update:model-value="$emit('close')"
   >
     <template v-if="task">
+      <TaskStatusTimeline :task="task" :task-group="taskGroup" class="detail-timeline" />
+
       <!-- 任务基本信息 -->
       <el-descriptions :column="3" border size="small" class="detail-descriptions">
         <el-descriptions-item label="任务编号">{{ task.task_no }}</el-descriptions-item>
@@ -56,16 +58,19 @@
               v-for="file in refImageFiles"
               :key="file.id"
               class="image-item"
+              draggable="true"
+              @dragstart="setupFileDrag($event, file)"
               @click="previewImage(file)"
             >
               <el-image :src="file._previewSrc || getFileUrl(file)" fit="cover" class="thumb-img" />
               <div class="image-name">{{ file.file_name }}</div>
+              <el-button link type="primary" size="small" @click.stop="downloadFile(file)">下载</el-button>
             </div>
           </div>
         </div>
         <div v-if="refAttachments.length" class="file-section">
           <div class="section-label">参考文件 ({{ refAttachments.length }})</div>
-          <div v-for="file in refAttachments" :key="file.id" class="file-link">
+          <div v-for="file in refAttachments" :key="file.id" class="file-link" draggable="true" @dragstart="setupFileDrag($event, file)">
             <el-icon><Document /></el-icon>
             <span style="cursor:pointer;color:#409EFF" @click="downloadFile(file)">
               {{ file.file_name }} ({{ formatSize(file.file_size) }})
@@ -83,16 +88,19 @@
               v-for="file in workImageFiles"
               :key="file.id"
               class="image-item"
+              draggable="true"
+              @dragstart="setupFileDrag($event, file)"
               @click="previewImage(file)"
             >
               <el-image :src="file._previewSrc || getFileUrl(file)" fit="cover" class="thumb-img" />
               <div class="image-name">{{ file.file_name }}</div>
+              <el-button link type="primary" size="small" @click.stop="downloadFile(file)">下载</el-button>
             </div>
           </div>
         </div>
         <div v-if="workAttachments.length" class="file-section">
           <div class="section-label">附件 ({{ workAttachments.length }})</div>
-          <div v-for="file in workAttachments" :key="file.id" class="file-link">
+          <div v-for="file in workAttachments" :key="file.id" class="file-link" draggable="true" @dragstart="setupFileDrag($event, file)">
             <el-icon><Document /></el-icon>
             <span style="cursor:pointer;color:#409EFF" @click="downloadFile(file)">
               {{ file.file_name }} ({{ formatSize(file.file_size) }})
@@ -121,14 +129,16 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { Document } from '@element-plus/icons-vue'
-import { getFileUrl, downloadFile as downloadFileUtil } from '@/api/upload'
+import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import { getFileUrl, downloadFile as downloadFileUtil, setupFileDrag } from '@/api/upload'
 import { useTaskStatus } from '@/composables/useTaskStatus'
 
 const { statusLabel, statusType } = useTaskStatus()
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
-  task: { type: Object, default: null }
+  task: { type: Object, default: null },
+  taskGroup: { type: String, default: 'design' }
 })
 
 defineEmits(['close'])
@@ -176,13 +186,14 @@ function formatSize(bytes) {
 </script>
 
 <style scoped>
+.detail-timeline { margin-bottom: 16px; }
 .detail-descriptions { margin-bottom: 16px; }
 .task-description { margin: 12px 0; padding: 10px; background: #f5f7fa; border-radius: 4px; }
 .task-description p { margin: 4px 0 0; color: #606266; }
 .detail-section { margin-top: 16px; border-top: 1px solid #EBEEF5; padding-top: 12px; }
 .section-label { font-weight: 600; margin-bottom: 8px; color: #303133; }
 .image-grid { display: flex; flex-wrap: wrap; gap: 8px; }
-.image-item { width: 100px; cursor: pointer; }
+.image-item { width: 100px; cursor: pointer; text-align: center; }
 .thumb-img { width: 100px; height: 100px; border-radius: 4px; object-fit: cover; border: 1px solid #EBEEF5; }
 .image-name { font-size: 11px; color: #909399; text-align: center; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; margin-top: 2px; }
 .file-section { margin-bottom: 12px; }

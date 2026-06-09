@@ -4,6 +4,7 @@
 const bcrypt = require('bcryptjs');
 const AppError = require('../utils/AppError');
 const userDao = require('../dao/user.dao');
+const permissionService = require('./permission.service');
 
 const VALID_ROLES = ['admin', 'sub_admin', 'operator', 'designer', 'cs_agent', 'basic_designer', 'operator_assistant'];
 const DEFAULT_PASSWORD = '123456';
@@ -17,6 +18,28 @@ async function getUserList(query) {
   const status = statusStr !== undefined && statusStr !== '' ? parseInt(statusStr) : undefined;
 
   return userDao.getUserList({ page, pageSize, role, status, keyword });
+}
+
+async function getPermissionCatalog() {
+  return permissionService.getPermissionCatalog();
+}
+
+async function getUserPermissions(userId) {
+  if (!userId) throw new AppError(400, '用户ID不能为空');
+  const user = await userDao.findFullById(userId);
+  if (!user) throw new AppError(400, '用户不存在');
+  const overrides = await permissionService.getUserOverrides(userId);
+  return {
+    defaults: require('../config/permissions').defaultPermissionsFor(user.role, user.is_team_lead),
+    allow: overrides.filter(p => p.effect === 'allow').map(p => p.permission_code),
+    deny: overrides.filter(p => p.effect === 'deny').map(p => p.permission_code),
+    effective: await permissionService.getEffectivePermissions(user)
+  };
+}
+
+async function saveUserPermissions(userId, permissions, deniedPermissions) {
+  if (!userId) throw new AppError(400, '用户ID不能为空');
+  await permissionService.saveUserPermissions(userId, permissions || [], deniedPermissions || []);
 }
 
 async function getDesignerList() {
@@ -116,6 +139,9 @@ async function deleteUser(id, currentUserId) {
 
 module.exports = {
   getUserList,
+  getPermissionCatalog,
+  getUserPermissions,
+  saveUserPermissions,
   getDesignerList,
   getBasicDesignerList,
   getOperatorAssistantList,

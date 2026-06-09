@@ -29,21 +29,45 @@
         <el-date-picker v-model="filter.dateRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" value-format="YYYY-MM-DD" style="width:260px;" @change="loadData" />
         <el-button @click="loadData" type="primary">查询</el-button>
         <el-button @click="resetFilter">重置</el-button>
+        <el-button @click="exportCurrentTasks">导出当前筛选</el-button>
+        <el-button :disabled="selectedRows.length === 0" @click="exportSelectedTasks">
+          导出选中({{ selectedRows.length }})
+        </el-button>
+        <el-button :disabled="selectedRows.length === 0" @click="downloadSelectedFiles">
+          下载文件({{ selectedRows.length }})
+        </el-button>
+        <el-button type="danger" :disabled="selectedRows.length === 0" @click="batchDeleteSelected">
+          批量删除({{ selectedRows.length }})
+        </el-button>
+        <el-popover placement="bottom-end" :width="220" trigger="click">
+          <template #reference>
+            <el-button>列设置</el-button>
+          </template>
+          <div class="column-settings">
+            <el-checkbox-group v-model="visibleColumns">
+              <el-checkbox v-for="col in columnOptions" :key="col.key" :label="col.key">{{ col.label }}</el-checkbox>
+            </el-checkbox-group>
+          </div>
+        </el-popover>
       </div>
 
-      <el-table :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无数据">
-        <el-table-column prop="task_no" label="任务编号" min-width="140" />
-        <el-table-column prop="title" label="工作项目" min-width="140" show-overflow-tooltip />
-        <el-table-column label="分值" align="center">
+      <el-table :data="list" v-loading="loading" stripe style="width:100%" @selection-change="onSelectionChange">
+        <template #empty>
+          <TaskEmptyState description="暂无任务记录" hint="可以调整筛选条件后重新查询" action-text="重置筛选" @action="resetFilter" />
+        </template>
+        <el-table-column type="selection" width="45" />
+        <el-table-column v-if="isColumnVisible('task_no')" prop="task_no" label="任务编号" min-width="140" />
+        <el-table-column v-if="isColumnVisible('title')" prop="title" label="工作项目" min-width="140" show-overflow-tooltip />
+        <el-table-column v-if="isColumnVisible('score')" label="分值" align="center">
           <template #default="{ row }">{{ row.score || '-' }}</template>
         </el-table-column>
-        <el-table-column label="状态">
+        <el-table-column v-if="isColumnVisible('status')" label="状态">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column prop="publisher_name" :label="publisherLabel" />
-        <el-table-column prop="designer_name" :label="designerLabel" />
+        <el-table-column v-if="isColumnVisible('publisher')" prop="publisher_name" :label="publisherLabel" />
+        <el-table-column v-if="isColumnVisible('designer')" prop="designer_name" :label="designerLabel" />
         <el-table-column label="操作" width="120">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
@@ -81,6 +105,7 @@
         </div>
 
         <div class="inline-detail-body">
+          <TaskStatusTimeline :task="currentTask" :task-group="taskGroup" />
           <div class="inline-detail-stat-card">
             <label>{{ publisherLabel }}</label>
             <span>{{ currentTask.publisher_name }}</span>
@@ -188,8 +213,12 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Delete, Document } from '@element-plus/icons-vue'
-import { getAllTasksApi, getTaskDetailApi, getUserListApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, deleteTaskApi, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getAllTasksApi, getTaskDetailApi, getUserListApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, deleteTaskApi, batchDeleteApi, batchDownloadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize } from '@/utils/format'
+import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskEmptyState from '@/components/TaskEmptyState.vue'
+import { usePersistedFilters } from '@/composables/usePersistedFilters'
+import { exportTasksApi } from '@/api/export'
 
 const route = useRoute()
 const router = useRouter()
@@ -199,8 +228,20 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(15)
 const filter = reactive({ keyword: '', status: '', publisherId: '', designerId: '', dateRange: null })
+usePersistedFilters(`admin_all_tasks_${route.meta.taskGroup || 'design'}`, filter)
+applyQueryFilters()
 const publisherList = ref([])
 const designerList = ref([])
+const selectedRows = ref([])
+const columnOptions = [
+  { key: 'task_no', label: '任务编号' },
+  { key: 'title', label: '工作项目' },
+  { key: 'score', label: '分值' },
+  { key: 'status', label: '状态' },
+  { key: 'publisher', label: '发布人' },
+  { key: 'designer', label: '接单人' }
+]
+const visibleColumns = ref(JSON.parse(localStorage.getItem(`admin_task_columns_${route.meta.taskGroup || 'design'}`) || 'null') || columnOptions.map(c => c.key))
 
 const detailVisible = ref(false)
 const currentTask = ref(null)
@@ -214,6 +255,8 @@ const designerLabel = computed(() => taskGroup.value === 'cs' ? '基础美工' :
 
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
+function isColumnVisible(key) { return visibleColumns.value.includes(key) }
+function onSelectionChange(rows) { selectedRows.value = rows }
 
 const refImageFiles = computed(() => {
   if (!currentTask.value?.files) return []
@@ -262,6 +305,51 @@ async function loadData() {
   } finally { loading.value = false }
 }
 
+async function exportCurrentTasks() {
+  const blob = await exportTasksApi({
+    keyword: filter.keyword || undefined,
+    status: filter.status || undefined,
+    publisherId: filter.publisherId || undefined,
+    designerId: filter.designerId || undefined,
+    taskGroup: taskGroup.value,
+    startDate: filter.dateRange?.[0] || undefined,
+    endDate: filter.dateRange?.[1] || undefined
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${route.meta.title || '任务列表'}_${new Date().toISOString().slice(0, 10)}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function exportSelectedTasks() {
+  if (!selectedRows.value.length) return
+  const blob = await exportTasksApi({
+    taskIds: selectedRows.value.map(r => r.id).join(','),
+    taskGroup: taskGroup.value
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `${route.meta.title || '任务列表'}_选中_${new Date().toISOString().slice(0, 10)}.xlsx`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
+async function downloadSelectedFiles() {
+  if (!selectedRows.value.length) return
+  const blob = await batchDownloadFilesApi({
+    taskIds: selectedRows.value.map(r => r.id).join(',')
+  })
+  const url = URL.createObjectURL(blob)
+  const a = document.createElement('a')
+  a.href = url
+  a.download = `任务文件_${new Date().toISOString().slice(0, 10)}.zip`
+  a.click()
+  URL.revokeObjectURL(url)
+}
+
 watch(() => route.query.openTask, (newTaskId) => {
   if (newTaskId && list.value.length > 0) {
     const task = list.value.find(t => t.id == newTaskId)
@@ -300,6 +388,13 @@ function resetFilter() {
   loadData()
 }
 
+function applyQueryFilters() {
+  if (route.query.status) filter.status = route.query.status
+  if (route.query.startDate || route.query.endDate) {
+    filter.dateRange = [route.query.startDate || route.query.endDate, route.query.endDate || route.query.startDate]
+  }
+}
+
 async function viewDetail(row) {
   try {
     const res = await getTaskDetailApi({ taskId: row.id })
@@ -331,9 +426,36 @@ async function deleteRow(row) {
   } catch {}
 }
 
+async function batchDeleteSelected() {
+  if (!selectedRows.value.length) return
+  try {
+    await ElMessageBox.confirm(`确认删除选中的 ${selectedRows.value.length} 个任务？将同时删除关联文件。`, '批量删除确认', { confirmButtonText: '确认删除', type: 'warning' })
+    const res = await batchDeleteApi({ taskIds: selectedRows.value.map(r => r.id) })
+    if (res.code === 0) {
+      ElMessage.success(res.msg)
+      selectedRows.value = []
+      await loadData()
+    } else {
+      ElMessage.error(res.msg)
+    }
+  } catch {}
+}
+
+watch(visibleColumns, (cols) => {
+  localStorage.setItem(`admin_task_columns_${taskGroup.value}`, JSON.stringify(cols))
+}, { deep: true })
+
 watch(() => route.meta.taskGroup, () => {
-  resetFilter()
+  filter.keyword = ''
+  filter.status = ''
+  filter.publisherId = ''
+  filter.designerId = ''
+  filter.dateRange = null
+  visibleColumns.value = JSON.parse(localStorage.getItem(`admin_task_columns_${route.meta.taskGroup || 'design'}`) || 'null') || columnOptions.map(c => c.key)
+  applyQueryFilters()
+  page.value = 1
   loadUsers()
+  loadData()
 })
 
 onMounted(() => { loadData(); loadUsers() })
@@ -353,4 +475,6 @@ onMounted(() => { loadData(); loadUsers() })
 }
 .file-card-size { font-size: 11px; color: var(--dd-text-secondary); }
 .file-download-btn { position: absolute; right: 12px; bottom: 12px; background: rgba(255, 255, 255, 0.9); border-radius: 4px; }
+.column-settings { display: flex; flex-direction: column; gap: 6px; }
+.column-settings :deep(.el-checkbox-group) { display: flex; flex-direction: column; gap: 6px; }
 </style>

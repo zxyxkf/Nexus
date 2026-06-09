@@ -181,6 +181,7 @@
           </div>
 
           <div class="inline-detail-body">
+            <TaskStatusTimeline :task="currentTask" task-group="operator" />
             <div class="inline-detail-stat-card">
               <label>店铺</label>
               <span>{{ currentTask.shop_name || '-' }}</span>
@@ -328,8 +329,10 @@ import { getMyPublishedApi, getTaskDetailApi, urgeTaskApi, getFileUrl, fetchImag
 import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { getUser } from '@/utils/auth'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
+import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -343,6 +346,7 @@ const statusFilter = ref('')
 const assistantFilter = ref('')
 const publisherFilter = ref('')
 const dateRange = ref(null)
+usePersistedFilters('operator_op_my_tasks', { statusFilter, assistantFilter, publisherFilter, dateRange })
 const assistantList = ref([])
 const publisherList = ref([])
 
@@ -594,7 +598,7 @@ onUnmounted(() => {
   window.removeEventListener('paste', handleEditRefPaste)
 })
 
-useRealtime(loadData, 3000)
+useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || editVisible.value })
 </script>
 
 <style scoped>

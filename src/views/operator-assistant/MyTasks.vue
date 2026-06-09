@@ -183,6 +183,7 @@
           </div>
 
           <div class="inline-detail-body">
+            <TaskStatusTimeline :task="currentTask" task-group="operator" />
             <div class="inline-detail-stat-card">
               <label>店铺</label>
               <span>{{ currentTask.shop_name || '-' }}</span>
@@ -299,6 +300,7 @@
           </div>
         </template>
       </el-upload>
+      <el-progress v-if="uploading" :percentage="uploadProgress" style="margin-top:12px;" />
       <template #footer>
         <el-button @click="uploadVisible = false">取消</el-button>
         <el-button type="primary" :loading="uploading" @click="handleUpload">上传</el-button>
@@ -317,7 +319,9 @@ import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
+import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -335,6 +339,7 @@ const statusFilter = ref('')
 const dateRange = ref(null)
 const publisherFilter = ref('')
 const shopFilter = ref('')
+usePersistedFilters('operator_assistant_my_tasks', { statusFilter, dateRange, publisherFilter, shopFilter })
 const publisherList = ref([])
 const fixedStatus = computed(() => route.meta.fixedStatus || '')
 const pageTitle = computed(() => route.meta.title || '我的任务')
@@ -355,6 +360,7 @@ const uploadQuantity = ref(1)
 const uploadAllChecked = ref(false)
 const rawUploadFiles = ref([])
 const workPath = ref('')
+const uploadProgress = ref(0)
 
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || '' }
@@ -395,6 +401,7 @@ async function loadData(options = {}) {
       page: page.value,
       pageSize: pageSize.value,
       status: fixedStatus.value || statusFilter.value || undefined,
+      taskGroup: 'operator',
       dateStart: dateRange.value?.[0] || undefined,
       dateEnd: dateRange.value?.[1] || undefined,
       publisherId: publisherFilter.value || undefined,
@@ -465,12 +472,17 @@ function openUploadDialog(row) {
 async function handleUpload() {
   // 运营助理可以不选文件，仅提交完成数量
   uploading.value = true
+  uploadProgress.value = 0
   try {
     const res = await uploadFilesApi(uploadingTaskId.value, rawUploadFiles.value, 'work', {
       actualQuantity: uploadQuantity.value,
-      workPath: workPath.value
+      workPath: workPath.value,
+      onUploadProgress: (event) => {
+        if (event.total) uploadProgress.value = Math.min(99, Math.round((event.loaded * 100) / event.total))
+      }
     })
     if (res.code === 0) {
+      uploadProgress.value = 100
       ElMessage.success('上传成功')
       uploadVisible.value = false
       workPath.value = ''
@@ -483,6 +495,7 @@ async function handleUpload() {
     ElMessage.error('上传失败: ' + (e.message || '网络错误'))
   } finally {
     uploading.value = false
+    setTimeout(() => { uploadProgress.value = 0 }, 500)
   }
 }
 
@@ -518,7 +531,7 @@ watch(uploadAllChecked, (val) => {
   if (val) uploadQuantity.value = uploadTaskQuantity.value
 })
 
-useRealtime(loadData, 3000)
+useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVisible.value })
 </script>
 
 <style scoped>

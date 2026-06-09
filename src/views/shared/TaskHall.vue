@@ -21,7 +21,10 @@
         </div>
       </template>
 
-      <el-table :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无可领取任务" highlight-current-row>
+      <el-table :data="list" v-loading="loading" stripe style="width:100%" highlight-current-row>
+        <template #empty>
+          <TaskEmptyState description="暂无可领取任务" hint="可稍后查看，或清空搜索条件后重试" action-text="清空搜索" @action="clearSearch" />
+        </template>
         <el-table-column prop="task_no" label="任务编号" width="140" show-overflow-tooltip />
         <el-table-column v-if="isOperatorAssistant" prop="shop_name" label="店铺" width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.shop_name || '-' }}</template>
@@ -235,10 +238,16 @@ import { getTaskHallApi, acceptTaskApi, getTaskDetailApi, getFileUrl, fetchImage
 import { formatFileSize } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import TaskEmptyState from '@/components/TaskEmptyState.vue'
 
 const route = useRoute()
 const isBasicDesigner = computed(() => route.meta.role === 'basic_designer')
 const isOperatorAssistant = computed(() => route.meta.role === 'operator_assistant')
+const taskGroup = computed(() => {
+  if (route.meta.role === 'basic_designer') return 'cs'
+  if (route.meta.role === 'operator_assistant') return 'operator'
+  return 'design'
+})
 
 const loading = ref(false)
 const list = ref([])
@@ -299,7 +308,8 @@ async function loadData(options = {}) {
     const res = await getTaskHallApi({
       page: page.value,
       pageSize: pageSize.value,
-      keyword: keyword.value || undefined
+      keyword: keyword.value || undefined,
+      taskGroup: taskGroup.value
     })
     if (res.code === 0) {
       list.value = res.data.list
@@ -310,6 +320,12 @@ async function loadData(options = {}) {
   } finally {
     if (!options.silent) loading.value = false
   }
+}
+
+function clearSearch() {
+  keyword.value = ''
+  page.value = 1
+  loadData()
 }
 
 async function acceptTask(row) {
@@ -330,7 +346,7 @@ async function acceptTask(row) {
   }
 }
 
-useRealtime(loadData, 3000)
+useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value })
 </script>
 
 <style scoped>

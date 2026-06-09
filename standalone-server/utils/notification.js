@@ -22,7 +22,7 @@ function roleLabel(role) {
  * @param {string} opts.content - 通知内容
  * @param {number} opts.taskId - 关联任务ID
  */
-async function sendNotification({ userId, type, title, content, taskId, taskTitle }) {
+async function sendNotification({ userId, type, title, content, taskId, taskTitle, taskGroup, publisherId, designerId }) {
   try {
     await execute(
       `INSERT INTO sys_notification (user_id, type, title, content, task_id)
@@ -44,6 +44,9 @@ async function sendNotification({ userId, type, title, content, taskId, taskTitl
         type: wsTypeMap[type] || 'info',
         taskId: taskId || undefined,
         taskTitle: taskTitle || title,
+        task_group: taskGroup || undefined,
+        publisher_id: publisherId || undefined,
+        designer_id: designerId || undefined,
         title,
         content
       });
@@ -69,7 +72,10 @@ async function notifyTaskEvent(eventType, task, actor) {
       title: '任务已接单',
       taskTitle: title,
       content: `${roleLabel(actor?.role)} ${actor?.realName || ''} 已接取您的任务「${title}」`,
-      taskId: task.id
+      taskId: task.id,
+      taskGroup: task.task_group,
+      publisherId: publisher_id,
+      designerId: designer_id
     },
     task_submit: {
       userId: publisher_id,
@@ -77,7 +83,10 @@ async function notifyTaskEvent(eventType, task, actor) {
       title: '作品已提交',
       taskTitle: title,
       content: `${roleLabel(actor?.role)} ${actor?.realName || ''} 已提交任务「${title}」的作品`,
-      taskId: task.id
+      taskId: task.id,
+      taskGroup: task.task_group,
+      publisherId: publisher_id,
+      designerId: designer_id
     },
     task_review_pass: {
       userId: designer_id,
@@ -85,7 +94,10 @@ async function notifyTaskEvent(eventType, task, actor) {
       title: '审核已通过',
       taskTitle: title,
       content: `您的任务「${title}」已通过审核`,
-      taskId: task.id
+      taskId: task.id,
+      taskGroup: task.task_group,
+      publisherId: publisher_id,
+      designerId: designer_id
     },
     task_review_reject: {
       userId: designer_id,
@@ -93,7 +105,10 @@ async function notifyTaskEvent(eventType, task, actor) {
       title: '作品被驳回',
       taskTitle: title,
       content: `您的任务「${title}」已被驳回，请查看驳回原因`,
-      taskId: task.id
+      taskId: task.id,
+      taskGroup: task.task_group,
+      publisherId: publisher_id,
+      designerId: designer_id
     },
     task_comment: {
       userId: task.publisher_id === actor?.id ? designer_id : publisher_id,
@@ -101,7 +116,10 @@ async function notifyTaskEvent(eventType, task, actor) {
       title: '新消息',
       taskTitle: title,
       content: `${actor?.realName || ''} 在任务「${title}」中发表了评论`,
-      taskId: task.id
+      taskId: task.id,
+      taskGroup: task.task_group,
+      publisherId: publisher_id,
+      designerId: designer_id
     }
   };
 

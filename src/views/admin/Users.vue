@@ -71,6 +71,7 @@
         <el-table-column label="操作" width="270" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button type="success" link size="small" @click="openPermissionDialog(row)">权限</el-button>
             <el-button type="warning" link size="small" @click="resetPwd(row)">重置密码</el-button>
             <el-button
               :type="row.status === 1 ? 'danger' : 'success'"
@@ -146,14 +147,72 @@
         <el-button type="primary" @click="handleSubmit" :loading="submitLoading">保存</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="permissionVisible" title="权限配置" width="760px" :close-on-click-modal="false" top="6vh">
+      <div v-if="permissionUser" class="permission-header">
+        <div>
+          <strong>{{ permissionUser.real_name || permissionUser.username }}</strong>
+          <el-tag size="small" effect="plain" style="margin-left:8px;">{{ roleLabel(permissionUser.role) }}</el-tag>
+        </div>
+        <span class="permission-hint">默认权限来自角色模板；额外允许会新增模块，禁用默认权限会从该用户移除模块。</span>
+      </div>
+      <el-alert
+        title="保存后需要该用户重新登录，新的菜单和功能权限才会完全生效。"
+        type="info"
+        show-icon
+        :closable="false"
+        style="margin-bottom:12px;"
+      />
+      <el-tabs v-model="permissionTab">
+        <el-tab-pane label="额外允许" name="allow">
+          <el-checkbox-group v-model="permissionForm.allow">
+            <div v-for="group in permissionGroups" :key="'allow-' + group.name" class="permission-group">
+              <div class="permission-group-title">{{ group.name }}</div>
+              <el-checkbox
+                v-for="p in group.items"
+                :key="p.code"
+                :label="p.code"
+                :disabled="permissionDefaults.includes(p.code)"
+              >
+                {{ p.name }}
+                <span class="permission-code">{{ p.code }}</span>
+              </el-checkbox>
+            </div>
+          </el-checkbox-group>
+        </el-tab-pane>
+        <el-tab-pane label="禁用默认权限" name="deny">
+          <el-checkbox-group v-model="permissionForm.deny">
+            <div v-for="group in defaultPermissionGroups" :key="'deny-' + group.name" class="permission-group">
+              <div class="permission-group-title">{{ group.name }}</div>
+              <el-checkbox v-for="p in group.items" :key="p.code" :label="p.code">
+                {{ p.name }}
+                <span class="permission-code">{{ p.code }}</span>
+              </el-checkbox>
+            </div>
+          </el-checkbox-group>
+        </el-tab-pane>
+        <el-tab-pane label="最终权限" name="effective">
+          <div v-for="group in effectivePermissionGroups" :key="'eff-' + group.name" class="permission-group">
+            <div class="permission-group-title">{{ group.name }}</div>
+            <el-tag v-for="p in group.items" :key="p.code" size="small" effect="plain" style="margin:0 6px 6px 0;">
+              {{ p.name }}
+            </el-tag>
+          </div>
+        </el-tab-pane>
+      </el-tabs>
+      <template #footer>
+        <el-button @click="permissionVisible = false">取消</el-button>
+        <el-button type="primary" @click="savePermissions" :loading="permissionLoading">保存权限</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, reactive, onMounted } from 'vue'
+import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete } from '@element-plus/icons-vue'
-import { getUserListApi, createUserApi, updateUserApi, resetPasswordApi, toggleUserStatusApi, deleteUserApi, getShopListApi } from '@/api'
+import { getUserListApi, createUserApi, updateUserApi, resetPasswordApi, toggleUserStatusApi, deleteUserApi, getShopListApi, getPermissionCatalogApi, getUserPermissionsApi, saveUserPermissionsApi } from '@/api'
 
 const loading = ref(false)
 const list = ref([])
@@ -170,6 +229,13 @@ const formRef = ref(null)
 const editId = ref(null)
 
 const shopList = ref([])
+const permissionVisible = ref(false)
+const permissionLoading = ref(false)
+const permissionTab = ref('allow')
+const permissionUser = ref(null)
+const permissionCatalog = ref([])
+const permissionDefaults = ref([])
+const permissionForm = reactive({ allow: [], deny: [] })
 
 async function loadShops() {
   try {
@@ -205,6 +271,28 @@ function roleTagType(r) {
   const map = { admin: 'danger', sub_admin: '', operator: 'warning', cs_agent: 'warning', designer: 'success', basic_designer: '', operator_assistant: 'info' }
   return map[r] || 'info'
 }
+
+function groupPermissions(catalog, codes = null) {
+  const allowAll = !codes
+  const codeSet = new Set(codes || [])
+  const map = new Map()
+  for (const p of catalog) {
+    if (!allowAll && !codeSet.has(p.code)) continue
+    const name = p.permissionGroup || p.permission_group || '其他'
+    if (!map.has(name)) map.set(name, [])
+    map.get(name).push(p)
+  }
+  return [...map.entries()].map(([name, items]) => ({ name, items }))
+}
+
+const permissionGroups = computed(() => groupPermissions(permissionCatalog.value))
+const defaultPermissionGroups = computed(() => groupPermissions(permissionCatalog.value, permissionDefaults.value))
+const effectivePermissionGroups = computed(() => {
+  const effective = new Set(permissionDefaults.value)
+  permissionForm.allow.forEach(p => effective.add(p))
+  permissionForm.deny.forEach(p => effective.delete(p))
+  return groupPermissions(permissionCatalog.value, [...effective])
+})
 
 async function loadData() {
   loading.value = true
@@ -338,8 +426,58 @@ async function deleteUser(row) {
   } catch {}
 }
 
+async function ensurePermissionCatalog() {
+  if (permissionCatalog.value.length > 0) return
+  const res = await getPermissionCatalogApi()
+  if (res.code === 0) permissionCatalog.value = res.data || []
+}
+
+async function openPermissionDialog(row) {
+  permissionUser.value = row
+  permissionVisible.value = true
+  permissionLoading.value = true
+  permissionTab.value = 'allow'
+  try {
+    await ensurePermissionCatalog()
+    const res = await getUserPermissionsApi(row.id)
+    if (res.code === 0) {
+      permissionDefaults.value = res.data.defaults || []
+      permissionForm.allow = res.data.allow || []
+      permissionForm.deny = res.data.deny || []
+    }
+  } finally {
+    permissionLoading.value = false
+  }
+}
+
+async function savePermissions() {
+  if (!permissionUser.value) return
+  permissionLoading.value = true
+  try {
+    const res = await saveUserPermissionsApi({
+      userId: permissionUser.value.id,
+      permissions: permissionForm.allow,
+      deniedPermissions: permissionForm.deny
+    })
+    if (res.code === 0) {
+      ElMessage.success(res.msg || '权限已保存')
+      permissionVisible.value = false
+    } else {
+      ElMessage.error(res.msg)
+    }
+  } finally {
+    permissionLoading.value = false
+  }
+}
+
 onMounted(() => loadData())
 </script>
 
 <style scoped>
+.permission-header { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 12px; }
+.permission-hint { font-size: 12px; color: var(--dd-text-muted); }
+.permission-group { padding: 10px 0; border-bottom: 1px solid var(--dd-border-light); }
+.permission-group-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; color: var(--dd-text-primary); }
+.permission-group :deep(.el-checkbox) { width: 230px; margin-right: 8px; margin-bottom: 8px; }
+.permission-code { display: block; font-size: 10px; color: var(--dd-text-muted); line-height: 1.2; }
 </style>

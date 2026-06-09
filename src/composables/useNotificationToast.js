@@ -9,7 +9,7 @@ import { shallowRef } from 'vue'
 import { io } from 'socket.io-client'
 import { getToken, getUser } from '@/utils/auth'
 import { getUnreadCount, readNotification as readNotificationApi } from '@/api'
-import router from '@/router'
+import { openTask } from '@/utils/task-navigation'
 
 const MAX_TOASTS = 2
 const DEDUP_WINDOW = 30_000
@@ -190,18 +190,7 @@ export async function handleToastClick(toast) {
     } catch { /* 静默 */ }
   }
 
-  // 跳转到对应角色的任务列表页
-  const user = getUser()
-  const role = user?.role
-  const routeMap = {
-    designer: '/designer/tasks',
-    basic_designer: '/basic/tasks',
-    operator_assistant: '/operator-assistant/tasks'
-  }
-  const target = routeMap[role]
-  if (target && router.currentRoute.value.path !== target) {
-    router.push(target)
-  }
+  openTask(toast)
 
   remove(toast.id)
 }
@@ -301,23 +290,7 @@ export function initNotificationToast(onUnreadChange) {
       if (data.taskId) {
         readNotificationApi({ taskId: data.taskId }).catch(() => {})
       }
-      const user = getUser()
-      const role = user?.role
-      const routeMap = {
-        designer: '/designer/tasks',
-        basic_designer: '/basic/tasks',
-        operator_assistant: '/operator-assistant/tasks',
-        operator: '/operator/tasks',
-        cs_agent: '/cs/tasks',
-        admin: '/admin/tasks',
-        sub_admin: '/dashboard'
-      }
-      const target = routeMap[role]
-      if (target && data.taskId) {
-        router.push({ path: target, query: { openTask: data.taskId } })
-      } else if (target && router.currentRoute.value.path !== target) {
-        router.push(target)
-      }
+      openTask(data || {})
     })
   }
 
