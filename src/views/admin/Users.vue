@@ -235,6 +235,7 @@ const permissionTab = ref('allow')
 const permissionUser = ref(null)
 const permissionCatalog = ref([])
 const permissionDefaults = ref([])
+const permissionEffective = ref([])
 const permissionForm = reactive({ allow: [], deny: [] })
 const PROTECTED_ADMIN_PERMISSIONS = ['admin.users']
 
@@ -276,25 +277,32 @@ function roleTagType(r) {
 function groupPermissions(catalog, codes = null) {
   const allowAll = !codes
   const codeSet = new Set(codes || [])
+  const seenCodes = new Set()
+  const byCode = new Map(catalog.map(p => [p.code, p]))
   const map = new Map()
-  for (const p of catalog) {
+  const source = allowAll ? catalog : codes.map(code => byCode.get(code) || { code, name: code, permissionGroup: '未归类' })
+
+  for (const p of source) {
     if (!allowAll && !codeSet.has(p.code)) continue
+    seenCodes.add(p.code)
     const name = p.permissionGroup || p.permission_group || '其他'
     if (!map.has(name)) map.set(name, [])
     map.get(name).push(p)
+  }
+  if (!allowAll) {
+    for (const code of codeSet) {
+      if (seenCodes.has(code)) continue
+      const name = '未归类'
+      if (!map.has(name)) map.set(name, [])
+      map.get(name).push({ code, name: code, permissionGroup: name })
+    }
   }
   return [...map.entries()].map(([name, items]) => ({ name, items }))
 }
 
 const permissionGroups = computed(() => groupPermissions(permissionCatalog.value))
 const defaultPermissionGroups = computed(() => groupPermissions(permissionCatalog.value, permissionDefaults.value))
-const effectivePermissionGroups = computed(() => {
-  const effective = new Set(permissionDefaults.value)
-  permissionForm.allow.forEach(p => effective.add(p))
-  permissionForm.deny.forEach(p => effective.delete(p))
-  if (permissionUser.value?.role === 'admin') PROTECTED_ADMIN_PERMISSIONS.forEach(p => effective.add(p))
-  return groupPermissions(permissionCatalog.value, [...effective])
-})
+const effectivePermissionGroups = computed(() => groupPermissions(permissionCatalog.value, permissionEffective.value))
 
 function isProtectedPermission(code) {
   return permissionUser.value?.role === 'admin' && PROTECTED_ADMIN_PERMISSIONS.includes(code)
@@ -450,6 +458,7 @@ async function openPermissionDialog(row) {
       permissionDefaults.value = res.data.defaults || []
       permissionForm.allow = res.data.allow || []
       permissionForm.deny = res.data.deny || []
+      permissionEffective.value = res.data.effective || []
     }
   } finally {
     permissionLoading.value = false
@@ -478,9 +487,10 @@ async function savePermissions() {
       permissionDefaults.value = saved.defaults || permissionDefaults.value
       permissionForm.allow = saved.allow || [...allow]
       permissionForm.deny = saved.deny || [...deny]
+      permissionEffective.value = saved.effective || []
       const effectiveCount = Array.isArray(saved.effective) ? saved.effective.length : 0
       ElMessage.success(effectiveCount ? `${res.msg || '权限已保存'}，最终权限 ${effectiveCount} 项` : (res.msg || '权限已保存'))
-      permissionVisible.value = false
+      permissionTab.value = 'effective'
     } else {
       ElMessage.error(res.msg)
     }

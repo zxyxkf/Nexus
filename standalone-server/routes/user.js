@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireRole, requireAnyPermission } = require('../middleware/auth');
 const userService = require('../services/user.service');
 
 // 所有接口需要登录
@@ -124,7 +124,7 @@ router.post('/delete', requireRole('admin'), async (req, res, next) => {
 /**
  * GET /api/user/designers - 获取美工列表（用于指派任务）
  */
-router.get('/designers', requireRole('admin', 'sub_admin', 'operator'), async (req, res, next) => {
+router.get('/designers', requireAnyPermission(['operator.publish.design', 'operator.tasks.design', 'admin.tasks.design'], 'admin', 'sub_admin', 'operator'), async (req, res, next) => {
   try {
     const rows = await userService.getDesignerList();
     res.json({ code: 0, msg: '查询成功', data: rows });
@@ -148,7 +148,7 @@ router.get('/publishers', requireRole('admin', 'sub_admin', 'cs_agent', 'basic_d
 /**
  * GET /api/user/basic-designers - 获取基础美工列表
  */
-router.get('/basic-designers', requireRole('admin', 'sub_admin', 'cs_agent', 'basic_designer'), async (req, res, next) => {
+router.get('/basic-designers', requireAnyPermission(['cs.publish.basic', 'cs.tasks.basic', 'basic.tasks.cs', 'admin.tasks.cs', 'score.review.basic', 'score.records.basic'], 'admin', 'sub_admin', 'cs_agent', 'basic_designer'), async (req, res, next) => {
   try {
     const rows = await userService.getBasicDesignerList();
     res.json({ code: 0, msg: '查询成功', data: rows });
@@ -160,7 +160,7 @@ router.get('/basic-designers', requireRole('admin', 'sub_admin', 'cs_agent', 'ba
 /**
  * GET /api/user/operator-assistants - 获取运营助理列表
  */
-router.get('/operator-assistants', requireRole('admin', 'sub_admin', 'operator'), async (req, res, next) => {
+router.get('/operator-assistants', requireAnyPermission(['operator.publish.assistant', 'operator.tasks.assistant', 'admin.tasks.operator'], 'admin', 'sub_admin', 'operator'), async (req, res, next) => {
   try {
     const rows = await userService.getOperatorAssistantList();
     res.json({ code: 0, msg: '查询成功', data: rows });

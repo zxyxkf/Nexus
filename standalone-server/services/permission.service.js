@@ -21,6 +21,11 @@ async function seedPermissions() {
         [p.code, p.name, p.type, p.group || '', p.description || '']
       ).catch(() => {});
     });
+
+    await execute(
+      `UPDATE sys_permission SET name = ?, type = ?, permission_group = ?, description = ? WHERE code = ?`,
+      [p.name, p.type, p.group || '', p.description || '', p.code]
+    ).catch(() => {});
   }
   await migrateLegacyBoardPermissions();
 }
@@ -47,17 +52,31 @@ async function migrateLegacyBoardPermissions() {
 }
 
 async function getPermissionCatalog() {
+  await seedPermissions().catch(() => {});
   const [rows] = await execute(
     `SELECT code, name, type, permission_group AS permissionGroup, description
      FROM sys_permission ORDER BY permission_group ASC, type DESC, code ASC`
   );
-  return rows.length ? rows : PERMISSIONS.map(p => ({
+  const configured = PERMISSIONS.map(p => ({
     code: p.code,
     name: p.name,
     type: p.type,
     permissionGroup: p.group || '',
     description: p.description || ''
   }));
+  if (!rows.length) return configured;
+
+  const byCode = new Map(rows.map(row => [row.code, row]));
+  for (const p of configured) {
+    if (!byCode.has(p.code)) byCode.set(p.code, p);
+  }
+  return [...byCode.values()].sort((a, b) => {
+    const groupDiff = String(a.permissionGroup || '').localeCompare(String(b.permissionGroup || ''), 'zh-Hans-CN');
+    if (groupDiff !== 0) return groupDiff;
+    const typeDiff = String(b.type || '').localeCompare(String(a.type || ''), 'zh-Hans-CN');
+    if (typeDiff !== 0) return typeDiff;
+    return String(a.code || '').localeCompare(String(b.code || ''));
+  });
 }
 
 async function getUserOverrides(userId) {

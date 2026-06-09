@@ -82,9 +82,11 @@ const BUSINESS_SECTION_BY_ROLE = {
 const ADMIN_SECTION_ORDER = ['overview', 'all_tasks', 'score', 'system', 'common']
 const GLOBAL_SECTION_ORDER = MENU_SECTIONS.map(section => section.key)
 const ADMIN_ONLY_PERMISSIONS = new Set(['admin.users'])
+const STRICT_ROLE_PERMISSIONS = new Set(['stats.personal'])
 
 function canShowForRole(item, role) {
   if (ADMIN_ONLY_PERMISSIONS.has(item.permission) && role !== 'admin') return false
+  if (item.roles && !STRICT_ROLE_PERMISSIONS.has(item.permission)) return true
   return !item.roles || item.roles.includes(role)
 }
 
