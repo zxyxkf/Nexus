@@ -53,7 +53,7 @@ export function operatorDataMenu(prefix) {
     { separator: true },
     { section: '数据' },
     { path: `/${prefix}/stats`, icon: 'DataLine', label: '个人统计', permission: 'stats.personal' },
-    { path: `/${prefix}/board`, icon: 'DataAnalysis', label: '数据看板', permission: prefix === 'operator' ? 'dashboard.design' : 'dashboard.cs' },
+    { path: `/${prefix}/board`, icon: 'DataAnalysis', label: '数据看板', permissions: prefix === 'operator' ? ['board.design', 'board.operator'] : ['board.cs'] },
     { path: '/notifications', icon: 'Bell', label: '通知中心', permission: 'notification.center' }
   ]
 }
@@ -63,7 +63,7 @@ export function csAgentDataMenu(prefix) {
     { separator: true },
     { section: '数据' },
     { path: `/${prefix}/stats`, icon: 'DataLine', label: '个人统计', permission: 'stats.personal' },
-    { path: `/${prefix}/board`, icon: 'DataAnalysis', label: '数据看板', permission: 'dashboard.cs' },
+    { path: `/${prefix}/board`, icon: 'DataAnalysis', label: '数据看板', permission: 'board.cs' },
     { path: '/notifications', icon: 'Bell', label: '通知中心', permission: 'notification.center' }
   ]
 }
@@ -78,7 +78,7 @@ export function designerMenu(prefix, sectionLabel) {
     { separator: true },
     { section: '数据' },
     { path: `/${prefix}/stats`, icon: 'DataLine', label: '个人统计', permission: 'stats.personal' },
-    { path: `/${prefix}/board`, icon: 'DataAnalysis', label: '数据看板', permission: prefix === 'designer' ? 'dashboard.design' : prefix === 'basic' ? 'dashboard.cs' : 'dashboard.operator' },
+    { path: `/${prefix}/board`, icon: 'DataAnalysis', label: '数据看板', permission: prefix === 'designer' ? 'board.design' : prefix === 'basic' ? 'board.cs' : 'board.operator' },
     { path: '/notifications', icon: 'Bell', label: '通知中心', permission: 'notification.center' }
   ]
 }

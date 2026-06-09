@@ -410,9 +410,9 @@ async function searchTasks({ userId, role, store, permissions = [], keyword, pag
 
   if (role === 'admin' || role === 'sub_admin') {
     const groups = [];
-    if (hasPerm('admin.tasks.design') || hasPerm('dashboard.design')) groups.push('design');
-    if (hasPerm('admin.tasks.operator') || hasPerm('dashboard.operator')) groups.push('operator');
-    if (hasPerm('admin.tasks.cs') || hasPerm('dashboard.cs')) groups.push('cs');
+    if (hasPerm('admin.tasks.design') || hasPerm('dashboard.design') || hasPerm('board.design')) groups.push('design');
+    if (hasPerm('admin.tasks.operator') || hasPerm('dashboard.operator') || hasPerm('board.operator')) groups.push('operator');
+    if (hasPerm('admin.tasks.cs') || hasPerm('dashboard.cs') || hasPerm('board.cs')) groups.push('cs');
     if (groups.length) {
       where += ` AND COALESCE(t.task_group, 'design') IN (${groups.map(() => '?').join(',')})`;
       params.push(...groups);

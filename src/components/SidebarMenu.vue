@@ -1,215 +1,17 @@
 <template>
   <div class="sidebar-nav" :class="{ 'is-collapsed': isCollapsed }">
-    <!-- 管理员菜单 -->
-    <template v-if="adminItems.length || superAdminItems.length || adminExtraItems.length || superAdminExtraItems.length || subAdminScoreItems.length">
-      <template v-for="(item, i) in adminItems" :key="'am-' + i">
-        <div v-if="item.section" class="nav-section-label">{{ item.section }}</div>
-        <div
-          v-else
-          class="nav-item"
-          :class="{ active: activeMenu === item.path }"
-          @click="nav(item.path)"
-        >
-          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-          <span class="nav-text">{{ item.label }}</span>
-        </div>
-      </template>
-
-      <template v-for="(item, i) in superAdminItems" :key="'sam-' + i">
-        <div v-if="item.separator" class="nav-separator"></div>
-        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-        <div
-          v-else
-          class="nav-item"
-          :class="{ active: activeMenu === item.path }"
-          @click="nav(item.path)"
-        >
-          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-          <span class="nav-text">{{ item.label }}</span>
-        </div>
-      </template>
-
-      <template v-for="(item, i) in adminExtraItems" :key="'aem-' + i">
-        <div v-if="item.separator" class="nav-separator"></div>
-        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-        <div
-          v-else
-          class="nav-item"
-          :class="{ active: activeMenu === item.path }"
-          @click="nav(item.path)"
-        >
-          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-          <span class="nav-text">{{ item.label }}</span>
-        </div>
-      </template>
-
-      <template v-for="(item, i) in superAdminExtraItems" :key="'saem-' + i">
-        <div
-          class="nav-item"
-          :class="{ active: activeMenu === item.path }"
-          @click="nav(item.path)"
-        >
-          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-          <span class="nav-text">{{ item.label }}</span>
-        </div>
-      </template>
-
-      <!-- 子管理员：基础美工分值审核 -->
-      <template v-if="subAdminScoreItems.length">
-        <template v-for="(item, i) in subAdminScoreItems" :key="'sal-' + i">
-          <div v-if="item.separator" class="nav-separator"></div>
-          <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-          <div
-            v-else
-            class="nav-item"
-            :class="{ active: activeMenu === item.path }"
-            @click="nav(item.path)"
-          >
-            <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-            <span class="nav-text">{{ item.label }}</span>
-          </div>
-        </template>
-      </template>
-    </template>
-
-    <!-- 运营菜单 -->
-    <template v-if="operatorItems.length || operatorExtraItems.length || operatorDataItems.length">
-      <template v-for="(item, i) in operatorItems" :key="'op-' + i">
-        <div v-if="item.separator" class="nav-separator"></div>
-        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-        <div
-          v-else
-          class="nav-item"
-          :class="{ active: activeMenu === item.path }"
-          @click="nav(item.path)"
-        >
-          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-          <span class="nav-text">{{ item.label }}</span>
-        </div>
-      </template>
-      <template v-for="(item, i) in operatorExtraItems" :key="'op-ex-' + i">
-        <div v-if="item.separator" class="nav-separator"></div>
-        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-        <div
-          v-else
-          class="nav-item"
-          :class="{ active: activeMenu === item.path }"
-          @click="nav(item.path)"
-        >
-          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-          <span class="nav-text">{{ item.label }}</span>
-        </div>
-      </template>
-      <template v-for="(item, i) in operatorDataItems" :key="'op-dt-' + i">
-        <div v-if="item.separator" class="nav-separator"></div>
-        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-        <div
-          v-else
-          class="nav-item"
-          :class="{ active: activeMenu === item.path }"
-          @click="nav(item.path)"
-        >
-          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-          <span class="nav-text">{{ item.label }}</span>
-        </div>
-      </template>
-    </template>
-
-    <!-- 客服菜单 -->
-    <template v-if="csAgentItems.length || csAgentDataItems.length">
-      <template v-for="(item, i) in csAgentItems" :key="'cs-' + i">
-        <div v-if="item.separator" class="nav-separator"></div>
-        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-        <div
-          v-else
-          class="nav-item"
-          :class="{ active: activeMenu === item.path }"
-          @click="nav(item.path)"
-        >
-          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-          <span class="nav-text">{{ item.label }}</span>
-        </div>
-      </template>
-      <template v-for="(item, i) in csAgentDataItems" :key="'cs-dt-' + i">
-        <div v-if="item.separator" class="nav-separator"></div>
-        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-        <div
-          v-else
-          class="nav-item"
-          :class="{ active: activeMenu === item.path }"
-          @click="nav(item.path)"
-        >
-          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-          <span class="nav-text">{{ item.label }}</span>
-        </div>
-      </template>
-    </template>
-
-    <!-- 美工菜单 -->
-    <template v-if="designerItems.length">
-      <template v-for="(item, i) in designerItems" :key="'de-' + i">
-        <div v-if="item.separator" class="nav-separator"></div>
-        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-        <div
-          v-else
-          class="nav-item"
-          :class="{ active: activeMenu === item.path }"
-          @click="nav(item.path)"
-        >
-          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-          <span class="nav-text">{{ item.label }}</span>
-        </div>
-      </template>
-    </template>
-
-    <!-- 基础美工菜单 -->
-    <template v-if="basicDesignerItems.length || basicDesignerLeadItems.length">
-      <template v-for="(item, i) in basicDesignerItems" :key="'bd-' + i">
-        <div v-if="item.separator" class="nav-separator"></div>
-        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-        <div
-          v-else
-          class="nav-item"
-          :class="{ active: activeMenu === item.path }"
-          @click="nav(item.path)"
-        >
-          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-          <span class="nav-text">{{ item.label }}</span>
-        </div>
-      </template>
-      <!-- 基础美工组长额外菜单 -->
-      <template v-if="basicDesignerLeadItems.length">
-        <template v-for="(item, i) in basicDesignerLeadItems" :key="'bdl-' + i">
-          <div v-if="item.separator" class="nav-separator"></div>
-          <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-          <div
-            v-else
-            class="nav-item"
-            :class="{ active: activeMenu === item.path }"
-            @click="nav(item.path)"
-          >
-            <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-            <span class="nav-text">{{ item.label }}</span>
-          </div>
-        </template>
-      </template>
-    </template>
-
-    <!-- 运营助理菜单 -->
-    <template v-if="operatorAssistantItems.length">
-      <template v-for="(item, i) in operatorAssistantItems" :key="'oa-' + i">
-        <div v-if="item.separator" class="nav-separator"></div>
-        <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
-        <div
-          v-else
-          class="nav-item"
-          :class="{ active: activeMenu === item.path }"
-          @click="nav(item.path)"
-        >
-          <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
-          <span class="nav-text">{{ item.label }}</span>
-        </div>
-      </template>
+    <template v-for="item in menuItems" :key="item._key">
+      <div v-if="item.separator" class="nav-separator"></div>
+      <div v-else-if="item.section" class="nav-section-label">{{ item.section }}</div>
+      <div
+        v-else
+        class="nav-item"
+        :class="{ active: activeMenu === item.path }"
+        @click="nav(item.path)"
+      >
+        <el-icon :size="18"><component :is="iconMap[item.icon]" /></el-icon>
+        <span class="nav-text">{{ item.label }}</span>
+      </div>
     </template>
   </div>
 </template>
@@ -251,6 +53,30 @@ const subAdminScoreItems = computed(() => filterMenuByPermission(basicDesignerLe
 const operatorAssistantItems = computed(() => filterMenuByPermission(designerMenu('operator-assistant', '运营任务'), store.userInfo))
 const csAgentDataItems = computed(() => filterMenuByPermission(csAgentDataMenu('cs'), store.userInfo))
 
+function withStableKeys(items, prefix) {
+  return items.map((item, index) => ({
+    ...item,
+    _key: `${prefix}:${item.path || item.label || item.section || 'separator'}:${index}`
+  }))
+}
+
+const menuItems = computed(() => [
+  ...withStableKeys(adminItems.value, 'admin-main'),
+  ...withStableKeys(superAdminItems.value, 'admin-system'),
+  ...withStableKeys(adminExtraItems.value, 'admin-tasks'),
+  ...withStableKeys(superAdminExtraItems.value, 'admin-config'),
+  ...withStableKeys(subAdminScoreItems.value, 'sub-admin-score'),
+  ...withStableKeys(operatorItems.value, 'operator-main'),
+  ...withStableKeys(operatorExtraItems.value, 'operator-extra'),
+  ...withStableKeys(operatorDataItems.value, 'operator-data'),
+  ...withStableKeys(csAgentItems.value, 'cs-main'),
+  ...withStableKeys(csAgentDataItems.value, 'cs-data'),
+  ...withStableKeys(designerItems.value, 'designer-main'),
+  ...withStableKeys(basicDesignerItems.value, 'basic-main'),
+  ...withStableKeys(basicDesignerLeadItems.value, 'basic-lead'),
+  ...withStableKeys(operatorAssistantItems.value, 'assistant-main')
+])
+
 function nav(path) { emit('navigate', path) }
 </script>
 
@@ -271,7 +97,7 @@ function nav(path) { emit('navigate', path) }
   border-radius: 8px;
   cursor: pointer;
   color: rgba(255, 255, 255, 0.55);
-  transition: all 0.15s ease;
+  transition: background-color 0.15s ease, color 0.15s ease;
   flex-shrink: 0;
   position: relative;
 }
@@ -279,10 +105,6 @@ function nav(path) { emit('navigate', path) }
 .nav-item:hover {
   background: rgba(255, 255, 255, 0.07);
   color: rgba(255, 255, 255, 0.9);
-}
-
-.nav-item:active {
-  transform: scale(0.97);
 }
 
 .nav-item.active {

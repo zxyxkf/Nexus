@@ -5,7 +5,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { getToken, getUser } from '@/utils/auth'
 import { ElMessage } from 'element-plus'
-import { hasPermission } from '@/utils/permissions'
+import { hasAnyPermission, hasPermission } from '@/utils/permissions'
 
 const routes = [
   {
@@ -49,7 +49,7 @@ const routes = [
         path: 'operator/board',
         name: 'OperatorBoard',
         component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '数据看板', roles: ['operator', 'admin'], permission: 'dashboard.design', dashboardGroups: ['design', 'operator'] }
+        meta: { title: '数据看板', roles: ['operator', 'admin'], permissions: ['board.design', 'board.operator'], dashboardGroups: ['design', 'operator'] }
       },
       // 运营任务管理（运营发布给运营助理的任务）
       {
@@ -99,7 +99,7 @@ const routes = [
         path: 'cs/board',
         name: 'CsBoard',
         component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '数据看板', roles: ['cs_agent', 'admin'], permission: 'dashboard.cs', dashboardGroups: ['cs'] }
+        meta: { title: '数据看板', roles: ['cs_agent', 'admin'], permission: 'board.cs', dashboardGroups: ['cs'] }
       },
       // 美工端（任务大厅与基础美工共用组件）
       {
@@ -136,7 +136,7 @@ const routes = [
         path: 'designer/board',
         name: 'DesignerBoard',
         component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '数据看板', roles: ['designer', 'admin'], permission: 'dashboard.design', dashboardGroups: ['design'] }
+        meta: { title: '数据看板', roles: ['designer', 'admin'], permission: 'board.design', dashboardGroups: ['design'] }
       },
       // 基础美工端（任务大厅与美工共用组件）
       {
@@ -173,7 +173,7 @@ const routes = [
         path: 'basic/board',
         name: 'BasicBoard',
         component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '数据看板', roles: ['basic_designer', 'admin'], permission: 'dashboard.cs', dashboardGroups: ['cs'] }
+        meta: { title: '数据看板', roles: ['basic_designer', 'admin'], permission: 'board.cs', dashboardGroups: ['cs'] }
       },
       {
         path: 'basic/score-review',
@@ -222,7 +222,7 @@ const routes = [
         path: 'operator-assistant/board',
         name: 'OperatorAssistantBoard',
         component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '数据看板', roles: ['operator_assistant', 'admin'], permission: 'dashboard.operator', dashboardGroups: ['operator'] }
+        meta: { title: '数据看板', roles: ['operator_assistant', 'admin'], permission: 'board.operator', dashboardGroups: ['operator'] }
       },
       // 管理员端
       {
@@ -310,7 +310,7 @@ const DEFAULT_ROUTE_BY_ROLE = {
 
 function firstAllowedPath(user) {
   const children = routes.find(r => r.path === '/')?.children || []
-  const matched = children.find(r => r.path && !r.redirect && (!r.meta?.permission || hasPermission(r.meta.permission, user)))
+  const matched = children.find(r => r.path && !r.redirect && ((!r.meta?.permission && !r.meta?.permissions) || hasAnyPermission(r.meta.permissions || [r.meta.permission], user)))
   return matched ? `/${matched.path}` : (DEFAULT_ROUTE_BY_ROLE[user.role] || '/dashboard')
 }
 
@@ -336,7 +336,7 @@ router.beforeEach((to, from, next) => {
   }
 
   const roleAllowed = !to.meta.roles || to.meta.roles.length === 0 || to.meta.roles.includes(user.role)
-  const permissionAllowed = !to.meta.permission || hasPermission(to.meta.permission, user)
+  const permissionAllowed = (!to.meta.permission && !to.meta.permissions) || hasAnyPermission(to.meta.permissions || [to.meta.permission], user)
 
   if (!roleAllowed && !permissionAllowed) {
     next(firstAllowedPath(user))
