@@ -18,9 +18,6 @@ const PERMISSIONS = [
   { code: 'dashboard.design', name: '高级美工仪表盘', type: 'page', group: '数据' },
   { code: 'dashboard.operator', name: '运营助理仪表盘', type: 'page', group: '数据' },
   { code: 'dashboard.cs', name: '基础美工仪表盘', type: 'page', group: '数据' },
-  { code: 'board.design', name: '运营美工数据看板', type: 'page', group: '数据看板' },
-  { code: 'board.operator', name: '运营助理数据看板', type: 'page', group: '数据看板' },
-  { code: 'board.cs', name: '客服基础美工数据看板', type: 'page', group: '数据看板' },
   { code: 'admin.users', name: '用户管理', type: 'page', group: '系统管理' },
   { code: 'admin.tasks.design', name: '运营美工全量任务', type: 'page', group: '全量任务' },
   { code: 'admin.tasks.operator', name: '运营助理全量任务', type: 'page', group: '全量任务' },
@@ -57,25 +54,25 @@ const ROLE_DEFAULTS = {
   operator: [
     'operator.publish.design', 'operator.tasks.design', 'operator.review.design',
     'operator.publish.assistant', 'operator.tasks.assistant', 'operator.review.assistant',
-    'stats.personal', 'board.design', 'board.operator',
+    'stats.personal', 'dashboard.design', 'dashboard.operator',
     'task.create.design', 'task.create.operator', 'task.review.own',
     'task.view.store', 'task.download.file', 'notification.center'
   ],
   cs_agent: [
     'cs.publish.basic', 'cs.tasks.basic', 'cs.review.basic',
-    'stats.personal', 'board.cs',
+    'stats.personal', 'dashboard.cs',
     'task.create.cs', 'task.review.own', 'task.view.own', 'task.download.file', 'notification.center'
   ],
   designer: [
-    'designer.hall.design', 'designer.tasks.design', 'stats.personal', 'board.design',
+    'designer.hall.design', 'designer.tasks.design', 'stats.personal', 'dashboard.design',
     'task.upload.work', 'task.view.own', 'task.download.file', 'notification.center'
   ],
   basic_designer: [
-    'basic.hall.cs', 'basic.tasks.cs', 'stats.personal', 'board.cs',
+    'basic.hall.cs', 'basic.tasks.cs', 'stats.personal', 'dashboard.cs',
     'task.upload.work', 'task.view.own', 'task.download.file', 'notification.center'
   ],
   operator_assistant: [
-    'assistant.hall.operator', 'assistant.tasks.operator', 'stats.personal', 'board.operator',
+    'assistant.hall.operator', 'assistant.tasks.operator', 'stats.personal', 'dashboard.operator',
     'task.upload.work', 'task.view.own', 'task.download.file', 'notification.center'
   ]
 };
@@ -103,10 +100,7 @@ const PERMISSION_IMPLICATIONS = {
   'admin.tasks.cs': ['task.view.all', 'task.download.file', 'task.export'],
   'dashboard.design': ['dashboard.export'],
   'dashboard.operator': ['dashboard.export'],
-  'dashboard.cs': ['dashboard.export'],
-  'board.design': ['dashboard.export'],
-  'board.operator': ['dashboard.export'],
-  'board.cs': ['dashboard.export']
+  'dashboard.cs': ['dashboard.export']
 };
 
 function expandPermissions(codes = []) {

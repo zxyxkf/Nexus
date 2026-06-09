@@ -11,26 +11,26 @@ const ROLE_PERMISSION_FALLBACK = {
   operator: [
     'operator.publish.design', 'operator.tasks.design', 'operator.review.design',
     'operator.publish.assistant', 'operator.tasks.assistant', 'operator.review.assistant',
-    'stats.personal', 'board.design', 'board.operator',
+    'stats.personal', 'dashboard.design', 'dashboard.operator',
     'task.create.design', 'task.create.operator', 'task.review.own',
     'task.view.store', 'task.download.file', 'notification.center'
   ],
   cs_agent: [
     'cs.publish.basic', 'cs.tasks.basic', 'cs.review.basic',
-    'stats.personal', 'board.cs',
+    'stats.personal', 'dashboard.cs',
     'task.create.cs', 'task.review.own', 'task.view.own', 'task.download.file', 'notification.center'
   ],
   designer: [
-    'designer.hall.design', 'designer.tasks.design', 'stats.personal', 'board.design',
+    'designer.hall.design', 'designer.tasks.design', 'stats.personal', 'dashboard.design',
     'task.upload.work', 'task.view.own', 'task.download.file', 'notification.center'
   ],
   basic_designer: [
-    'basic.hall.cs', 'basic.tasks.cs', 'stats.personal', 'board.cs',
+    'basic.hall.cs', 'basic.tasks.cs', 'stats.personal', 'dashboard.cs',
     'task.upload.work', 'task.view.own', 'task.download.file', 'notification.center',
     'score.review.basic', 'score.records.basic'
   ],
   operator_assistant: [
-    'assistant.hall.operator', 'assistant.tasks.operator', 'stats.personal', 'board.operator',
+    'assistant.hall.operator', 'assistant.tasks.operator', 'stats.personal', 'dashboard.operator',
     'task.upload.work', 'task.view.own', 'task.download.file', 'notification.center'
   ]
 }
@@ -56,10 +56,7 @@ const PERMISSION_IMPLICATIONS = {
   'admin.tasks.cs': ['task.view.all', 'task.download.file', 'task.export'],
   'dashboard.design': ['dashboard.export'],
   'dashboard.operator': ['dashboard.export'],
-  'dashboard.cs': ['dashboard.export'],
-  'board.design': ['dashboard.export'],
-  'board.operator': ['dashboard.export'],
-  'board.cs': ['dashboard.export']
+  'dashboard.cs': ['dashboard.export']
 }
 
 export function expandPermissions(codes = []) {

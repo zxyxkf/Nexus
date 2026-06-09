@@ -1,6 +1,12 @@
 const { execute } = require('../config/database');
 const { PERMISSIONS, defaultPermissionsFor, expandPermissions } = require('../config/permissions');
 
+const LEGACY_BOARD_PERMISSIONS = {
+  'board.design': 'dashboard.design',
+  'board.operator': 'dashboard.operator',
+  'board.cs': 'dashboard.cs'
+};
+
 async function seedPermissions() {
   for (const p of PERMISSIONS) {
     await execute(
@@ -15,6 +21,28 @@ async function seedPermissions() {
       ).catch(() => {});
     });
   }
+  await migrateLegacyBoardPermissions();
+}
+
+async function migrateLegacyBoardPermissions() {
+  for (const [legacyCode, currentCode] of Object.entries(LEGACY_BOARD_PERMISSIONS)) {
+    await execute(
+      `INSERT IGNORE INTO sys_user_permission (user_id, permission_code, effect)
+       SELECT user_id, ?, effect FROM sys_user_permission WHERE permission_code = ?`,
+      [currentCode, legacyCode]
+    ).catch(async () => {
+      await execute(
+        `INSERT OR IGNORE INTO sys_user_permission (user_id, permission_code, effect)
+         SELECT user_id, ?, effect FROM sys_user_permission WHERE permission_code = ?`,
+        [currentCode, legacyCode]
+      ).catch(() => {});
+    });
+  }
+
+  const legacyCodes = Object.keys(LEGACY_BOARD_PERMISSIONS);
+  const placeholders = legacyCodes.map(() => '?').join(',');
+  await execute(`DELETE FROM sys_user_permission WHERE permission_code IN (${placeholders})`, legacyCodes).catch(() => {});
+  await execute(`DELETE FROM sys_permission WHERE code IN (${placeholders})`, legacyCodes).catch(() => {});
 }
 
 async function getPermissionCatalog() {
@@ -44,9 +72,11 @@ async function getEffectivePermissions(user) {
 
   const overrides = await getUserOverrides(user.id);
   for (const row of overrides) {
+    if (row.effect === 'allow') set.add(row.permission_code);
+  }
+  for (const row of overrides) {
     if (user.role === 'admin' && row.permission_code === 'admin.users' && row.effect === 'deny') continue;
     if (row.effect === 'deny') set.delete(row.permission_code);
-    else set.add(row.permission_code);
   }
   if (user.role === 'admin') set.add('admin.users');
   return expandPermissions([...set]);

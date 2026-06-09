@@ -5,7 +5,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { getToken, getUser } from '@/utils/auth'
 import { ElMessage } from 'element-plus'
-import { hasAnyPermission, hasPermission } from '@/utils/permissions'
+import { hasAnyPermission } from '@/utils/permissions'
 
 const routes = [
   {
@@ -44,12 +44,6 @@ const routes = [
         name: 'OperatorStats',
         component: () => import('@/views/operator/Stats.vue'),
         meta: { title: '个人统计', roles: ['operator', 'admin'], permission: 'stats.personal' }
-      },
-      {
-        path: 'operator/board',
-        name: 'OperatorBoard',
-        component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '数据看板', roles: ['operator', 'admin'], permissions: ['board.design', 'board.operator'], dashboardGroups: ['design', 'operator'] }
       },
       // 运营任务管理（运营发布给运营助理的任务）
       {
@@ -95,12 +89,6 @@ const routes = [
         component: () => import('@/views/cs/Stats.vue'),
         meta: { title: '个人统计', roles: ['cs_agent', 'admin'], permission: 'stats.personal' }
       },
-      {
-        path: 'cs/board',
-        name: 'CsBoard',
-        component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '数据看板', roles: ['cs_agent', 'admin'], permission: 'board.cs', dashboardGroups: ['cs'] }
-      },
       // 美工端（任务大厅与基础美工共用组件）
       {
         path: 'designer/hall',
@@ -132,12 +120,6 @@ const routes = [
         component: () => import('@/views/designer/Stats.vue'),
         meta: { title: '个人统计', roles: ['designer', 'admin'], permission: 'stats.personal' }
       },
-      {
-        path: 'designer/board',
-        name: 'DesignerBoard',
-        component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '数据看板', roles: ['designer', 'admin'], permission: 'board.design', dashboardGroups: ['design'] }
-      },
       // 基础美工端（任务大厅与美工共用组件）
       {
         path: 'basic/hall',
@@ -168,12 +150,6 @@ const routes = [
         name: 'BasicStats',
         component: () => import('@/views/basic/Stats.vue'),
         meta: { title: '个人统计', roles: ['basic_designer', 'admin'], permission: 'stats.personal' }
-      },
-      {
-        path: 'basic/board',
-        name: 'BasicBoard',
-        component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '数据看板', roles: ['basic_designer', 'admin'], permission: 'board.cs', dashboardGroups: ['cs'] }
       },
       {
         path: 'basic/score-review',
@@ -218,30 +194,24 @@ const routes = [
         component: () => import('@/views/operator-assistant/Stats.vue'),
         meta: { title: '个人统计', roles: ['operator_assistant', 'admin'], permission: 'stats.personal' }
       },
-      {
-        path: 'operator-assistant/board',
-        name: 'OperatorAssistantBoard',
-        component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '数据看板', roles: ['operator_assistant', 'admin'], permission: 'board.operator', dashboardGroups: ['operator'] }
-      },
       // 管理员端
       {
         path: 'dashboard',
         name: 'Dashboard',
         component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '高级美工仪表盘', roles: ['admin', 'sub_admin'], permission: 'dashboard.design', dashboardGroups: ['design'] }
+        meta: { title: '高级美工仪表盘', roles: ['admin', 'sub_admin', 'operator', 'designer'], permission: 'dashboard.design', dashboardGroups: ['design'] }
       },
       {
         path: 'dashboard/operator-assistant',
         name: 'OperatorAssistantDashboard',
         component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '运营助理仪表盘', roles: ['admin', 'sub_admin'], permission: 'dashboard.operator', dashboardGroups: ['operator'] }
+        meta: { title: '运营助理仪表盘', roles: ['admin', 'sub_admin', 'operator', 'operator_assistant'], permission: 'dashboard.operator', dashboardGroups: ['operator'] }
       },
       {
         path: 'dashboard/basic-designer',
         name: 'BasicDesignerDashboard',
         component: () => import('@/views/admin/Dashboard.vue'),
-        meta: { title: '基础美工仪表盘', roles: ['admin', 'sub_admin'], permission: 'dashboard.cs', dashboardGroups: ['cs'] }
+        meta: { title: '基础美工仪表盘', roles: ['admin', 'sub_admin', 'cs_agent', 'basic_designer'], permission: 'dashboard.cs', dashboardGroups: ['cs'] }
       },
       {
         path: 'admin/users',

@@ -53,7 +53,8 @@ export function operatorDataMenu(prefix) {
     { separator: true },
     { section: '数据' },
     { path: `/${prefix}/stats`, icon: 'DataLine', label: '个人统计', permission: 'stats.personal' },
-    { path: `/${prefix}/board`, icon: 'DataAnalysis', label: '数据看板', permissions: prefix === 'operator' ? ['board.design', 'board.operator'] : ['board.cs'] },
+    { path: '/dashboard', icon: 'DataAnalysis', label: '高级美工仪表盘', permission: 'dashboard.design' },
+    { path: '/dashboard/operator-assistant', icon: 'DataAnalysis', label: '运营助理仪表盘', permission: 'dashboard.operator' },
     { path: '/notifications', icon: 'Bell', label: '通知中心', permission: 'notification.center' }
   ]
 }
@@ -63,12 +64,18 @@ export function csAgentDataMenu(prefix) {
     { separator: true },
     { section: '数据' },
     { path: `/${prefix}/stats`, icon: 'DataLine', label: '个人统计', permission: 'stats.personal' },
-    { path: `/${prefix}/board`, icon: 'DataAnalysis', label: '数据看板', permission: 'board.cs' },
+    { path: '/dashboard/basic-designer', icon: 'DataAnalysis', label: '基础美工仪表盘', permission: 'dashboard.cs' },
     { path: '/notifications', icon: 'Bell', label: '通知中心', permission: 'notification.center' }
   ]
 }
 
 export function designerMenu(prefix, sectionLabel) {
+  const dashboardItem = prefix === 'designer'
+    ? { path: '/dashboard', icon: 'DataAnalysis', label: '高级美工仪表盘', permission: 'dashboard.design' }
+    : prefix === 'basic'
+      ? { path: '/dashboard/basic-designer', icon: 'DataAnalysis', label: '基础美工仪表盘', permission: 'dashboard.cs' }
+      : { path: '/dashboard/operator-assistant', icon: 'DataAnalysis', label: '运营助理仪表盘', permission: 'dashboard.operator' }
+
   return [
     { section: sectionLabel },
     { path: `/${prefix}/hall`, icon: 'ShoppingCart', label: '任务大厅', permission: prefix === 'designer' ? 'designer.hall.design' : prefix === 'basic' ? 'basic.hall.cs' : 'assistant.hall.operator' },
@@ -78,7 +85,7 @@ export function designerMenu(prefix, sectionLabel) {
     { separator: true },
     { section: '数据' },
     { path: `/${prefix}/stats`, icon: 'DataLine', label: '个人统计', permission: 'stats.personal' },
-    { path: `/${prefix}/board`, icon: 'DataAnalysis', label: '数据看板', permission: prefix === 'designer' ? 'board.design' : prefix === 'basic' ? 'board.cs' : 'board.operator' },
+    dashboardItem,
     { path: '/notifications', icon: 'Bell', label: '通知中心', permission: 'notification.center' }
   ]
 }
