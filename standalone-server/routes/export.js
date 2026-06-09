@@ -7,6 +7,7 @@ const router = express.Router();
 const ExcelJS = require('exceljs');
 const { execute } = require('../config/database');
 const { requireAuth } = require('../middleware/auth');
+const taskService = require('../services/task.service');
 
 router.use(requireAuth);
 
@@ -14,6 +15,88 @@ function sendExcel(res, workbook, filename) {
   res.setHeader('Content-Type', 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet');
   res.setHeader('Content-Disposition', `attachment; filename=${encodeURIComponent(filename)}`);
   return workbook.xlsx.writeBuffer().then(buf => res.send(Buffer.from(buf)));
+}
+
+const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
+
+function addSheet(workbook, name, columns, rows) {
+  if (!columns || columns.length === 0) return null;
+  const sheet = workbook.addWorksheet(name.slice(0, 31));
+  sheet.columns = columns;
+  (rows || []).forEach(row => sheet.addRow(row));
+  sheet.getRow(1).font = { bold: true };
+  sheet.views = [{ state: 'frozen', ySplit: 1 }];
+  return sheet;
+}
+
+function monthlyRows(items, nameKey, nameHeader, valueKey = 'score') {
+  return (items || []).map(item => {
+    const row = { name: item.name || item.username || '' };
+    for (const m of MONTHS) row[m] = 0;
+    for (const stat of item.monthly_stats || []) {
+      row[stat.month] = Number(stat[valueKey]) || 0;
+    }
+    return row;
+  });
+}
+
+function dailyRows(items) {
+  items = items || [];
+  const now = new Date();
+  const dayCount = (items?.[0]?.daily_stats || []).length || new Date(now.getFullYear(), now.getMonth() + 1, 0).getDate();
+  const columns = [{ header: '姓名', key: 'name', width: 16 }];
+  for (let day = 1; day <= dayCount; day++) {
+    columns.push({ header: `${day}日(完成/待审)`, key: `d${day}`, width: 14 });
+  }
+  const rows = items.map(item => {
+    const row = { name: item.name || '' };
+    for (const stat of item.daily_stats || []) {
+      row[`d${stat.day}`] = `${stat.finished_score || 0} / ${stat.pending_review_score || 0}`;
+    }
+    return row;
+  });
+  return { columns, rows };
+}
+
+function projectRows(items) {
+  const names = [];
+  const seen = new Set();
+  for (const item of items || []) {
+    for (const stat of item.project_stats || []) {
+      if (stat.project_name && !seen.has(stat.project_name)) {
+        seen.add(stat.project_name);
+        names.push(stat.project_name);
+      }
+    }
+  }
+  const columns = [{ header: '美工', key: 'name', width: 16 }, ...names.map(name => ({ header: name, key: name, width: 18 }))];
+  const rows = (items || []).map(item => {
+    const row = { name: item.name || '' };
+    names.forEach(name => { row[name] = 0; });
+    for (const stat of item.project_stats || []) row[stat.project_name] = stat.count || 0;
+    return row;
+  });
+  return { columns, rows };
+}
+
+function addDesignerSummarySheet(workbook, sheetName, nameHeader, rows) {
+  addSheet(workbook, sheetName, [
+    { header: nameHeader, key: 'name', width: 16 },
+    { header: '总积分', key: 'total_score', width: 12 },
+    { header: '当月积分', key: 'current_month_score', width: 12 },
+    { header: '今日积分', key: 'today_score', width: 12 },
+    { header: '昨日积分', key: 'yesterday_score', width: 12 },
+    { header: '已完成', key: 'finished_count', width: 12 },
+    { header: '总任务', key: 'total_count', width: 12 },
+    { header: '完成率', key: 'completion_rate', width: 12 }
+  ], rows || []);
+}
+
+function addMonthlySheet(workbook, sheetName, nameHeader, rows) {
+  addSheet(workbook, sheetName, [
+    { header: nameHeader, key: 'name', width: 16 },
+    ...MONTHS.map(m => ({ header: m, key: m, width: 10 }))
+  ], rows);
 }
 
 /**
@@ -153,26 +236,46 @@ router.get('/logs', async (req, res) => {
  */
 router.get('/dashboard', async (req, res) => {
   try {
-    const [tasks] = await execute(`SELECT status, COUNT(*) as cnt FROM task_info GROUP BY status`);
-    const [users] = await execute(`SELECT role, COUNT(*) as cnt FROM sys_user GROUP BY role`);
-
+    const requestedGroups = String(req.query.groups || 'design,operator,cs')
+      .split(',')
+      .map(g => g.trim())
+      .filter(g => ['design', 'operator', 'cs'].includes(g));
+    const groups = requestedGroups.length ? requestedGroups : ['design', 'operator', 'cs'];
+    const detailStats = await taskService.getAdminDetailStats();
     const workbook = new ExcelJS.Workbook();
 
-    // 统计概览
-    const sheet = workbook.addWorksheet('统计概览');
-    sheet.addRow(['指标', '数值']);
-    sheet.addRow(['任务总数', tasks.reduce((s, t) => s + t.cnt, 0)]);
-    const statusMap = { wait: '待接单', accepted: '已接单', doing: '作图中', finished: '已完成', rejected: '已驳回' };
-    tasks.forEach(t => sheet.addRow([`${statusMap[t.status] || t.status}`, t.cnt]));
-    sheet.addRow([]);
-    sheet.addRow(['用户统计']);
-    const roleMap = { admin: '管理员', operator: '运营', designer: '美工', basic_designer: '基础美工', cs_agent: '客服', sub_admin: '子管理员' };
-    users.forEach(u => sheet.addRow([`${roleMap[u.role] || u.role}`, u.cnt]));
-    sheet.getColumn(1).width = 20;
-    sheet.getColumn(2).width = 15;
+    if (groups.includes('design')) {
+      addDesignerSummarySheet(workbook, '美工综合统计', '美工', detailStats.designerStats);
+      addMonthlySheet(workbook, '美工月度积分明细', '美工', monthlyRows(detailStats.designerStats));
+      const daily = dailyRows(detailStats.designerDailyStats);
+      addSheet(workbook, '美工日统计', daily.columns, daily.rows);
+      const projects = projectRows(detailStats.designerStats);
+      addSheet(workbook, '项目类型完成统计', projects.columns, projects.rows);
+      addMonthlySheet(workbook, '运营发布统计', '运营', monthlyRows(detailStats.operatorStats, 'name', '运营', 'count'));
+    }
+
+    if (groups.includes('operator')) {
+      addDesignerSummarySheet(workbook, '助理综合统计', '助理', detailStats.operatorAssistantStats);
+      addMonthlySheet(workbook, '运营助理月度积分明细', '助理', monthlyRows(detailStats.operatorAssistantStats));
+      const daily = dailyRows(detailStats.operatorAssistantDailyStats);
+      addSheet(workbook, '运营助理日统计', daily.columns, daily.rows);
+      addMonthlySheet(workbook, '运营任务发布统计', '运营', monthlyRows(detailStats.operatorPublishStats, 'name', '运营', 'count'));
+    }
+
+    if (groups.includes('cs')) {
+      addDesignerSummarySheet(workbook, '基础美工综合统计', '基础美工', detailStats.basicDesignerStats);
+      const daily = dailyRows(detailStats.basicDesignerDailyStats);
+      addSheet(workbook, '基础美工日统计', daily.columns, daily.rows);
+      addMonthlySheet(workbook, '客服发布统计', '客服', monthlyRows(detailStats.csAgentStats, 'name', '客服', 'count'));
+    }
+
+    if (workbook.worksheets.length === 0) {
+      const sheet = workbook.addWorksheet('暂无数据');
+      sheet.addRow(['当前仪表盘分区暂无可导出的表格数据']);
+    }
 
     const dateStr = new Date().toISOString().slice(0, 10);
-    await sendExcel(res, workbook, `统计报表_${dateStr}.xlsx`);
+    await sendExcel(res, workbook, `仪表盘表格_${dateStr}.xlsx`);
   } catch (err) {
     console.error('[Export] 报表导出失败:', err.message);
     res.status(500).json({ code: 500, msg: '导出失败: ' + err.message });

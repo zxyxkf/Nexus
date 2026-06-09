@@ -374,7 +374,7 @@
 
 <script setup>
 import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
-import { useRoute } from 'vue-router'
+import { useRoute, useRouter } from 'vue-router'
 import * as echarts from 'echarts/core'
 import { PieChart, LineChart, BarChart } from 'echarts/charts'
 import { TitleComponent, TooltipComponent, LegendComponent, GridComponent } from 'echarts/components'
@@ -385,6 +385,7 @@ import { getDashboardStatsApi, getAdminDetailStatsApi } from '@/api'
 import { exportDashboardApi } from '@/api/export'
 
 const route = useRoute()
+const router = useRouter()
 
 const designStats = ref({})
 const csStats = ref({})
@@ -588,11 +589,11 @@ const operatorAssistantDailyData = computed(() => buildDailyRows(detailStats.val
 const basicDesignerDailyData = computed(() => buildDailyRows(detailStats.value.basicDesignerDailyStats))
 
 async function exportDashboardReport() {
-  const blob = await exportDashboardApi()
+  const blob = await exportDashboardApi({ groups: allowedGroups.value.join(',') })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')
   a.href = url
-  a.download = `统计报表_${new Date().toISOString().slice(0, 10)}.xlsx`
+  a.download = `${route.meta.title || '仪表盘'}_${new Date().toISOString().slice(0, 10)}.xlsx`
   a.click()
   URL.revokeObjectURL(url)
 }
