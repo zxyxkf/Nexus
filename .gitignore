@@ -29,6 +29,7 @@ pids/
 *.pid.lock
 
 # Recovery / temporary folders
+.understand-anything/
 src.before-server-src-check/
 src_tmp/
 
