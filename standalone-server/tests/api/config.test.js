@@ -104,28 +104,19 @@ describe('PUT /api/config/update', () => {
 });
 
 describe('POST /api/config/delete', () => {
-  it('非 admin 不能删除配置', async () => {
-    // 创建一个运营用户测试权限
+  it('没有 admin.config 权限不能删除配置', async () => {
+    const username = `cfg_op_${Date.now()}`;
     const createOp = await request(app)
       .post('/api/user/create')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ username: `cfg_op_${Date.now()}`, password: 'test123456', realName: '配置测试运营', role: 'operator', store: '测试店铺' });
+      .send({ username, password: 'test123456', realName: '配置测试运营', role: 'operator', store: '测试店铺' });
     expect(createOp.body.code).toBe(0);
 
     const opLogin = await request(app)
       .post('/api/auth/login')
-      .send({ username: createOp.body.username || `cfg_op_${Date.now()}`, password: 'test123456' });
+      .send({ username, password: 'test123456' });
 
-    // 获取实际的用户名
-    const userList = await request(app)
-      .get('/api/user/list?role=operator')
-      .set('Authorization', `Bearer ${adminToken}`);
-    const opUser = userList.body.data.list.find(u => u.real_name === '配置测试运营');
-    const opLogin2 = await request(app)
-      .post('/api/auth/login')
-      .send({ username: opUser.username, password: 'test123456' });
-
-    const opToken = opLogin2.body.data.token;
+    const opToken = opLogin.body.data.token;
     expect(opToken).toBeDefined();
 
     const res = await request(app)
@@ -133,5 +124,37 @@ describe('POST /api/config/delete', () => {
       .set('Authorization', `Bearer ${opToken}`)
       .send({ id: 1 });
     expect(res.body.code).toBe(403);
+  });
+
+  it('有 admin.config 权限的普通用户可以更新配置', async () => {
+    if (!editableConfigId) return;
+    const username = `cfg_perm_${Date.now()}`;
+    await request(app)
+      .post('/api/user/create')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ username, password: 'test123456', realName: '配置权限测试', role: 'designer' });
+
+    const userList = await request(app)
+      .get('/api/user/list?role=designer')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const user = userList.body.data.list.find(u => u.username === username);
+    expect(user).toBeDefined();
+
+    const saveRes = await request(app)
+      .post('/api/user/permissions/save')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ userId: user.id, permissions: ['admin.config'], deniedPermissions: [] });
+    expect(saveRes.body.code).toBe(0);
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username, password: 'test123456' });
+    const token = loginRes.body.data.token;
+
+    const res = await request(app)
+      .put('/api/config/update')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ id: editableConfigId, configValue: 'permission-test-value' });
+    expect(res.body.code).toBe(0);
   });
 });

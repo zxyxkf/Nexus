@@ -6,9 +6,9 @@ const express = require('express');
 const router = express.Router();
 
 const { getPool } = require('../config/database');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireAnyPermission } = require('../middleware/auth');
 
-router.use(requireAuth, requireRole('admin'));
+router.use(requireAuth, requireAnyPermission(['admin.logs'], 'admin'));
 
 /**
  * GET /api/log/list - 分页查询操作日志
@@ -86,7 +86,7 @@ router.get('/operations', async (req, res, next) => {
 /**
  * POST /api/log/batch-delete - 批量删除操作日志（仅超级管理员）
  */
-router.post('/batch-delete', requireRole('admin'), async (req, res, next) => {
+router.post('/batch-delete', requireAnyPermission(['admin.logs'], 'admin'), async (req, res, next) => {
   try {
     const { logIds } = req.body;
 

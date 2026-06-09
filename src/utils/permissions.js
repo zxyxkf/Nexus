@@ -78,7 +78,7 @@ export function expandPermissions(codes = []) {
 
 export function userPermissions(user = getUser()) {
   if (!user) return []
-  if (Array.isArray(user.permissions) && user.permissions.length > 0) return expandPermissions(user.permissions)
+  if (Array.isArray(user.permissions)) return expandPermissions(user.permissions)
   return expandPermissions(ROLE_PERMISSION_FALLBACK[user.role] || [])
 }
 

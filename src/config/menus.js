@@ -80,22 +80,35 @@ const BUSINESS_SECTION_BY_ROLE = {
 }
 
 const ADMIN_SECTION_ORDER = ['overview', 'all_tasks', 'score', 'system', 'common']
+const GLOBAL_SECTION_ORDER = MENU_SECTIONS.map(section => section.key)
+const ADMIN_ONLY_PERMISSIONS = new Set(['admin.users'])
 
 function canShowForRole(item, role) {
+  if (ADMIN_ONLY_PERMISSIONS.has(item.permission) && role !== 'admin') return false
   return !item.roles || item.roles.includes(role)
+}
+
+function buildSectionOrder(role) {
+  if (role === 'admin') return ADMIN_SECTION_ORDER
+
+  const preferred = role === 'sub_admin'
+    ? ADMIN_SECTION_ORDER
+    : (BUSINESS_SECTION_BY_ROLE[role] || ['common'])
+
+  return [
+    ...preferred,
+    ...GLOBAL_SECTION_ORDER.filter(key => !preferred.includes(key))
+  ]
 }
 
 export function buildSidebarMenu(user, hasPermission) {
   if (!user) return []
 
-  const isAdmin = ['admin', 'sub_admin'].includes(user.role)
-  const sectionOrder = isAdmin ? ADMIN_SECTION_ORDER : (BUSINESS_SECTION_BY_ROLE[user.role] || ['common'])
-  const allowedSections = new Set(sectionOrder)
+  const sectionOrder = buildSectionOrder(user.role)
   const seen = new Set()
   const grouped = new Map(sectionOrder.map(key => [key, []]))
 
   for (const item of MENU_REGISTRY) {
-    if (!allowedSections.has(item.group)) continue
     if (!canShowForRole(item, user.role)) continue
     if (!hasPermission(item.permission, user)) continue
 

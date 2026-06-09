@@ -6,7 +6,7 @@
 const express = require('express');
 const router = express.Router();
 const { execute } = require('../config/database');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireAnyPermission } = require('../middleware/auth');
 
 router.use(requireAuth);
 
@@ -53,7 +53,7 @@ router.get('/records', async (req, res) => {
 });
 
 // 新增/修改积分项目（仅管理员）
-router.post('/save', requireRole('admin'), async (req, res) => {
+router.post('/save', requireAnyPermission(['admin.config'], 'admin'), async (req, res) => {
   try {
     const { id, name, score, scoreDesc, taskGroup } = req.body;
     if (!name || !name.trim()) {
@@ -92,7 +92,7 @@ router.post('/save', requireRole('admin'), async (req, res) => {
 });
 
 // 删除积分项目（仅管理员）
-router.post('/delete', requireRole('admin'), async (req, res) => {
+router.post('/delete', requireAnyPermission(['admin.config'], 'admin'), async (req, res) => {
   try {
     const { id, taskGroup } = req.body;
     if (!id) {

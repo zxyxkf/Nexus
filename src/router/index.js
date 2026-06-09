@@ -280,8 +280,17 @@ const DEFAULT_ROUTE_BY_ROLE = {
 
 function firstAllowedPath(user) {
   const children = routes.find(r => r.path === '/')?.children || []
-  const matched = children.find(r => r.path && !r.redirect && ((!r.meta?.permission && !r.meta?.permissions) || hasAnyPermission(r.meta.permissions || [r.meta.permission], user)))
+  const matched = children.find(r =>
+    r.path &&
+    !r.redirect &&
+    !isLockedAdminRoute(r, user) &&
+    ((!r.meta?.permission && !r.meta?.permissions) || hasAnyPermission(r.meta.permissions || [r.meta.permission], user))
+  )
   return matched ? `/${matched.path}` : (DEFAULT_ROUTE_BY_ROLE[user.role] || '/dashboard')
+}
+
+function isLockedAdminRoute(to, user) {
+  return to.meta.permission === 'admin.users' && user.role !== 'admin'
 }
 
 // 路由守卫 - 权限校验
@@ -307,6 +316,11 @@ router.beforeEach((to, from, next) => {
 
   const roleAllowed = !to.meta.roles || to.meta.roles.length === 0 || to.meta.roles.includes(user.role)
   const permissionAllowed = (!to.meta.permission && !to.meta.permissions) || hasAnyPermission(to.meta.permissions || [to.meta.permission], user)
+
+  if (isLockedAdminRoute(to, user)) {
+    next(firstAllowedPath(user))
+    return
+  }
 
   if (!roleAllowed && !permissionAllowed) {
     next(firstAllowedPath(user))

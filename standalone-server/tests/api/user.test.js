@@ -163,14 +163,14 @@ describe('GET /api/user/publishers', () => {
 });
 
 describe('用户权限配置', () => {
-  let permissionUser;
+  const permissionUsers = [];
 
   afterAll(async () => {
-    if (permissionUser?.id) {
+    for (const user of permissionUsers) {
       await request(app)
         .post('/api/user/delete')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ id: permissionUser.id });
+        .send({ id: user.id });
     }
   });
 
@@ -190,8 +190,9 @@ describe('用户权限配置', () => {
     const listRes = await request(app)
       .get('/api/user/list?role=designer')
       .set('Authorization', `Bearer ${adminToken}`);
-    permissionUser = listRes.body.data.list.find(u => u.username === username);
+    const permissionUser = listRes.body.data.list.find(u => u.username === username);
     expect(permissionUser).toBeDefined();
+    permissionUsers.push(permissionUser);
 
     const saveRes = await request(app)
       .post('/api/user/permissions/save')
@@ -238,5 +239,73 @@ describe('用户权限配置', () => {
     expect(loginRes.body.code).toBe(0);
     expect(loginRes.body.data.user.permissions).toContain('admin.users');
     expect(loginRes.body.data.user.permissions).not.toContain('dashboard.design');
+  });
+
+  it('额外授予的管理页权限在重新登录后生效并可访问对应接口', async () => {
+    const username = `perm_admin_page_${Date.now()}`;
+    await request(app)
+      .post('/api/user/create')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username,
+        password: 'test123456',
+        realName: '额外权限测试',
+        role: 'designer'
+      })
+      .expect(200);
+
+    const listRes = await request(app)
+      .get('/api/user/list?role=designer')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const user = listRes.body.data.list.find(u => u.username === username);
+    expect(user).toBeDefined();
+    permissionUsers.push(user);
+
+    const beforeLoginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username, password: 'test123456' });
+    expect(beforeLoginRes.body.code).toBe(0);
+
+    const deniedLogRes = await request(app)
+      .get('/api/log/list')
+      .set('Authorization', `Bearer ${beforeLoginRes.body.data.token}`);
+    expect(deniedLogRes.status).toBe(403);
+
+    const saveRes = await request(app)
+      .post('/api/user/permissions/save')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        userId: user.id,
+        permissions: ['admin.logs', 'admin.config'],
+        deniedPermissions: []
+      });
+    expect(saveRes.body.code).toBe(0);
+
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username, password: 'test123456' });
+
+    expect(loginRes.body.code).toBe(0);
+    expect(loginRes.body.data.user.permissions).toContain('admin.logs');
+    expect(loginRes.body.data.user.permissions).toContain('admin.config');
+
+    const token = loginRes.body.data.token;
+    const logRes = await request(app)
+      .get('/api/log/list')
+      .set('Authorization', `Bearer ${token}`);
+    expect(logRes.body.code).toBe(0);
+
+    const configListRes = await request(app)
+      .get('/api/config/list')
+      .set('Authorization', `Bearer ${token}`);
+    expect(configListRes.body.code).toBe(0);
+    const editableConfig = configListRes.body.data.find(c => c.editable === 1);
+    expect(editableConfig).toBeDefined();
+
+    const configUpdateRes = await request(app)
+      .put('/api/config/update')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ id: editableConfig.id, configValue: editableConfig.config_value || 'test-value' });
+    expect(configUpdateRes.body.code).toBe(0);
   });
 });

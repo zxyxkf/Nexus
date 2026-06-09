@@ -4,7 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const { getPool } = require('../config/database');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireAnyPermission } = require('../middleware/auth');
 
 router.use(requireAuth);
 
@@ -20,7 +20,7 @@ router.get('/list', async (req, res, next) => {
 });
 
 // 创建店铺（管理员）
-router.post('/create', requireRole('admin'), async (req, res, next) => {
+router.post('/create', requireAnyPermission(['admin.config'], 'admin'), async (req, res, next) => {
   try {
     const { name } = req.body;
     if (!name) return res.json({ code: 400, msg: '店铺名称不能为空' });
@@ -33,7 +33,7 @@ router.post('/create', requireRole('admin'), async (req, res, next) => {
 });
 
 // 更新店铺（管理员）
-router.put('/update', requireRole('admin'), async (req, res, next) => {
+router.put('/update', requireAnyPermission(['admin.config'], 'admin'), async (req, res, next) => {
   try {
     const { id, name } = req.body;
     if (!id) return res.json({ code: 400, msg: '缺少店铺ID' });
@@ -47,7 +47,7 @@ router.put('/update', requireRole('admin'), async (req, res, next) => {
 });
 
 // 删除店铺（管理员）
-router.delete('/delete', requireRole('admin'), async (req, res, next) => {
+router.delete('/delete', requireAnyPermission(['admin.config'], 'admin'), async (req, res, next) => {
   try {
     const { id } = req.body;
     if (!id) return res.json({ code: 400, msg: '缺少店铺ID' });

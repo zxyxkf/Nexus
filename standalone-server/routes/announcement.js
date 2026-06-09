@@ -4,7 +4,7 @@
 const express = require('express');
 const router = express.Router();
 const { getPool } = require('../config/database');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireAnyPermission } = require('../middleware/auth');
 
 router.use(requireAuth);
 
@@ -24,7 +24,7 @@ router.get('/active', async (req, res, next) => {
 /**
  * GET /api/announcement/list - 公告列表（管理员）
  */
-router.get('/list', requireRole('admin'), async (req, res, next) => {
+router.get('/list', requireAnyPermission(['admin.config'], 'admin'), async (req, res, next) => {
   try {
     const pool = getPool();
     const [rows] = await pool.execute(
@@ -37,7 +37,7 @@ router.get('/list', requireRole('admin'), async (req, res, next) => {
 /**
  * POST /api/announcement/create - 创建公告（管理员）
  */
-router.post('/create', requireRole('admin'), async (req, res, next) => {
+router.post('/create', requireAnyPermission(['admin.config'], 'admin'), async (req, res, next) => {
   try {
     const { title, content, isActive } = req.body;
     if (!title || !content) {
@@ -62,7 +62,7 @@ router.post('/create', requireRole('admin'), async (req, res, next) => {
 /**
  * PUT /api/announcement/update - 更新公告（管理员）
  */
-router.put('/update', requireRole('admin'), async (req, res, next) => {
+router.put('/update', requireAnyPermission(['admin.config'], 'admin'), async (req, res, next) => {
   try {
     const { id, title, content, isActive } = req.body;
     if (!id) return res.json({ code: 400, msg: '缺少公告ID' });
@@ -85,7 +85,7 @@ router.put('/update', requireRole('admin'), async (req, res, next) => {
 /**
  * DELETE /api/announcement/delete - 删除公告（管理员）
  */
-router.delete('/delete', requireRole('admin'), async (req, res, next) => {
+router.delete('/delete', requireAnyPermission(['admin.config'], 'admin'), async (req, res, next) => {
   try {
     const { id } = req.body;
     if (!id) return res.json({ code: 400, msg: '缺少公告ID' });

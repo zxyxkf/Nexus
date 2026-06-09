@@ -6,7 +6,7 @@ const express = require('express');
 const router = express.Router();
 
 const { getPool } = require('../config/database');
-const { requireAuth, requireRole } = require('../middleware/auth');
+const { requireAuth, requireAnyPermission } = require('../middleware/auth');
 const { initStorageConfig } = require('../utils/share');
 
 router.use(requireAuth);
@@ -39,7 +39,7 @@ router.get('/list', async (req, res, next) => {
 /**
  * PUT /api/config/update - 更新配置
  */
-router.put('/update', requireRole('admin'), async (req, res, next) => {
+router.put('/update', requireAnyPermission(['admin.config'], 'admin'), async (req, res, next) => {
   try {
     const { id, configValue } = req.body;
 
@@ -109,7 +109,7 @@ router.get('/get-value', async (req, res, next) => {
 /**
  * POST /api/config/delete - 删除配置（仅超级管理员）
  */
-router.post('/delete', requireRole('admin'), async (req, res, next) => {
+router.post('/delete', requireAnyPermission(['admin.config'], 'admin'), async (req, res, next) => {
   try {
     const { id } = req.body;
     if (!id) return res.json({ code: 400, msg: '参数不完整' });
