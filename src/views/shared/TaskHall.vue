@@ -230,7 +230,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document } from '@element-plus/icons-vue'
@@ -327,6 +327,15 @@ function clearSearch() {
   page.value = 1
   loadData()
 }
+
+watch(taskGroup, async () => {
+  page.value = 1
+  list.value = []
+  total.value = 0
+  detailVisible.value = false
+  currentTask.value = null
+  await loadData()
+})
 
 async function acceptTask(row) {
   try {

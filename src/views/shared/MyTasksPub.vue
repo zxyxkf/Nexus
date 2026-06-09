@@ -486,6 +486,23 @@ async function loadData(options = {}) {
   }
 }
 
+watch(taskGroup, async () => {
+  page.value = 1
+  list.value = []
+  total.value = 0
+  detailVisible.value = false
+  editVisible.value = false
+  currentTask.value = null
+  scoreItems.value = []
+  designerList.value = []
+  basicDesignerList.value = []
+  operatorDesignerList.value = []
+  publisherList.value = []
+  if (isCsAgent.value) await loadBasicDesigners()
+  if (!isCsAgent.value) { await loadPublisherList(); await loadDesignerList() }
+  await loadData()
+})
+
 watch(() => route.query.openTask, (newTaskId) => {
   if (newTaskId && list.value.length > 0) {
     const task = list.value.find(t => t.id == newTaskId)

@@ -239,7 +239,7 @@
 </template>
 
 <script setup>
-import { ref, computed } from 'vue'
+import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, PictureFilled, Document } from '@element-plus/icons-vue'
@@ -422,6 +422,15 @@ async function getRejectReason(action) {
 }
 
 const formatSize = formatFileSize
+watch(taskGroup, async () => {
+  page.value = 1
+  list.value = []
+  total.value = 0
+  selectedRows.value = []
+  detailVisible.value = false
+  currentTask.value = null
+  await loadData()
+})
 useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || reviewLoading.value })
 </script>
 

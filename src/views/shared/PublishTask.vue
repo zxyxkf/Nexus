@@ -194,6 +194,12 @@ watch(() => form.scoreItemId, () => { hasUnsavedData.value = true })
 watch(() => form.description, () => { hasUnsavedData.value = true })
 watch(() => form.deadline, () => { hasUnsavedData.value = true })
 watch(() => refImages.value, () => { hasUnsavedData.value = true }, { deep: true })
+watch(taskGroup, async () => {
+  resetForm()
+  scoreItems.value = []
+  designers.value = []
+  await Promise.all([loadScoreItems(), loadDesigners()])
+})
 
 function beforeUnload(e) {
   if (hasUnsavedData.value) {
