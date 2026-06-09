@@ -36,6 +36,9 @@ const ROLE_PERMISSION_FALLBACK = {
 }
 
 const PERMISSION_IMPLICATIONS = {
+  'task.create.design': ['operator.publish.design'],
+  'task.create.operator': ['operator.publish.assistant'],
+  'task.create.cs': ['cs.publish.basic'],
   'operator.publish.design': ['task.create.design', 'task.view.store', 'task.download.file'],
   'operator.tasks.design': ['task.view.store', 'task.download.file'],
   'operator.review.design': ['task.review.own', 'task.view.store', 'task.download.file'],
