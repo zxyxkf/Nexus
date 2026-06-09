@@ -494,9 +494,20 @@ async function reviewTask(taskId, action, rejectReason, user) {
       }
 
       if (action === 'pass') {
-        await taskDao.updateTaskStatus(conn, taskId, 'finished', { finish_time: new Date() });
+        const extra = { finish_time: new Date() };
+        if (task.task_group === 'cs' && Number(task.applied_score) > 1 && task.score_review_status === 'approved') {
+          extra.score = Number(task.applied_score) || 1;
+        }
+        await taskDao.updateTaskStatus(conn, taskId, 'finished', extra);
       } else {
-        await taskDao.updateTaskStatus(conn, taskId, 'rejected', { reject_reason: normalizedRejectReason });
+        const extra = { reject_reason: normalizedRejectReason };
+        if (task.task_group === 'cs') {
+          extra.score = 1;
+          extra.applied_score = 0;
+          extra.score_review_status = '';
+          extra.score_review_reason = '';
+        }
+        await taskDao.updateTaskStatus(conn, taskId, 'rejected', extra);
       }
     });
 
@@ -523,7 +534,7 @@ async function batchReview(taskIds, user) {
   const count = await executeTransaction(async (conn) => {
     const placeholders = taskIds.map(() => '?').join(',');
     const [rows] = await conn.execute(
-      `SELECT id, status, publisher_id FROM task_info WHERE id IN (${placeholders})`, taskIds
+      `SELECT id, status, publisher_id, task_group, applied_score, score_review_status FROM task_info WHERE id IN (${placeholders})`, taskIds
     );
     if ((user.role === 'operator' || user.role === 'cs_agent') && rows.some(r => Number(r.publisher_id) !== Number(user.id))) {
       throw new AppError(403, '无权审核他人发布的任务');
@@ -533,7 +544,15 @@ async function batchReview(taskIds, user) {
 
     const vPlaceholders = validIds.map(() => '?').join(',');
     await conn.execute(
-      `UPDATE task_info SET status = 'finished', finish_time = NOW(), update_time = NOW() WHERE id IN (${vPlaceholders})`,
+      `UPDATE task_info
+       SET status = 'finished',
+           score = CASE
+             WHEN task_group = 'cs' AND COALESCE(applied_score, 0) > 1 AND score_review_status = 'approved' THEN applied_score
+             ELSE score
+           END,
+           finish_time = NOW(),
+           update_time = NOW()
+       WHERE id IN (${vPlaceholders})`,
       validIds
     );
     return validIds.length;

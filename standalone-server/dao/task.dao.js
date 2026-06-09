@@ -128,7 +128,9 @@ async function getTaskFiles(taskId) {
 /** 锁行查询（事务内 FOR UPDATE） */
 async function getTaskForUpdate(conn, taskId) {
   const [rows] = await conn.execute(
-    `SELECT id, title, task_no, status, publisher_id, designer_id, task_group FROM task_info WHERE id = ? FOR UPDATE`,
+    `SELECT id, title, task_no, status, publisher_id, designer_id, task_group,
+            score, applied_score, score_review_status
+     FROM task_info WHERE id = ? FOR UPDATE`,
     [taskId]
   );
   return rows[0] || null;

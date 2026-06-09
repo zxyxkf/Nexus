@@ -1,0 +1,155 @@
+const request = require('supertest');
+const { setupApp } = require('./helpers/setup');
+
+let app;
+let adminToken;
+let csToken;
+let basicToken;
+let leadToken;
+let csId;
+let basicId;
+let leadId;
+
+const suffix = Date.now();
+const csUser = `score_cs_${suffix}`;
+const basicUser = `score_basic_${suffix}`;
+const leadUser = `score_lead_${suffix}`;
+
+beforeAll(async () => {
+  process.env.DISABLE_RATE_LIMIT = '1';
+  app = await setupApp();
+
+  const adminLogin = await request(app)
+    .post('/api/auth/login')
+    .send({ username: 'admin', password: 'admin123' });
+  adminToken = adminLogin.body.data.token;
+
+  await request(app)
+    .post('/api/user/create')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ username: csUser, password: 'test123456', realName: '测试客服', role: 'cs_agent' });
+
+  await request(app)
+    .post('/api/user/create')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ username: basicUser, password: 'test123456', realName: '测试基础美工', role: 'basic_designer' });
+
+  await request(app)
+    .post('/api/user/create')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ username: leadUser, password: 'test123456', realName: '测试基础美工组长', role: 'basic_designer', isTeamLead: 1 });
+
+  const csList = await request(app).get('/api/user/list?role=cs_agent').set('Authorization', `Bearer ${adminToken}`);
+  const basicList = await request(app).get('/api/user/list?role=basic_designer').set('Authorization', `Bearer ${adminToken}`);
+  csId = csList.body.data.list.find(u => u.username === csUser).id;
+  basicId = basicList.body.data.list.find(u => u.username === basicUser).id;
+  leadId = basicList.body.data.list.find(u => u.username === leadUser).id;
+
+  csToken = (await request(app).post('/api/auth/login').send({ username: csUser, password: 'test123456' })).body.data.token;
+  basicToken = (await request(app).post('/api/auth/login').send({ username: basicUser, password: 'test123456' })).body.data.token;
+  leadToken = (await request(app).post('/api/auth/login').send({ username: leadUser, password: 'test123456' })).body.data.token;
+}, 30000);
+
+describe('基础美工申请分以客服通过为最终入账基准', () => {
+  let taskId;
+
+  it('组长通过后客服未通过前不计入已完成分值；客服驳回会撤销本次申请', async () => {
+    const create = await request(app)
+      .post('/api/task/create')
+      .set('Authorization', `Bearer ${csToken}`)
+      .send({
+        title: '基础美工分值驳回测试',
+        taskGroup: 'cs',
+        score: 1,
+        designerId: basicId
+      });
+    expect(create.body.code).toBe(0);
+    taskId = create.body.data.id;
+
+    await request(app)
+      .post('/api/task/upload-files')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(taskId))
+      .field('fileCategory', 'work')
+      .field('actualQuantity', '1')
+      .field('appliedScore', '3')
+      .attach('files', Buffer.from('first work'), 'first.txt')
+      .expect(200);
+
+    const approve = await request(app)
+      .post('/api/score/review/approve')
+      .set('Authorization', `Bearer ${leadToken}`)
+      .send({ taskId });
+    expect(approve.body.code).toBe(0);
+
+    const beforeCsPassStats = await request(app)
+      .get('/api/task/stats/my')
+      .set('Authorization', `Bearer ${basicToken}`);
+    expect(Number(beforeCsPassStats.body.data.total_score || 0)).toBe(0);
+
+    const reject = await request(app)
+      .post('/api/task/review')
+      .set('Authorization', `Bearer ${csToken}`)
+      .send({ taskId, action: 'reject', rejectReason: '需要修改' });
+    expect(reject.body.code).toBe(0);
+
+    const detail = await request(app)
+      .get(`/api/task/detail?taskId=${taskId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(detail.body.data.status).toBe('rejected');
+    expect(Number(detail.body.data.score)).toBe(1);
+    expect(Number(detail.body.data.applied_score || 0)).toBe(0);
+    expect(detail.body.data.score_review_status || '').toBe('');
+
+    const reviewList = await request(app)
+      .get('/api/score/review/list?pageSize=50')
+      .set('Authorization', `Bearer ${leadToken}`);
+    expect(reviewList.body.data.list.some(t => Number(t.id) === Number(taskId))).toBe(false);
+  });
+
+  it('二次提交同样申请分后，仅客服最终通过时计一次申请分', async () => {
+    await request(app)
+      .post('/api/task/upload-files')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(taskId))
+      .field('fileCategory', 'work')
+      .field('actualQuantity', '1')
+      .field('appliedScore', '3')
+      .attach('files', Buffer.from('second work'), 'second.txt')
+      .expect(200);
+
+    const approve = await request(app)
+      .post('/api/score/review/approve')
+      .set('Authorization', `Bearer ${leadToken}`)
+      .send({ taskId });
+    expect(approve.body.code).toBe(0);
+
+    const pass = await request(app)
+      .post('/api/task/review')
+      .set('Authorization', `Bearer ${csToken}`)
+      .send({ taskId, action: 'pass' });
+    expect(pass.body.code).toBe(0);
+
+    const stats = await request(app)
+      .get('/api/task/stats/my')
+      .set('Authorization', `Bearer ${basicToken}`);
+    expect(Number(stats.body.data.total_score)).toBe(3);
+
+    const detail = await request(app)
+      .get(`/api/task/detail?taskId=${taskId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(detail.body.data.status).toBe('finished');
+    expect(Number(detail.body.data.score)).toBe(3);
+  });
+});
+
+afterAll(async () => {
+  for (const id of [csId, basicId, leadId]) {
+    if (id) {
+      await request(app)
+        .post('/api/user/delete')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ id });
+    }
+  }
+});

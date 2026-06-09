@@ -221,11 +221,14 @@ router.post('/review/approve', async (req, res) => {
   try {
     const { taskId } = req.body;
     if (!taskId) return res.json({ code: 400, msg: '任务ID不能为空' });
-    const [task] = await execute(`SELECT id, applied_score, score FROM task_info WHERE id = ?`, [taskId]);
+    const [task] = await execute(`SELECT id, status, applied_score, score_review_status FROM task_info WHERE id = ?`, [taskId]);
     if (!task.length) return res.json({ code: 400, msg: '任务不存在' });
+    if (task[0].status !== 'doing' || task[0].score_review_status !== 'pending') {
+      return res.json({ code: 400, msg: '该分值申请已失效或无需审核' });
+    }
     await execute(
-      `UPDATE task_info SET score = ?, score_review_status = 'approved', update_time = NOW() WHERE id = ?`,
-      [task[0].applied_score, taskId]
+      `UPDATE task_info SET score_review_status = 'approved', update_time = NOW() WHERE id = ?`,
+      [taskId]
     );
     res.json({ code: 0, msg: '分值审核通过' });
   } catch (err) {
@@ -239,6 +242,11 @@ router.post('/review/reject', async (req, res) => {
     const { taskId, reason } = req.body;
     if (!taskId) return res.json({ code: 400, msg: '任务ID不能为空' });
     if (!reason || !reason.trim()) return res.json({ code: 400, msg: '请填写不予通过的原因' });
+    const [task] = await execute(`SELECT id, status, score_review_status FROM task_info WHERE id = ?`, [taskId]);
+    if (!task.length) return res.json({ code: 400, msg: '任务不存在' });
+    if (task[0].status !== 'doing' || task[0].score_review_status !== 'pending') {
+      return res.json({ code: 400, msg: '该分值申请已失效或无需审核' });
+    }
     await execute(
       `UPDATE task_info SET score = 1, score_review_status = 'rejected', score_review_reason = ?, update_time = NOW() WHERE id = ?`,
       [reason.trim(), taskId]
