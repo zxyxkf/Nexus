@@ -391,17 +391,35 @@ function resetFilter() {
   loadData()
 }
 
+function clearQueryFilters() {
+  filter.status = ''
+  filter.publisherId = ''
+  filter.designerId = ''
+  filter.dateRange = null
+  filter.dateField = ''
+}
+
 function applyQueryFilters() {
+  clearQueryFilters()
   if (route.query.status) filter.status = route.query.status
   if (route.query.publisherId) filter.publisherId = route.query.publisherId
   if (route.query.designerId) filter.designerId = route.query.designerId
-  filter.dateField = route.query.dateField === 'finish' ? 'finish' : ''
+  filter.dateField = ['finish', 'submit'].includes(route.query.dateField) ? route.query.dateField : ''
   if (route.query.startDate || route.query.endDate) {
     filter.dateRange = [route.query.startDate || route.query.endDate, route.query.endDate || route.query.startDate]
   } else if (route.query.dateStart || route.query.dateEnd) {
     filter.dateRange = [route.query.dateStart || route.query.dateEnd, route.query.dateEnd || route.query.dateStart]
   }
 }
+
+watch(
+  () => [route.query.startDate, route.query.endDate, route.query.dateStart, route.query.dateEnd, route.query.status, route.query.publisherId, route.query.designerId, route.query.dateField],
+  () => {
+    applyQueryFilters()
+    page.value = 1
+    loadData()
+  }
+)
 
 async function viewDetail(row) {
   try {

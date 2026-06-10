@@ -109,7 +109,11 @@
               <el-table-column prop="name" label="美工" fixed="left" min-width="90" />
               <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
                 <template #default="{ row }">
-                  <el-button link type="primary" @click="openDailyTasks('design', d.day, row)">{{ row[d.key] }}</el-button>
+                  <div class="daily-score-cell">
+                    <el-button link type="primary" @click="openDailyTasks('design', d.day, row, 'finished')">{{ row[`${d.key}_finished`] }}</el-button>
+                    <span>/</span>
+                    <el-button link type="warning" @click="openDailyTasks('design', d.day, row, 'doing')">{{ row[`${d.key}_pending`] }}</el-button>
+                  </div>
                 </template>
               </el-table-column>
             </el-table>
@@ -242,7 +246,11 @@
               <el-table-column prop="name" label="助理" fixed="left" min-width="90" />
               <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
                 <template #default="{ row }">
-                  <el-button link type="primary" @click="openDailyTasks('operator', d.day, row)">{{ row[d.key] }}</el-button>
+                  <div class="daily-score-cell">
+                    <el-button link type="primary" @click="openDailyTasks('operator', d.day, row, 'finished')">{{ row[`${d.key}_finished`] }}</el-button>
+                    <span>/</span>
+                    <el-button link type="warning" @click="openDailyTasks('operator', d.day, row, 'doing')">{{ row[`${d.key}_pending`] }}</el-button>
+                  </div>
                 </template>
               </el-table-column>
             </el-table>
@@ -345,7 +353,11 @@
               <el-table-column prop="name" label="基础美工" fixed="left" min-width="90" />
               <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
                 <template #default="{ row }">
-                  <el-button link type="primary" @click="openDailyTasks('cs', d.day, row)">{{ row[d.key] }}</el-button>
+                  <div class="daily-score-cell">
+                    <el-button link type="primary" @click="openDailyTasks('cs', d.day, row, 'finished')">{{ row[`${d.key}_finished`] }}</el-button>
+                    <span>/</span>
+                    <el-button link type="warning" @click="openDailyTasks('cs', d.day, row, 'doing')">{{ row[`${d.key}_pending`] }}</el-button>
+                  </div>
                 </template>
               </el-table-column>
             </el-table>
@@ -579,9 +591,16 @@ function buildDailyRows(source, nameKey = 'name') {
   if (!source?.length) return []
   return source.map(item => {
     const row = { id: item.id, name: item[nameKey] || item.name }
-    for (const day of monthDays.value) row[day.key] = '0 / 0'
+    for (const day of monthDays.value) {
+      row[day.key] = '0 / 0'
+      row[`${day.key}_finished`] = 0
+      row[`${day.key}_pending`] = 0
+    }
     for (const stat of item.daily_stats || []) {
-      row[`d${stat.day}`] = `${stat.finished_score || 0} / ${stat.pending_review_score || 0}`
+      const key = `d${stat.day}`
+      row[key] = `${stat.finished_score || 0} / ${stat.pending_review_score || 0}`
+      row[`${key}_finished`] = stat.finished_score || 0
+      row[`${key}_pending`] = stat.pending_review_score || 0
     }
     return row
   })
@@ -603,19 +622,19 @@ async function exportDashboardReport() {
 
 const dailyTaskTargets = {
   design: [
-    { permission: 'admin.tasks.design', path: '/admin/tasks/design', query: row => ({ designerId: row?.id, dateField: 'finish' }) },
-    { permission: 'designer.tasks.design', path: '/designer/tasks', query: () => ({ dateField: 'finish' }) },
-    { permission: 'operator.tasks.design', path: '/operator/tasks', query: row => ({ designerId: row?.id, dateField: 'finish' }) }
+    { permission: 'admin.tasks.design', path: '/admin/tasks/design', query: row => ({ designerId: row?.id }) },
+    { permission: 'designer.tasks.design', path: '/designer/tasks', query: () => ({}) },
+    { permission: 'operator.tasks.design', path: '/operator/tasks', query: row => ({ designerId: row?.id }) }
   ],
   operator: [
-    { permission: 'admin.tasks.operator', path: '/admin/tasks/operator', query: row => ({ designerId: row?.id, dateField: 'finish' }) },
-    { permission: 'assistant.tasks.operator', path: '/operator-assistant/tasks', query: () => ({ dateField: 'finish' }) },
-    { permission: 'operator.tasks.assistant', path: '/operator/op-tasks', query: row => ({ designerId: row?.id, dateField: 'finish' }) }
+    { permission: 'admin.tasks.operator', path: '/admin/tasks/operator', query: row => ({ designerId: row?.id }) },
+    { permission: 'assistant.tasks.operator', path: '/operator-assistant/tasks', query: () => ({}) },
+    { permission: 'operator.tasks.assistant', path: '/operator/op-tasks', query: row => ({ designerId: row?.id }) }
   ],
   cs: [
-    { permission: 'admin.tasks.cs', path: '/admin/tasks/cs', query: row => ({ designerId: row?.id, dateField: 'finish' }) },
-    { permission: 'basic.tasks.cs', path: '/basic/tasks', query: () => ({ dateField: 'finish' }) },
-    { permission: 'cs.tasks.basic', path: '/cs/tasks', query: row => ({ designerId: row?.id, dateField: 'finish' }) }
+    { permission: 'admin.tasks.cs', path: '/admin/tasks/cs', query: row => ({ designerId: row?.id }) },
+    { permission: 'basic.tasks.cs', path: '/basic/tasks', query: () => ({}) },
+    { permission: 'cs.tasks.basic', path: '/cs/tasks', query: row => ({ designerId: row?.id }) }
   ]
 }
 
@@ -625,7 +644,7 @@ function pickDailyTaskTarget(group) {
   return dailyTaskTargets[group]?.find(target => hasPermission(target.permission, user))
 }
 
-function openDailyTasks(group, day, row) {
+function openDailyTasks(group, day, row, status = 'finished') {
   const target = pickDailyTaskTarget(group)
   if (!target) {
     ElMessage.warning('当前账号没有该分区的任务列表权限')
@@ -633,6 +652,7 @@ function openDailyTasks(group, day, row) {
   }
   const date = `${nowForView.getFullYear()}-${String(nowForView.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
   const extraQuery = target.query?.(row) || {}
+  const dateField = status === 'doing' ? 'submit' : 'finish'
   router.push({
     path: target.path,
     query: {
@@ -640,7 +660,8 @@ function openDailyTasks(group, day, row) {
       dateEnd: date,
       startDate: date,
       endDate: date,
-      status: 'finished',
+      status,
+      dateField,
       ...Object.fromEntries(Object.entries(extraQuery).filter(([, value]) => value !== undefined && value !== null && value !== ''))
     }
   })
@@ -967,6 +988,19 @@ onUnmounted(() => {
 .dashboard-wide-table :deep(.el-scrollbar__bar.is-horizontal) {
   display: block;
   opacity: 1;
+}
+
+.daily-score-cell {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+  min-width: 56px;
+}
+
+.daily-score-cell :deep(.el-button) {
+  padding: 0;
+  min-height: 20px;
 }
 
 /* 分区底色区分 */

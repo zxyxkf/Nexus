@@ -474,7 +474,7 @@ watch(() => route.query.openTask, (newTaskId) => {
 
 function applyDashboardQueryFilters() {
   if (route.query.status && !fixedStatus.value) statusFilter.value = route.query.status
-  dateField.value = route.query.dateField === 'finish' ? 'finish' : ''
+  dateField.value = ['finish', 'submit'].includes(route.query.dateField) ? route.query.dateField : ''
   const date = route.query.dateStart || route.query.startDate || route.query.dateEnd || route.query.endDate
   if (date) dateFilter.value = date
 }

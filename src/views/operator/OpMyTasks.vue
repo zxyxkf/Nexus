@@ -418,7 +418,7 @@ watch(() => route.query.openTask, (newTaskId) => {
 function applyDashboardQueryFilters() {
   if (route.query.status) statusFilter.value = route.query.status
   if (route.query.designerId) assistantFilter.value = route.query.designerId
-  dateField.value = route.query.dateField === 'finish' ? 'finish' : ''
+  dateField.value = ['finish', 'submit'].includes(route.query.dateField) ? route.query.dateField : ''
   if (route.query.dateStart || route.query.dateEnd || route.query.startDate || route.query.endDate) {
     const start = route.query.dateStart || route.query.startDate || route.query.dateEnd || route.query.endDate
     const end = route.query.dateEnd || route.query.endDate || route.query.dateStart || route.query.startDate

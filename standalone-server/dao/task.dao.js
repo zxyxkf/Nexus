@@ -238,6 +238,12 @@ const TASK_SELECT = `t.*, u1.real_name as publisher_name, u2.real_name as design
 const TASK_JOIN = `LEFT JOIN sys_user u1 ON t.publisher_id = u1.id
                     LEFT JOIN sys_user u2 ON t.designer_id = u2.id`;
 
+function taskDateColumn(dateField) {
+  if (dateField === 'finish') return 't.finish_time';
+  if (dateField === 'submit') return 't.submit_time';
+  return 't.create_time';
+}
+
 /** 我发布的任务 */
 async function queryMyPublished({ userId, role, permissions = [], filterGroup, selfOnly, status, styleNumber, keyword, designerId, publisherId, dateStart, dateEnd, dateField, page, pageSize }) {
   const offset = (page - 1) * pageSize;
@@ -245,7 +251,7 @@ async function queryMyPublished({ userId, role, permissions = [], filterGroup, s
   const params = [];
   const group = filterGroup || (role === 'cs_agent' ? 'cs' : 'design');
   const hasPerm = (code) => role === 'admin' || role === 'sub_admin' || permissions.includes(code);
-  const dateColumn = dateField === 'finish' ? 't.finish_time' : 't.create_time';
+  const dateColumn = taskDateColumn(dateField);
 
   if (role === 'admin' || role === 'sub_admin') {
     if (group === 'design') where += ' AND (t.task_group = ? OR t.task_group IS NULL OR t.task_group = \'\')';
@@ -293,7 +299,7 @@ async function queryMyAccepted({ userId, role, permissions = [], taskGroup, stat
   const group = taskGroup || (role === 'basic_designer' ? 'cs' : role === 'operator_assistant' ? 'operator' : 'design');
   const hasPerm = (code) => role === 'admin' || role === 'sub_admin' || permissions.includes(code);
   const requiredPerm = group === 'cs' ? 'basic.tasks.cs' : group === 'operator' ? 'assistant.tasks.operator' : 'designer.tasks.design';
-  const dateColumn = dateField === 'finish' ? 't.finish_time' : 't.create_time';
+  const dateColumn = taskDateColumn(dateField);
 
   if (!hasPerm(requiredPerm)) {
     where += ' AND 1=0';
@@ -380,7 +386,7 @@ async function queryAllTasks({ status, keyword, publisherId, designerId, startDa
   const offset = (page - 1) * pageSize;
   let where = 'WHERE 1=1';
   const params = [];
-  const dateColumn = dateField === 'finish' ? 't.finish_time' : 't.create_time';
+  const dateColumn = taskDateColumn(dateField);
 
   if (status) { where += ' AND t.status = ?'; params.push(status); }
   if (keyword) { where += ' AND (t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`); }
