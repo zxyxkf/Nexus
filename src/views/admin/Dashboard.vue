@@ -661,6 +661,8 @@ function openDailyTasks(group, day, row, status = 'finished') {
       dateEnd: date,
       startDate: date,
       endDate: date,
+      drilldownDate: date,
+      drilldownKey: `${group}-${status}-${row?.userId || 'all'}-${date}-${Date.now()}`,
       status,
       dateField,
       from: 'dashboard',

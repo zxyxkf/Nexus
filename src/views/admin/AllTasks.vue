@@ -402,21 +402,35 @@ function clearQueryFilters() {
   filter.dateField = ''
 }
 
+function queryValue(key) {
+  const value = route.query[key]
+  return Array.isArray(value) ? value[0] : value
+}
+
 function applyQueryFilters() {
   clearQueryFilters()
-  if (route.query.status) filter.status = route.query.status
-  if (route.query.publisherId) filter.publisherId = String(route.query.publisherId)
-  if (route.query.designerId) filter.designerId = String(route.query.designerId)
-  filter.dateField = ['finish', 'submit'].includes(route.query.dateField) ? route.query.dateField : ''
-  if (route.query.startDate || route.query.endDate) {
-    filter.dateRange = [route.query.startDate || route.query.endDate, route.query.endDate || route.query.startDate]
-  } else if (route.query.dateStart || route.query.dateEnd) {
-    filter.dateRange = [route.query.dateStart || route.query.dateEnd, route.query.dateEnd || route.query.dateStart]
+  const status = queryValue('status')
+  const publisherId = queryValue('publisherId')
+  const designerId = queryValue('designerId')
+  const dateField = queryValue('dateField')
+  const drilldownDate = queryValue('drilldownDate')
+  const startDate = queryValue('startDate') || queryValue('dateStart')
+  const endDate = queryValue('endDate') || queryValue('dateEnd')
+
+  if (status) filter.status = status
+  if (publisherId) filter.publisherId = String(publisherId)
+  if (designerId) filter.designerId = String(designerId)
+  filter.dateField = ['finish', 'submit'].includes(dateField) ? dateField : ''
+
+  if (drilldownDate) {
+    filter.dateRange = [String(drilldownDate), String(drilldownDate)]
+  } else if (startDate || endDate) {
+    filter.dateRange = [String(startDate || endDate), String(endDate || startDate)]
   }
 }
 
 watch(
-  () => [route.query.startDate, route.query.endDate, route.query.dateStart, route.query.dateEnd, route.query.status, route.query.publisherId, route.query.designerId, route.query.dateField, route.query.from],
+  () => [route.query.startDate, route.query.endDate, route.query.dateStart, route.query.dateEnd, route.query.drilldownDate, route.query.drilldownKey, route.query.status, route.query.publisherId, route.query.designerId, route.query.dateField, route.query.from],
   () => {
     applyQueryFilters()
     page.value = 1
