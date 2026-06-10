@@ -11,6 +11,7 @@ import Pagination from './components/Pagination.vue'
 import './utils/auth'
 import './assets/styles/global.css'
 import { installTableEnhancements } from './utils/table-enhancements'
+import { installDetailDismiss } from './utils/detail-dismiss'
 
 const app = createApp(App)
 const pinia = createPinia()
@@ -54,3 +55,4 @@ app.use(pinia)
 app.use(router)
 app.mount('#app')
 installTableEnhancements()
+installDetailDismiss()
