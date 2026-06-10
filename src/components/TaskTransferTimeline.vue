@@ -16,6 +16,9 @@
           <span class="transfer-arrow">→</span>
           <span>{{ record.to_designer_name || '未命名' }}</span>
         </div>
+        <div v-if="record.transfer_reason" class="transfer-reason">
+          原因：{{ record.transfer_reason }}
+        </div>
         <div class="transfer-meta">
           <span>{{ formatDate(record.create_time) }}</span>
           <span v-if="record.operator_name">操作人：{{ record.operator_name }}</span>
@@ -116,6 +119,13 @@ const initialName = computed(() => items.value[0]?.from_designer_name || '首次
   color: #5b7f77;
   font-size: 12px;
 }
+.transfer-reason {
+  grid-column: 2 / -1;
+  color: #426a62;
+  font-size: 12px;
+  line-height: 1.5;
+  word-break: break-word;
+}
 @media (max-width: 768px) {
   .transfer-item {
     grid-template-columns: 1fr;
@@ -123,6 +133,9 @@ const initialName = computed(() => items.value[0]?.from_designer_name || '首次
   }
   .transfer-meta {
     justify-content: flex-start;
+  }
+  .transfer-reason {
+    grid-column: 1;
   }
 }
 </style>

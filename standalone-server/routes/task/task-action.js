@@ -67,7 +67,7 @@ router.post('/upload-files', requireAnyPermission(['task.upload.work', 'task.cre
 
 router.post('/transfer', requireRole('basic_designer'), async (req, res, next) => {
   try {
-    const result = await taskService.transferTask(req.body.taskId, req.body.newDesignerId, req.user);
+    const result = await taskService.transferTask(req.body.taskId, req.body.newDesignerId, req.body.reason, req.user);
     res.json({ code: 0, ...result });
   } catch (err) { next(err); }
 });

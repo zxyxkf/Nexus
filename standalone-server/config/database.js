@@ -142,6 +142,7 @@ const CREATE_TABLES_SQL = {
       to_designer_name TEXT DEFAULT '',
       operator_id INTEGER,
       operator_name TEXT DEFAULT '',
+      transfer_reason TEXT DEFAULT '',
       create_time TEXT DEFAULT (datetime('now', 'localtime'))
     )`,
     `CREATE TABLE IF NOT EXISTS sys_oper_log (
@@ -356,6 +357,7 @@ const CREATE_TABLES_SQL = {
       to_designer_name VARCHAR(100) DEFAULT '',
       operator_id INT,
       operator_name VARCHAR(100) DEFAULT '',
+      transfer_reason TEXT,
       create_time DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     `CREATE TABLE IF NOT EXISTS sys_oper_log (
@@ -510,8 +512,10 @@ async function initDatabase() {
         to_designer_name VARCHAR(100) DEFAULT '',
         operator_id INT,
         operator_name VARCHAR(100) DEFAULT '',
+        transfer_reason TEXT,
         create_time DATETIME DEFAULT CURRENT_TIMESTAMP
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+      `ALTER TABLE task_transfer_record ADD COLUMN transfer_reason TEXT`,
       `CREATE TABLE IF NOT EXISTS sys_score_item_operator (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(200) NOT NULL UNIQUE,
@@ -567,8 +571,10 @@ async function initDatabase() {
         to_designer_name TEXT DEFAULT '',
         operator_id INTEGER,
         operator_name TEXT DEFAULT '',
+        transfer_reason TEXT DEFAULT '',
         create_time TEXT DEFAULT (datetime('now', 'localtime'))
       )`,
+      `ALTER TABLE task_transfer_record ADD COLUMN transfer_reason TEXT DEFAULT ''`,
       `CREATE TABLE IF NOT EXISTS sys_shop (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,

@@ -5,6 +5,7 @@ const bcrypt = require('bcryptjs');
 const AppError = require('../utils/AppError');
 const userDao = require('../dao/user.dao');
 const permissionService = require('./permission.service');
+const { attachOnlineStatus } = require('../utils/online');
 
 const VALID_ROLES = ['admin', 'sub_admin', 'operator', 'designer', 'cs_agent', 'basic_designer', 'operator_assistant'];
 const DEFAULT_PASSWORD = '123456';
@@ -49,7 +50,7 @@ async function getDesignerList() {
 }
 
 async function getBasicDesignerList() {
-  return userDao.getUsersByRole('basic_designer');
+  return attachOnlineStatus(await userDao.getUsersByRole('basic_designer'));
 }
 
 async function getOperatorAssistantList() {

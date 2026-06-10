@@ -12,6 +12,7 @@ const { withLock } = require('../utils/mutex');
 const { IMAGE_EXTS, fixFilenameEncoding } = require('../utils/upload');
 const logger = require('../utils/business-logger');
 const { sendNotification } = require('../utils/notification');
+const { isUserOnline } = require('../utils/online');
 
 // ==================== 辅助 ====================
 
@@ -583,18 +584,22 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
   return { msg: saveOnly ? `已保存(${files.length}个文件)，请确认后提交` : `上传成功(${files.length}个文件)` };
 }
 
-async function transferTask(taskId, newDesignerId, user) {
+async function transferTask(taskId, newDesignerId, reason, user) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
   if (!newDesignerId) throw new AppError(400, '请选择接收人');
+  const transferReason = String(reason || '').trim();
+  if (!transferReason) throw new AppError(400, '请填写转移原因');
 
   await executeTransaction(async (conn) => {
     const task = await taskDao.getTaskForUpdate(conn, taskId);
     if (!task) throw new AppError(400, '任务不存在');
     if (Number(task.designer_id) !== Number(user.id)) throw new AppError(403, '无权转移此任务');
     if (task.status === 'finished') throw new AppError(400, '已完成的任务不能转移');
+    if (Number(newDesignerId) === Number(user.id)) throw new AppError(400, '不能转移给自己');
 
     const d = await taskDao.findDesigner(conn, newDesignerId, 'basic_designer');
     if (!d) throw new AppError(400, '接收人不存在或不可用');
+    if (!(await isUserOnline(newDesignerId))) throw new AppError(400, '接收人当前不在线，不能转移');
 
     await taskDao.insertTransferRecord(conn, {
       taskId,
@@ -603,7 +608,8 @@ async function transferTask(taskId, newDesignerId, user) {
       toDesignerId: newDesignerId,
       toDesignerName: d.real_name || '',
       operatorId: user.id,
-      operatorName: user.realName || user.username || ''
+      operatorName: user.realName || user.username || '',
+      reason: transferReason
     });
 
     await taskDao.updateTaskFields(conn, taskId, {

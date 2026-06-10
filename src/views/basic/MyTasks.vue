@@ -339,10 +339,21 @@
             <el-option
               v-for="d in transferDesignerList"
               :key="d.id"
-              :label="d.real_name || d.username"
+              :label="`${d.real_name || d.username}（${d.is_online ? '在线' : '离线'}）`"
               :value="d.id"
+              :disabled="!d.is_online"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="转移原因">
+          <el-input
+            v-model="transferReason"
+            type="textarea"
+            :rows="3"
+            maxlength="200"
+            show-word-limit
+            placeholder="请填写转移原因"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
@@ -406,6 +417,7 @@ const transferLoading = ref(false)
 const transferTask = ref(null)
 const transferDesignerId = ref(null)
 const transferDesignerList = ref([])
+const transferReason = ref('')
 
 const detailVisible = ref(false)
 const currentTask = ref(null)
@@ -616,6 +628,7 @@ async function handleUpload() {
 async function openTransfer(row) {
   transferTask.value = row
   transferDesignerId.value = null
+  transferReason.value = ''
   transferVisible.value = true
   try {
     const res = await getBasicDesignerListApi()
@@ -632,12 +645,23 @@ async function handleTransfer() {
     ElMessage.warning('请选择接收人')
     return
   }
+  const selectedDesigner = transferDesignerList.value.find(d => Number(d.id) === Number(transferDesignerId.value))
+  if (!selectedDesigner?.is_online) {
+    ElMessage.warning('接收人当前不在线，不能转移')
+    return
+  }
+  const reason = transferReason.value.trim()
+  if (!reason) {
+    ElMessage.warning('请填写转移原因')
+    return
+  }
   try {
     await ElMessageBox.confirm('确认将该任务转移给选中的基础美工？', '转移确认')
     transferLoading.value = true
     const res = await transferTaskApi({
       taskId: transferTask.value.id,
-      newDesignerId: transferDesignerId.value
+      newDesignerId: transferDesignerId.value,
+      reason
     })
     if (res.code === 0) {
       ElMessage.success('任务转移成功')

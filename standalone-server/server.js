@@ -52,8 +52,14 @@ async function start() {
     socket.join(`role:${role}`);
     socket.join(`group:${taskGroup}`);
     console.log(`[WS] 连接: ${socket.data.username}(${role}) userId=${userId} group=${taskGroup}`);
+    if (role === 'basic_designer') {
+      socket.to('group:cs').emit('task:update');
+    }
     socket.on('disconnect', () => {
       console.log(`[WS] 断开: ${socket.data.username}`);
+      if (role === 'basic_designer') {
+        socket.to('group:cs').emit('task:update');
+      }
     });
   });
 

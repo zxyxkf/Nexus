@@ -170,8 +170,8 @@ async function updateTaskFields(conn, taskId, fields) {
 async function insertTransferRecord(conn, data) {
   await conn.execute(
     `INSERT INTO task_transfer_record
-       (task_id, from_designer_id, from_designer_name, to_designer_id, to_designer_name, operator_id, operator_name)
-     VALUES (?,?,?,?,?,?,?)`,
+       (task_id, from_designer_id, from_designer_name, to_designer_id, to_designer_name, operator_id, operator_name, transfer_reason)
+     VALUES (?,?,?,?,?,?,?,?)`,
     [
       data.taskId,
       data.fromDesignerId || null,
@@ -179,7 +179,8 @@ async function insertTransferRecord(conn, data) {
       data.toDesignerId || null,
       data.toDesignerName || '',
       data.operatorId || null,
-      data.operatorName || ''
+      data.operatorName || '',
+      data.reason || ''
     ]
   );
 }
