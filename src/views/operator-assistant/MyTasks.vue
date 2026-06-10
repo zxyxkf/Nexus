@@ -170,7 +170,7 @@
             <div class="detail-header-left">
               <span class="detail-number">#{{ currentTask.task_no }}</span>
               <span style="font-size:14px;font-weight:600;">{{ currentTask.publisher_name }}</span>
-              <span class="detail-header-time">{{ currentTask.create_time }}</span>
+              <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
             </div>
             <div class="detail-header-right">
               <el-button
@@ -315,7 +315,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Plus, Document } from '@element-plus/icons-vue'
 import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, undoSubmitApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag, getPublisherListApi } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'

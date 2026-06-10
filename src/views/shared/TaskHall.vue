@@ -114,7 +114,7 @@
             <div class="detail-header-left">
               <span class="detail-number">#{{ currentTask.task_no }}</span>
               <span style="font-size:14px;font-weight:600;">{{ currentTask.publisher_name }}</span>
-              <span class="detail-header-time">{{ currentTask.create_time }}</span>
+              <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
             </div>
             <div class="detail-header-right">
               <el-button type="primary" size="small" @click="acceptInDetail" :loading="acceptingId === currentTask?.id">接单</el-button>
@@ -235,7 +235,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document } from '@element-plus/icons-vue'
 import { getTaskHallApi, acceptTaskApi, getTaskDetailApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
-import { formatFileSize } from '@/utils/format'
+import { formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'

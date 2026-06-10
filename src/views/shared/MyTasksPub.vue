@@ -192,7 +192,7 @@
             <div class="detail-header-left">
               <span class="detail-number">#{{ currentTask.task_no }}</span>
               <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
-              <span class="detail-header-time">{{ currentTask.create_time }}</span>
+              <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
             </div>
             <div class="detail-header-right">
               <el-button v-if="(currentTask.status === 'wait' || currentTask.status === 'accepted')" type="warning" size="small" @click="handleWithdraw(currentTask)">撤回</el-button>
@@ -391,7 +391,7 @@ import { Close, Document, Search, Plus } from '@element-plus/icons-vue'
 import { getMyPublishedApi, getTaskDetailApi, urgeTaskApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { getScoreItemsApi } from '@/api'
 import { getBasicDesignerListApi, getDesignerListApi, getOperatorAssistantListApi, getPublisherListApi } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'

@@ -97,7 +97,7 @@
           <div class="detail-header-left">
             <span class="detail-number">#{{ currentTask.task_no }}</span>
             <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
-            <span class="detail-header-time">{{ currentTask.create_time }}</span>
+            <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
           </div>
           <div class="detail-header-right">
             <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
@@ -214,7 +214,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Delete, Document } from '@element-plus/icons-vue'
 import { getAllTasksApi, getTaskDetailApi, getUserListApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, deleteTaskApi, batchDeleteApi, batchDownloadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'

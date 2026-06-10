@@ -63,7 +63,8 @@ async function createTask(body, user) {
           wangwangId: taskGroup === 'cs' ? (wangwangId || '') : '',
           designerId: designerIdVal, designerName: designerNameVal,
           taskGroup, shopName: shopName || '', quantity: quantity || 1,
-          taskFilePath: taskFilePath || ''
+          taskFilePath: taskFilePath || '',
+          acceptTime: designerIdVal ? new Date() : null
         });
 
         return { insertId, assignedId: designerIdVal };
@@ -183,7 +184,8 @@ async function updateTask(body, user) {
       style_number: styleNumber || '', specified_color: specifiedColor || '',
       designer_id: designerIdVal, designer_name: designerNameVal, status,
       shop_name: shopName || '', quantity: quantity || 1,
-      task_file_path: taskFilePath || ''
+      task_file_path: taskFilePath || '',
+      accept_time: designerIdVal ? new Date() : null
     };
     await taskDao.updateTaskFields(conn, taskId, fields);
   });
@@ -299,7 +301,8 @@ async function acceptTask(taskId, user) {
       if (task.status !== 'wait') throw new AppError(400, '任务已被接单，请刷新后重试');
 
       await taskDao.updateTaskStatus(conn, taskId, 'accepted', {
-        designer_id: user.id
+        designer_id: user.id,
+        accept_time: new Date()
       });
     });
 

@@ -261,6 +261,7 @@ describe('完整状态流转（大厅接单模式）', () => {
 
 describe('驳回与重新提交', () => {
   let rejectTaskId;
+  let firstSubmitTime;
 
   it('1. 创建 + 接单 + 提交', async () => {
     const create = await request(app)
@@ -278,6 +279,12 @@ describe('驳回与重新提交', () => {
       .post('/api/task/finish')
       .set('Authorization', `Bearer ${designerToken}`)
       .send({ taskId: rejectTaskId, actualQuantity: 1 });
+
+    const detail = await request(app)
+      .get(`/api/task/detail?taskId=${rejectTaskId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(detail.body.data.submit_time).toBeTruthy();
+    firstSubmitTime = detail.body.data.submit_time;
   });
 
   it('2. 运营驳回（action=reject） → status=rejected', async () => {
@@ -295,6 +302,8 @@ describe('驳回与重新提交', () => {
   });
 
   it('3. 美工重新提交 → status=doing', async () => {
+    await new Promise(resolve => setTimeout(resolve, 1100));
+
     const res = await request(app)
       .post('/api/task/finish')
       .set('Authorization', `Bearer ${designerToken}`)
@@ -305,6 +314,8 @@ describe('驳回与重新提交', () => {
       .get(`/api/task/detail?taskId=${rejectTaskId}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(detail.body.data.status).toBe('doing');
+    expect(detail.body.data.submit_time).toBeTruthy();
+    expect(detail.body.data.submit_time).not.toBe(firstSubmitTime);
   });
 
   it('4. 运营审核通过 → status=finished', async () => {

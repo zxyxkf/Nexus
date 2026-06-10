@@ -86,14 +86,15 @@ async function insertTask(conn, data) {
        (task_no, title, description, priority, deadline, publisher_id, status,
         publisher_name, score_item_id, score, ref_path, style_number,
         specified_color, wangwang_id, designer_id, designer_name,
-        task_group, shop_name, quantity, task_file_path)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        task_group, shop_name, quantity, task_file_path, accept_time)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       data.taskNo, data.title, data.description, data.priority, data.deadline,
       data.publisherId, data.status, data.publisherName,
       data.scoreItemId, data.score, data.refPath, data.styleNumber,
       data.specifiedColor, data.wangwangId, data.designerId, data.designerName,
-      data.taskGroup, data.shopName, data.quantity, data.taskFilePath
+      data.taskGroup, data.shopName, data.quantity, data.taskFilePath,
+      data.acceptTime || null
     ]
   );
   return result.insertId;
@@ -171,7 +172,7 @@ async function batchDeleteTasks(taskIds) {
 async function batchReassignTasks(taskIds, designerId, designerName) {
   const placeholders = taskIds.map(() => '?').join(',');
   const [result] = await execute(
-    `UPDATE task_info SET designer_id = ?, designer_name = ?, status = 'accepted', update_time = NOW()
+    `UPDATE task_info SET designer_id = ?, designer_name = ?, status = 'accepted', accept_time = NOW(), update_time = NOW()
      WHERE id IN (${placeholders}) AND status = 'wait'`,
     [designerId, designerName, ...taskIds]
   );
@@ -211,9 +212,9 @@ async function deleteWorkFiles(conn, taskId) {
 async function updateTaskStatus(conn, taskId, status, extra = {}) {
   const setParts = ['status = ?', 'update_time = NOW()'];
   const values = [status];
-  // 状态首次变为作图中时记录上传时间（仅首次，避免后续同状态更新覆盖）
+  // 每次重新提交都刷新上传提交时间，详情页展示的始终是最近一次提交。
   if (status === 'doing') {
-    setParts.push('submit_time = COALESCE(submit_time, NOW())');
+    setParts.push('submit_time = NOW()');
   }
   for (const [key, val] of Object.entries(extra)) {
     setParts.push(`${key} = ?`);

@@ -160,6 +160,10 @@
               <span>{{ currentTask.score }}</span>
             </div>
             <div class="inline-detail-stat-card">
+              <label>上传提交时间</label>
+              <span>{{ formatDate(currentTask.submit_time) }}</span>
+            </div>
+            <div class="inline-detail-stat-card">
               <label>旺旺ID</label>
               <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
             </div>
@@ -235,7 +239,7 @@ import { Close, Document } from '@element-plus/icons-vue'
 import { getScoreReviewRecordsApi } from '@/api/score'
 import { getTaskDetailApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { getBasicDesignerListApi, getPublisherListApi } from '@/api'
-import { formatFileSize } from '@/utils/format'
+import { formatDate, formatFileSize } from '@/utils/format'
 import Pagination from '@/components/Pagination.vue'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 

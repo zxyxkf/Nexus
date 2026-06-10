@@ -39,6 +39,31 @@ export function formatDate(str) {
   return str.replace('T', ' ').substring(0, 19)
 }
 
+export function getTaskHeaderTime(task) {
+  if (!task) return { label: '时间', value: '' }
+  if (task.status === 'finished') {
+    return { label: '审核通过时间', value: task.finish_time || task.update_time || task.submit_time || task.create_time || '' }
+  }
+  if (task.status === 'doing') {
+    return { label: '上传提交时间', value: task.submit_time || task.update_time || task.create_time || '' }
+  }
+  if (task.status === 'rejected') {
+    return { label: '驳回时间', value: task.update_time || task.submit_time || task.create_time || '' }
+  }
+  if (task.status === 'accepted') {
+    return { label: '接单时间', value: task.accept_time || task.update_time || task.create_time || '' }
+  }
+  if (task.status === 'draft') {
+    return { label: '撤回时间', value: task.update_time || task.create_time || '' }
+  }
+  return { label: '发布时间', value: task.create_time || task.update_time || '' }
+}
+
+export function formatTaskHeaderTime(task) {
+  const item = getTaskHeaderTime(task)
+  return item.value ? `${item.label} ${formatDate(item.value)}` : ''
+}
+
 export function formatFileSize(bytes) {
   if (!bytes || bytes === 0) return '0 B'
   const units = ['B', 'KB', 'MB', 'GB']

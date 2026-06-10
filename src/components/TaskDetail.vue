@@ -30,6 +30,7 @@
         <el-descriptions-item v-if="task.work_path" label="上传路径">{{ task.work_path }}</el-descriptions-item>
         <el-descriptions-item v-if="task.deadline" label="截止日期">{{ task.deadline }}</el-descriptions-item>
         <el-descriptions-item label="创建时间">{{ formatTime(task.create_time) }}</el-descriptions-item>
+        <el-descriptions-item v-if="task.submit_time" label="上传提交时间">{{ formatTime(task.submit_time) }}</el-descriptions-item>
         <el-descriptions-item v-if="task.finish_time" label="完成时间">{{ formatTime(task.finish_time) }}</el-descriptions-item>
       </el-descriptions>
 

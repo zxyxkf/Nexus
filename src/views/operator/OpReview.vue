@@ -135,7 +135,7 @@
           <div class="detail-header-left">
             <span class="detail-number">#{{ currentTask.task_no }}</span>
             <span style="font-size:14px;font-weight:600;">{{ currentTask.designer_name }}</span>
-            <span class="detail-header-time">{{ currentTask.update_time }}</span>
+            <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
           </div>
           <div class="detail-header-right">
             <el-button v-if="currentTask.status === 'doing'" type="success" size="small" @click="doReview('pass')" :loading="reviewLoading">通过</el-button>
@@ -145,6 +145,7 @@
         </div>
 
         <div class="inline-detail-body">
+          <TaskStatusTimeline :task="currentTask" task-group="operator" />
           <div class="inline-detail-stat-card">
             <label>店铺</label>
             <span>{{ currentTask.shop_name || '-' }}</span>
@@ -232,7 +233,8 @@ import { Close, PictureFilled, Document } from '@element-plus/icons-vue'
 import { getMyPublishedApi, getTaskDetailApi, reviewTaskApi, batchReviewApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
-import { formatFileSize } from '@/utils/format'
+import { formatFileSize, formatTaskHeaderTime } from '@/utils/format'
+import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 
 const loading = ref(false)
 const list = ref([])
