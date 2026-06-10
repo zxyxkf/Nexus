@@ -73,6 +73,27 @@ async function getPublisherList(userRole, userStore) {
   return userDao.getPublishersByRole('cs_agent');
 }
 
+function canViewAllTaskGroup(user, taskGroup) {
+  const permissionMap = {
+    design: 'admin.tasks.design',
+    operator: 'admin.tasks.operator',
+    cs: 'admin.tasks.cs'
+  };
+  const permission = permissionMap[taskGroup];
+  return !!permission && (
+    user?.role === 'admin' ||
+    (user?.permissions || []).includes(permission)
+  );
+}
+
+async function getTaskPublisherList(taskGroup, user) {
+  const group = taskGroup || 'design';
+  if (!canViewAllTaskGroup(user, group)) {
+    throw new AppError(403, '无权查看该分区发布人');
+  }
+  return userDao.getTaskPublishersByGroup(group);
+}
+
 // ==================== 创建 ====================
 
 async function createUser({ username, password, realName, role, store, isTeamLead, email, phone, remark }) {
@@ -148,6 +169,7 @@ module.exports = {
   getBasicDesignerList,
   getOperatorAssistantList,
   getPublisherList,
+  getTaskPublisherList,
   createUser,
   updateUser,
   resetPassword,

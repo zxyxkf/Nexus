@@ -276,6 +276,27 @@ async function getAllTasks(query) {
   });
 }
 
+function allowedAdminTaskGroups(user) {
+  const permissionMap = {
+    design: 'admin.tasks.design',
+    operator: 'admin.tasks.operator',
+    cs: 'admin.tasks.cs'
+  };
+  const permissions = new Set(user?.permissions || []);
+  return Object.entries(permissionMap)
+    .filter(([, permission]) => user?.role === 'admin' || permissions.has(permission))
+    .map(([group]) => group);
+}
+
+async function getAllTasksForUser(query, user) {
+  const requestedGroup = query.taskGroup || 'design';
+  const allowedGroups = allowedAdminTaskGroups(user);
+  if (!allowedGroups.includes(requestedGroup)) {
+    throw new AppError(403, '无权查看该全量任务分区');
+  }
+  return getAllTasks({ ...query, taskGroup: requestedGroup });
+}
+
 async function searchTasks(query, user) {
   const keyword = String(query.keyword || '').trim();
   if (!keyword) return { list: [], total: 0, page: 1, pageSize: 12, totalPages: 0 };
@@ -844,22 +865,47 @@ function buildDesignerStats(users, tasks, scoreItems, refDate, taskGroup) {
   });
 }
 
-function buildPublisherMonthlyStats(publishers, tasks, refYear) {
+function parseDateTime(value) {
+  if (!value) return null;
+  if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
+  const date = new Date(String(value).replace(' ', 'T'));
+  return date && !isNaN(date.getTime()) ? date : null;
+}
+
+function buildPublisherMonthlyStats(tasks, refYear) {
   const thisYear = refYear || new Date().getFullYear();
-  return publishers.map(p => {
-    const publisherTasks = tasks.filter(t => Number(t.publisher_id) === Number(p.id));
+  const publisherMap = new Map();
+
+  for (const task of tasks || []) {
+    const publisherId = Number(task.publisher_id);
+    if (!publisherId) continue;
+    if (!publisherMap.has(publisherId)) {
+      publisherMap.set(publisherId, {
+        id: publisherId,
+        name: task.publisher_name || task.publisher_username || '未知发布人',
+        username: task.publisher_username || '',
+        role: task.publisher_role || '',
+        tasks: []
+      });
+    }
+    publisherMap.get(publisherId).tasks.push(task);
+  }
+
+  return [...publisherMap.values()].map(p => {
+    const publisherTasks = p.tasks;
     const monthlyMap = {};
     for (let m = 1; m <= 12; m++) {
       monthlyMap[m] = { month: CN_MONTHS_SHORT[m - 1], count: 0 };
     }
     for (const task of publisherTasks) {
-      const ct = task.create_time ? new Date(task.create_time.replace(' ', 'T')) : null;
-      if (ct && !isNaN(ct.getTime()) && ct.getFullYear() === thisYear) {
+      const ct = parseDateTime(task.create_time);
+      if (ct && ct.getFullYear() === thisYear) {
         monthlyMap[ct.getMonth() + 1].count += 1;
       }
     }
-    return { id: p.id, name: p.name || p.username, publish_count: publisherTasks.length, monthly_stats: Object.values(monthlyMap) };
-  });
+    const { tasks: _tasks, ...publisher } = p;
+    return { ...publisher, publish_count: publisherTasks.length, monthly_stats: Object.values(monthlyMap) };
+  }).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN'));
 }
 
 function buildDailyScoreStats(users, tasks, refDate, taskGroup) {
@@ -994,12 +1040,10 @@ async function getAdminDetailStats() {
   const now = new Date();
   const thisYear = now.getFullYear();
 
-  const [designers, basicDesigners, operatorAssistants, operators, csAgents, scoreItems, allTasks] = await Promise.all([
+  const [designers, basicDesigners, operatorAssistants, scoreItems, allTasks] = await Promise.all([
     taskDao.getUsersByRoleWithUsername('designer'),
     taskDao.getUsersByRoleWithUsername('basic_designer'),
     taskDao.getUsersByRoleWithUsername('operator_assistant'),
-    taskDao.getUsersByRoleWithUsername('operator'),
-    taskDao.getUsersByRoleWithUsername('cs_agent'),
     taskDao.getScoreItems(),
     taskDao.getAllTasksForStats()
   ]);
@@ -1015,16 +1059,16 @@ async function getAdminDetailStats() {
     designerDailyStats: buildDailyScoreStats(designers, allTasks, now, 'design'),
     basicDesignerDailyStats: buildDailyScoreStats(basicDesigners, allTasks, now, 'cs'),
     operatorAssistantDailyStats: buildDailyScoreStats(operatorAssistants, allTasks, now, 'operator'),
-    operatorStats: buildPublisherMonthlyStats(operators, designTasks, thisYear),
-    operatorPublishStats: buildPublisherMonthlyStats(operators, operatorTasks, thisYear),
-    csAgentStats: buildPublisherMonthlyStats(csAgents, csTasks, thisYear),
+    operatorStats: buildPublisherMonthlyStats(designTasks, thisYear),
+    operatorPublishStats: buildPublisherMonthlyStats(operatorTasks, thisYear),
+    csAgentStats: buildPublisherMonthlyStats(csTasks, thisYear),
     scoreItems: scoreItems.map(si => si.name)
   };
 }
 
 module.exports = {
   createTask, getTaskDetail, deleteTask, updateTask, batchDelete, batchReassign,
-  getMyPublished, getMyAccepted, getTaskHall, getAllTasks, searchTasks,
+  getMyPublished, getMyAccepted, getTaskHall, getAllTasks, getAllTasksForUser, searchTasks,
   acceptTask, uploadFiles, transferTask, finishTask, reviewTask, batchReview,
   withdrawTask, undoSubmit,
   getMyStats, getDashboardStats, getAdminDetailStats

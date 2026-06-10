@@ -635,8 +635,15 @@ async function getScoreItems() {
 async function getAllTasksForStats() {
   const pool = getPool();
   const [rows] = await pool.execute(
-    `SELECT id, designer_id, publisher_id, status, score, actual_quantity, score_item_id, create_time, finish_time, update_time, submit_time, task_group, score_review_status
-     FROM task_info WHERE (designer_id IS NOT NULL OR publisher_id IS NOT NULL)`
+    `SELECT t.id, t.designer_id, t.publisher_id, t.status, t.score, t.actual_quantity,
+            t.score_item_id, t.create_time, t.finish_time, t.update_time, t.submit_time,
+            t.task_group, t.score_review_status,
+            COALESCE(u.real_name, t.publisher_name, u.username, '') AS publisher_name,
+            u.username AS publisher_username,
+            u.role AS publisher_role
+     FROM task_info t
+     LEFT JOIN sys_user u ON t.publisher_id = u.id
+     WHERE (t.designer_id IS NOT NULL OR t.publisher_id IS NOT NULL)`
   );
   return rows;
 }

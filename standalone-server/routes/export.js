@@ -19,6 +19,20 @@ function sendExcel(res, workbook, filename) {
 
 const MONTHS = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月'];
 
+const ROLE_LABELS = {
+  admin: '超级管理员',
+  sub_admin: '子管理员',
+  operator: '运营',
+  cs_agent: '客服',
+  designer: '美工设计师',
+  basic_designer: '基础美工',
+  operator_assistant: '运营助理'
+};
+
+function roleLabel(role) {
+  return ROLE_LABELS[role] || role || '-';
+}
+
 function addSheet(workbook, name, columns, rows) {
   if (!columns || columns.length === 0) return null;
   const sheet = workbook.addWorksheet(name.slice(0, 31));
@@ -32,6 +46,20 @@ function addSheet(workbook, name, columns, rows) {
 function monthlyRows(items, nameKey, nameHeader, valueKey = 'score') {
   return (items || []).map(item => {
     const row = { name: item.name || item.username || '' };
+    for (const m of MONTHS) row[m] = 0;
+    for (const stat of item.monthly_stats || []) {
+      row[stat.month] = Number(stat[valueKey]) || 0;
+    }
+    return row;
+  });
+}
+
+function publisherMonthlyRows(items, valueKey = 'count') {
+  return (items || []).map(item => {
+    const row = {
+      name: item.name || item.username || '',
+      role: roleLabel(item.role)
+    };
     for (const m of MONTHS) row[m] = 0;
     for (const stat of item.monthly_stats || []) {
       row[stat.month] = Number(stat[valueKey]) || 0;
@@ -95,6 +123,14 @@ function addDesignerSummarySheet(workbook, sheetName, nameHeader, rows) {
 function addMonthlySheet(workbook, sheetName, nameHeader, rows) {
   addSheet(workbook, sheetName, [
     { header: nameHeader, key: 'name', width: 16 },
+    ...MONTHS.map(m => ({ header: m, key: m, width: 10 }))
+  ], rows);
+}
+
+function addPublisherMonthlySheet(workbook, sheetName, rows) {
+  addSheet(workbook, sheetName, [
+    { header: '发布人', key: 'name', width: 16 },
+    { header: '角色', key: 'role', width: 14 },
     ...MONTHS.map(m => ({ header: m, key: m, width: 10 }))
   ], rows);
 }
@@ -251,7 +287,7 @@ router.get('/dashboard', async (req, res) => {
       addSheet(workbook, '美工日统计', daily.columns, daily.rows);
       const projects = projectRows(detailStats.designerStats);
       addSheet(workbook, '项目类型完成统计', projects.columns, projects.rows);
-      addMonthlySheet(workbook, '运营发布统计', '运营', monthlyRows(detailStats.operatorStats, 'name', '运营', 'count'));
+      addPublisherMonthlySheet(workbook, '发布人统计', publisherMonthlyRows(detailStats.operatorStats));
     }
 
     if (groups.includes('operator')) {
@@ -259,14 +295,14 @@ router.get('/dashboard', async (req, res) => {
       addMonthlySheet(workbook, '运营助理月度积分明细', '助理', monthlyRows(detailStats.operatorAssistantStats));
       const daily = dailyRows(detailStats.operatorAssistantDailyStats);
       addSheet(workbook, '运营助理日统计', daily.columns, daily.rows);
-      addMonthlySheet(workbook, '运营任务发布统计', '运营', monthlyRows(detailStats.operatorPublishStats, 'name', '运营', 'count'));
+      addPublisherMonthlySheet(workbook, '运营助理发布人统计', publisherMonthlyRows(detailStats.operatorPublishStats));
     }
 
     if (groups.includes('cs')) {
       addDesignerSummarySheet(workbook, '基础美工综合统计', '基础美工', detailStats.basicDesignerStats);
       const daily = dailyRows(detailStats.basicDesignerDailyStats);
       addSheet(workbook, '基础美工日统计', daily.columns, daily.rows);
-      addMonthlySheet(workbook, '客服发布统计', '客服', monthlyRows(detailStats.csAgentStats, 'name', '客服', 'count'));
+      addPublisherMonthlySheet(workbook, '基础美工发布人统计', publisherMonthlyRows(detailStats.csAgentStats));
     }
 
     if (workbook.worksheets.length === 0) {

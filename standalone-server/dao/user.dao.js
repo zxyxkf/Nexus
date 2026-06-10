@@ -171,6 +171,35 @@ async function getPublishersByRoleAndStore(role, store) {
   return getPublishersByRole(role);
 }
 
+async function getTaskPublishersByGroup(taskGroup) {
+  const pool = getPool();
+  const params = [];
+  let groupWhere = '1=1';
+  if (taskGroup) {
+    if (taskGroup === 'design') {
+      groupWhere = `(t.task_group = ? OR t.task_group IS NULL OR t.task_group = '')`;
+      params.push(taskGroup);
+    } else {
+      groupWhere = 't.task_group = ?';
+      params.push(taskGroup);
+    }
+  }
+
+  const [rows] = await pool.execute(
+    `SELECT DISTINCT
+        t.publisher_id AS id,
+        COALESCE(u.username, '') AS username,
+        COALESCE(u.real_name, t.publisher_name, u.username, '未知发布人') AS real_name,
+        COALESCE(u.role, '') AS role
+     FROM task_info t
+     LEFT JOIN sys_user u ON t.publisher_id = u.id
+     WHERE t.publisher_id IS NOT NULL AND ${groupWhere}
+     ORDER BY real_name ASC`,
+    params
+  );
+  return rows;
+}
+
 module.exports = {
   getUserList,
   findByUsername,
@@ -187,4 +216,5 @@ module.exports = {
   getUsersByRole,
   getPublishersByRole,
   getPublishersByRoleAndStore,
+  getTaskPublishersByGroup,
 };

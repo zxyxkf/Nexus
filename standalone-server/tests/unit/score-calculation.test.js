@@ -93,10 +93,26 @@ function buildDesignerStats(users, tasks, scoreItems, refDate) {
   });
 }
 
-function buildPublisherMonthlyStats(publishers, tasks, refYear) {
+function buildPublisherMonthlyStats(tasks, refYear) {
   const thisYear = refYear || new Date().getFullYear();
-  return publishers.map(p => {
-    const publisherTasks = tasks.filter(t => Number(t.publisher_id) === Number(p.id));
+  const publisherMap = new Map();
+  for (const task of tasks || []) {
+    const publisherId = Number(task.publisher_id);
+    if (!publisherId) continue;
+    if (!publisherMap.has(publisherId)) {
+      publisherMap.set(publisherId, {
+        id: publisherId,
+        name: task.publisher_name || task.publisher_username || '未知发布人',
+        username: task.publisher_username || '',
+        role: task.publisher_role || '',
+        tasks: []
+      });
+    }
+    publisherMap.get(publisherId).tasks.push(task);
+  }
+
+  return [...publisherMap.values()].map(p => {
+    const publisherTasks = p.tasks;
     const monthlyMap = {};
     for (let m = 1; m <= 12; m++) {
       monthlyMap[m] = { month: CN_MONTHS_SHORT[m - 1], count: 0 };
@@ -107,8 +123,9 @@ function buildPublisherMonthlyStats(publishers, tasks, refYear) {
         monthlyMap[ct.getMonth() + 1].count += 1;
       }
     }
-    return { id: p.id, name: p.name || p.username, publish_count: publisherTasks.length, monthly_stats: Object.values(monthlyMap) };
-  });
+    const { tasks: _tasks, ...publisher } = p;
+    return { ...publisher, publish_count: publisherTasks.length, monthly_stats: Object.values(monthlyMap) };
+  }).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN'));
 }
 
 // ==================== 测试 ====================
@@ -241,18 +258,22 @@ describe('积分计算', () => {
   });
 
   describe('buildPublisherMonthlyStats', () => {
-    it('按创建时间统计每月发布量', () => {
-      const publishers = [{ id: 1, name: '运营A' }];
+    it('按实际发布人和创建时间统计每月发布量', () => {
       const tasks = [
-        { id: 1, publisher_id: 1, create_time: new Date('2026-05-01') },
-        { id: 2, publisher_id: 1, create_time: new Date('2026-05-15') },
-        { id: 3, publisher_id: 1, create_time: new Date('2026-06-01') },
-        { id: 4, publisher_id: 2, create_time: new Date('2026-05-01') },
+        { id: 1, publisher_id: 1, publisher_name: '运营A', publisher_role: 'operator', create_time: new Date('2026-05-01') },
+        { id: 2, publisher_id: 1, publisher_name: '运营A', publisher_role: 'operator', create_time: new Date('2026-05-15') },
+        { id: 3, publisher_id: 1, publisher_name: '运营A', publisher_role: 'operator', create_time: new Date('2026-06-01') },
+        { id: 4, publisher_id: 2, publisher_name: '客服A', publisher_role: 'cs_agent', create_time: new Date('2026-05-01') },
       ];
-      const result = buildPublisherMonthlyStats(publishers, tasks, 2026);
-      expect(result[0].publish_count).toBe(3);
-      expect(result[0].monthly_stats[4].count).toBe(2); // 五月
-      expect(result[0].monthly_stats[5].count).toBe(1); // 六月
+      const result = buildPublisherMonthlyStats(tasks, 2026);
+      const operator = result.find(item => item.id === 1);
+      const csAgent = result.find(item => item.id === 2);
+      expect(operator.publish_count).toBe(3);
+      expect(operator.role).toBe('operator');
+      expect(operator.monthly_stats[4].count).toBe(2); // 五月
+      expect(operator.monthly_stats[5].count).toBe(1); // 六月
+      expect(csAgent.publish_count).toBe(1);
+      expect(csAgent.role).toBe('cs_agent');
     });
   });
 });

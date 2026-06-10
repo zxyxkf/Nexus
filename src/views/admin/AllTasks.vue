@@ -203,7 +203,7 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Delete, Document } from '@element-plus/icons-vue'
-import { getAllTasksApi, getTaskDetailApi, getUserListApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, deleteTaskApi, batchDeleteApi, batchDownloadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getAllTasksApi, getTaskDetailApi, getTaskPublisherListApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, deleteTaskApi, batchDeleteApi, batchDownloadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'
@@ -229,9 +229,8 @@ const currentTask = ref(null)
 
 const taskGroup = computed(() => route.meta.taskGroup || 'design')
 const pageTitle = computed(() => `${route.meta.title || '全量任务'}管理`)
-const publisherRole = computed(() => taskGroup.value === 'cs' ? 'cs_agent' : 'operator')
 const designerRole = computed(() => taskGroup.value === 'cs' ? 'basic_designer' : taskGroup.value === 'operator' ? 'operator_assistant' : 'designer')
-const publisherLabel = computed(() => taskGroup.value === 'cs' ? '客服' : '运营')
+const publisherLabel = computed(() => '发布人')
 const designerLabel = computed(() => taskGroup.value === 'cs' ? '基础美工' : taskGroup.value === 'operator' ? '运营助理' : '美工')
 
 function statusLabel(s) { return STATUS_MAP[s] || s }
@@ -341,9 +340,9 @@ watch(() => route.query.openTask, (newTaskId) => {
 
 async function loadUsers() {
   try {
-    const publisherRes = await getUserListApi({ role: publisherRole.value })
+    const publisherRes = await getTaskPublisherListApi({ taskGroup: taskGroup.value })
     if (publisherRes.code === 0) {
-      publisherList.value = publisherRes.data.list || []
+      publisherList.value = publisherRes.data || []
     }
 
     const designerApi = designerRole.value === 'basic_designer'

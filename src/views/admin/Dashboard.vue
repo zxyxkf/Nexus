@@ -136,15 +136,16 @@
         </el-col>
       </el-row>
 
-      <!-- 运营发布统计（按月） -->
+      <!-- 发布人统计（按月） -->
       <el-row :gutter="20" class="chart-row" v-if="operatorMonthlyData.length > 0">
         <el-col :span="24">
           <el-card shadow="never" class="chart-card">
             <template #header>
-              <div class="card-header"><span class="card-title">运营发布统计 ({{ new Date().getFullYear() }})</span></div>
+              <div class="card-header"><span class="card-title">发布人统计 ({{ new Date().getFullYear() }})</span></div>
             </template>
             <el-table :data="operatorMonthlyData" stripe size="small" style="width:100%;">
-              <el-table-column prop="operator_name" label="运营" fixed="left" min-width="80" />
+              <el-table-column prop="publisher_name" label="发布人" fixed="left" min-width="90" />
+              <el-table-column prop="publisher_role" label="角色" width="100" />
               <el-table-column v-for="m in months" :key="m" :prop="m" :label="m" sortable align="center" />
             </el-table>
           </el-card>
@@ -258,15 +259,16 @@
         </el-col>
       </el-row>
 
-      <!-- 运营发布统计 -->
+      <!-- 发布人统计 -->
       <el-row :gutter="20" class="chart-row" v-if="operatorPublishData.length > 0">
         <el-col :span="24">
           <el-card shadow="never" class="chart-card">
             <template #header>
-              <div class="card-header"><span class="card-title">运营发布统计 ({{ new Date().getFullYear() }})</span></div>
+              <div class="card-header"><span class="card-title">发布人统计 ({{ new Date().getFullYear() }})</span></div>
             </template>
             <el-table :data="operatorPublishData" stripe size="small" style="width:100%;">
-              <el-table-column prop="operator_name" label="运营" fixed="left" min-width="80" />
+              <el-table-column prop="publisher_name" label="发布人" fixed="left" min-width="90" />
+              <el-table-column prop="publisher_role" label="角色" width="100" />
               <el-table-column v-for="m in months" :key="m" :prop="m" :label="m" sortable align="center" />
             </el-table>
           </el-card>
@@ -365,15 +367,16 @@
         </el-col>
       </el-row>
 
-      <!-- 客服发布统计（按月） -->
+      <!-- 发布人统计（按月） -->
       <el-row :gutter="20" class="chart-row" v-if="csMonthlyData.length > 0">
         <el-col :span="24">
           <el-card shadow="never" class="chart-card">
             <template #header>
-              <div class="card-header"><span class="card-title">客服发布统计 ({{ new Date().getFullYear() }})</span></div>
+              <div class="card-header"><span class="card-title">发布人统计 ({{ new Date().getFullYear() }})</span></div>
             </template>
             <el-table :data="csMonthlyData" stripe size="small" style="width:100%;">
-              <el-table-column prop="agent_name" label="客服" fixed="left" min-width="80" />
+              <el-table-column prop="publisher_name" label="发布人" fixed="left" min-width="90" />
+              <el-table-column prop="publisher_role" label="角色" width="100" />
               <el-table-column v-for="m in months" :key="m" :prop="m" :label="m" sortable align="center" />
             </el-table>
           </el-card>
@@ -515,31 +518,29 @@ const projectFlatData = computed(() => {
   return rows
 })
 
-const operatorMonthlyData = computed(() => {
-  const rows = []
-  if (!detailStats.value.operatorStats) return rows
-  for (const o of detailStats.value.operatorStats) {
-    const row = { operator_name: o.name }
-    if (o.monthly_stats) {
-      for (const m of o.monthly_stats) {
-        row[m.month] = m.count
-      }
-    }
-    for (const m of months) {
-      if (!(m in row)) row[m] = 0
-    }
-    rows.push(row)
-  }
-  return rows
-})
+const ROLE_LABELS = {
+  admin: '超级管理员',
+  sub_admin: '子管理员',
+  operator: '运营',
+  cs_agent: '客服',
+  designer: '美工设计师',
+  basic_designer: '基础美工',
+  operator_assistant: '运营助理'
+}
 
-const csMonthlyData = computed(() => {
+function roleLabel(role) {
+  return ROLE_LABELS[role] || role || '-'
+}
+
+function buildPublisherRows(source = []) {
   const rows = []
-  if (!detailStats.value.csAgentStats) return rows
-  for (const a of detailStats.value.csAgentStats) {
-    const row = { agent_name: a.name }
-    if (a.monthly_stats) {
-      for (const m of a.monthly_stats) {
+  for (const publisher of source || []) {
+    const row = {
+      publisher_name: publisher.name || publisher.username || '-',
+      publisher_role: roleLabel(publisher.role)
+    }
+    if (publisher.monthly_stats) {
+      for (const m of publisher.monthly_stats) {
         row[m.month] = m.count
       }
     }
@@ -549,7 +550,10 @@ const csMonthlyData = computed(() => {
     rows.push(row)
   }
   return rows
-})
+}
+
+const operatorMonthlyData = computed(() => buildPublisherRows(detailStats.value.operatorStats))
+const csMonthlyData = computed(() => buildPublisherRows(detailStats.value.csAgentStats))
 
 const operatorAssistantMonthlyData = computed(() => {
   const rows = []
@@ -569,23 +573,7 @@ const operatorAssistantMonthlyData = computed(() => {
   return rows
 })
 
-const operatorPublishData = computed(() => {
-  const rows = []
-  if (!detailStats.value.operatorPublishStats) return rows
-  for (const o of detailStats.value.operatorPublishStats) {
-    const row = { operator_name: o.name }
-    if (o.monthly_stats) {
-      for (const m of o.monthly_stats) {
-        row[m.month] = m.count
-      }
-    }
-    for (const m of months) {
-      if (!(m in row)) row[m] = 0
-    }
-    rows.push(row)
-  }
-  return rows
-})
+const operatorPublishData = computed(() => buildPublisherRows(detailStats.value.operatorPublishStats))
 
 function buildDailyRows(source, nameKey = 'name') {
   if (!source?.length) return []

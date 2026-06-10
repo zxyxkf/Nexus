@@ -146,6 +146,18 @@ router.get('/publishers', requireRole('admin', 'sub_admin', 'cs_agent', 'basic_d
 });
 
 /**
+ * GET /api/user/task-publishers - 获取指定全量任务分区的实际发布人列表
+ */
+router.get('/task-publishers', requireAnyPermission(['admin.tasks.design', 'admin.tasks.operator', 'admin.tasks.cs'], 'admin', 'sub_admin'), async (req, res, next) => {
+  try {
+    const rows = await userService.getTaskPublisherList(req.query.taskGroup, req.user);
+    res.json({ code: 0, msg: '查询成功', data: rows });
+  } catch (err) {
+    next(err);
+  }
+});
+
+/**
  * GET /api/user/basic-designers - 获取基础美工列表
  */
 router.get('/basic-designers', requireAnyPermission(['cs.publish.basic', 'cs.tasks.basic', 'basic.tasks.cs', 'admin.tasks.cs', 'score.review.basic', 'score.records.basic'], 'admin', 'sub_admin', 'cs_agent', 'basic_designer'), async (req, res, next) => {

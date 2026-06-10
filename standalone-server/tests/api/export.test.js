@@ -39,7 +39,7 @@ describe('GET /api/export/dashboard', () => {
       '美工月度积分明细',
       '美工日统计',
       '项目类型完成统计',
-      '运营发布统计'
+      '发布人统计'
     ]));
     expect(sheetNames).not.toContain('统计概览');
     expect(sheetNames).not.toContain('用户统计');

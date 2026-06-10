@@ -41,7 +41,7 @@ router.get('/search', async (req, res, next) => {
 // 全量任务（管理端）
 router.get('/all', requireAnyPermission(['admin.tasks.design', 'admin.tasks.operator', 'admin.tasks.cs'], 'admin', 'sub_admin'), async (req, res, next) => {
   try {
-    const data = await taskService.getAllTasks(req.query);
+    const data = await taskService.getAllTasksForUser(req.query, req.user);
     res.json({ code: 0, msg: '查询成功', data });
   } catch (err) { next(err); }
 });
