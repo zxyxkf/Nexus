@@ -346,11 +346,12 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
   const hasWorkPathField = Object.prototype.hasOwnProperty.call(options, 'hasWorkPathField')
     ? options.hasWorkPathField
     : !!workPath;
+  const saveOnly = options.saveOnly === true;
 
   const isOpAssistant = user.role === 'operator_assistant';
   const canUpdateWorkPathOnly = user.role === 'designer' && fileCategory === 'work' && hasWorkPathField;
 
-  // 运营助理允许无文件仅更新数量；美工允许无文件仅保存上传路径
+  // 运营助理允许无文件仅提交完成次数；美工允许无文件仅保存上传路径。
   if ((!files || files.length === 0) && !isOpAssistant && !canUpdateWorkPathOnly) {
     throw new AppError(400, '请选择文件');
   }
@@ -363,9 +364,8 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
       if (Number(task.designer_id) !== Number(user.id)) throw new AppError(403, '无权操作此任务');
 
       if (isOpAssistant && (task.status === 'accepted' || task.status === 'rejected')) {
-        const extra = { actual_quantity: actualQuantity };
-        if (workPath) extra.work_path = workPath;
-        await taskDao.updateTaskStatus(conn, taskId, 'doing', extra);
+        if (!actualQuantity) throw new AppError(400, '请上传完成凭证或填写完成次数');
+        await taskDao.updateTaskStatus(conn, taskId, 'doing', { actual_quantity: actualQuantity });
         const { notifyTaskEvent } = require('../utils/notification');
         await notifyTaskEvent('task_submit', { ...task, id: taskId }, user);
       } else if (canUpdateWorkPathOnly && (task.status === 'accepted' || task.status === 'rejected')) {
@@ -378,7 +378,7 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
       const [pubRows] = await conn.execute(`SELECT publisher_id FROM task_info WHERE id = ?`, [taskId]);
       if (pubRows.length) socketEmit(`user:${pubRows[0].publisher_id}`);
     });
-    return { msg: pathOnlyUpdated ? '上传路径已保存' : '完成数量已提交，等待审核' };
+    return { msg: pathOnlyUpdated ? '上传路径已保存' : '完成次数已提交，等待审核' };
   }
 
   await executeTransaction(async (conn) => {
@@ -393,6 +393,15 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
     } else {
       if (Number(task.designer_id) !== Number(user.id)) {
         throw new AppError(403, '无权上传此任务的作品');
+      }
+    }
+
+    if (saveOnly && fileCategory !== 'reference') {
+      if (user.role !== 'designer' && user.role !== 'operator_assistant') {
+        throw new AppError(403, '无权保存待提交文件');
+      }
+      if (task.status !== 'accepted' && task.status !== 'rejected') {
+        throw new AppError(400, '当前状态不能保存待提交文件');
       }
     }
 
@@ -434,7 +443,14 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
         mimeType: file.mimetype || '', uploaderId: user.id, fileCategory
       });
 
-      if (fileCategory !== 'reference' && (task.status === 'accepted' || task.status === 'rejected')) {
+      if (saveOnly && fileCategory !== 'reference' && (task.status === 'accepted' || task.status === 'rejected')) {
+        const draftFields = {};
+        if (hasWorkPathField) draftFields.work_path = workPath;
+        if (actualQuantity > 0) draftFields.actual_quantity = actualQuantity;
+        if (Object.keys(draftFields).length > 0) {
+          await taskDao.updateTaskFields(conn, taskId, draftFields);
+        }
+      } else if (fileCategory !== 'reference' && (task.status === 'accepted' || task.status === 'rejected')) {
         const extraFields = { actual_quantity: actualQuantity };
         if (user.role === 'basic_designer') {
           extraFields.applied_score = appliedScore > 0 ? appliedScore : 1;
@@ -462,7 +478,7 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
     }
   });
 
-  return { msg: `上传成功(${files.length}个文件)` };
+  return { msg: saveOnly ? `已保存(${files.length}个文件)，请确认后提交` : `上传成功(${files.length}个文件)` };
 }
 
 async function transferTask(taskId, newDesignerId, user) {
@@ -497,6 +513,14 @@ async function finishTask(taskId, actualQuantity, user) {
     if (Number(task.designer_id) !== Number(user.id)) throw new AppError(403, '无权操作此任务');
     if (task.status !== 'accepted' && task.status !== 'doing' && task.status !== 'rejected') {
       throw new AppError(400, '当前状态无法提交');
+    }
+
+    if (user.role === 'operator_assistant') {
+      const [workFiles] = await conn.execute(
+        `SELECT id FROM task_file WHERE task_id = ? AND file_category <> 'reference' LIMIT 1`,
+        [taskId]
+      );
+      if (!workFiles.length && !qty) throw new AppError(400, '请上传完成凭证或填写完成次数');
     }
 
     await taskDao.updateTaskStatus(conn, taskId, 'doing', { actual_quantity: qty });

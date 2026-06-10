@@ -56,7 +56,8 @@ router.post('/upload-files', requireAnyPermission(['task.upload.work', 'task.cre
         const workPath = (req.body.workPath || '').trim();
         const hasWorkPathField = Object.prototype.hasOwnProperty.call(req.body, 'workPath');
         const replaceExisting = req.body.replaceExisting === '1' || req.body.replaceExisting === 'true';
-        const result = await taskService.uploadFiles(taskId, req.files, fileCategory, actualQuantity, appliedScore, workPath, req.user, { replaceExisting, hasWorkPathField });
+        const saveOnly = req.body.saveOnly === '1' || req.body.saveOnly === 'true';
+        const result = await taskService.uploadFiles(taskId, req.files, fileCategory, actualQuantity, appliedScore, workPath, req.user, { replaceExisting, hasWorkPathField, saveOnly });
         res.json({ code: 0, ...result });
       } catch (err) { next(err); }
     });

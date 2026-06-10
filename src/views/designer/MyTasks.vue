@@ -136,9 +136,16 @@
         <el-table-column prop="create_time" label="发布时间" width="170" sortable show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right" align="center">
+        <el-table-column label="操作" width="200" fixed="right" align="center">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
+            <el-button
+              v-if="row.status === 'accepted'"
+              type="success"
+              link size="small"
+              :loading="inlineSubmitId === row.id"
+              @click="submitInlineWork(row)"
+            >提交</el-button>
             <el-button
               v-if="row.status === 'accepted'"
               type="warning"
@@ -151,7 +158,6 @@
               link size="small"
               @click="openUpload(row)"
             >重新上传</el-button>
-            <span v-if="row.status === 'doing'" style="font-size:12px;color:var(--dd-primary);">已提交，待审核</span>
             <el-button
               v-if="row.status === 'doing'"
               type="warning"
@@ -359,6 +365,7 @@ const inlineUploadingId = ref(null)
 const inlinePathEditingId = ref(null)
 const inlinePathValues = ref({})
 const savingInlinePathId = ref(null)
+const inlineSubmitId = ref(null)
 
 const detailVisible = ref(false)
 const currentTask = ref(null)
@@ -464,12 +471,12 @@ async function handleInlineWorkUpload(row, files) {
   inlineUploadingId.value = row.id
   try {
     const res = await uploadFilesApi(row.id, files, 'work', {
-      workPath: getInlinePathValue(row)
+      workPath: getInlinePathValue(row),
+      saveOnly: true
     })
     if (res.code === 0) {
-      ElMessage.success(res.msg || '上传成功')
-      detailVisible.value = false
-      await loadData()
+      ElMessage.success(res.msg || '已保存，请确认后提交')
+      await loadData({ silent: true })
     } else {
       ElMessage.error(res.msg || '上传失败')
     }
@@ -654,6 +661,40 @@ async function finishTask(row) {
   } catch {}
 }
 
+async function submitInlineWork(row) {
+  if (!canInlineSubmit(row) || inlineSubmitId.value) return
+  inlineSubmitId.value = row.id
+  try {
+    const detailRes = await getTaskDetailApi({ taskId: row.id })
+    if (detailRes.code !== 0) {
+      ElMessage.error(detailRes.msg || '获取任务详情失败')
+      return
+    }
+    const workFiles = (detailRes.data.files || []).filter(file => file.file_category !== 'reference')
+    if (!workFiles.length) {
+      ElMessage.warning('请先上传作品文件')
+      return
+    }
+
+    const pathValue = getInlinePathValue(row)
+    if ((pathValue || '').trim() !== (detailRes.data.work_path || row.work_path || '').trim()) {
+      await saveInlineWorkPath(row, pathValue)
+    }
+
+    const res = await finishTaskApi({ taskId: row.id })
+    if (res.code === 0) {
+      ElMessage.success('已提交完成，等待审核')
+      await loadData()
+    } else {
+      ElMessage.error(res.msg || '提交失败')
+    }
+  } catch (err) {
+    ElMessage.error('提交失败: ' + (err.response?.data?.msg || err.message || '未知错误'))
+  } finally {
+    inlineSubmitId.value = null
+  }
+}
+
 async function handleUndoSubmit(row) {
   try {
     await ElMessageBox.confirm(
@@ -695,7 +736,7 @@ const maxFileCount = computed(() => getInt('upload.max_file_count', 10))
 const maxFileSizeMB = computed(() => getInt('upload.max_file_size_mb', 50))
 const formatSize = formatFileSize
 useRealtime(loadData, 3000, {
-  shouldPause: () => detailVisible.value || uploadVisible.value || !!inlineUploadingId.value || !!inlinePathEditingId.value || !!savingInlinePathId.value
+  shouldPause: () => detailVisible.value || uploadVisible.value || !!inlineUploadingId.value || !!inlinePathEditingId.value || !!savingInlinePathId.value || !!inlineSubmitId.value
 })
 </script>
 

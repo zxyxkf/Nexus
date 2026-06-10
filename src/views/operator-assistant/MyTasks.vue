@@ -51,9 +51,6 @@
         <el-table-column label="数量" width="70" align="center">
           <template #default="{ row }">{{ row.quantity || 1 }}</template>
         </el-table-column>
-        <el-table-column label="完成次数" width="80" align="center">
-          <template #default="{ row }">{{ row.actual_quantity || 0 }}</template>
-        </el-table-column>
         <el-table-column label="文件地址" width="180" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ row.task_file_path || '-' }}</template>
         </el-table-column>
@@ -100,6 +97,21 @@
             />
           </template>
         </el-table-column>
+        <el-table-column label="完成次数" width="120" align="center">
+          <template #default="{ row }">
+            <el-input-number
+              v-if="canInlineSubmit(row)"
+              :model-value="getInlineQuantityValue(row)"
+              :min="1"
+              :max="999"
+              size="small"
+              controls-position="right"
+              style="width:96px;"
+              @update:model-value="value => setInlineQuantityValue(row, value)"
+            />
+            <span v-else>{{ row.actual_quantity || 0 }}</span>
+          </template>
+        </el-table-column>
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
@@ -113,6 +125,13 @@
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
             <el-button
               v-if="row.status === 'accepted'"
+              type="success"
+              link size="small"
+              :loading="inlineSubmitId === row.id"
+              @click="submitInlineProof(row)"
+            >提交</el-button>
+            <el-button
+              v-if="row.status === 'accepted'"
               type="warning"
               link size="small"
               @click="openUploadDialog(row)"
@@ -123,7 +142,6 @@
               link size="small"
               @click="openUploadDialog(row)"
             >重新上传</el-button>
-            <span v-if="row.status === 'doing'" style="font-size:12px;color:var(--dd-primary);">已提交，待审核</span>
             <el-button
               v-if="row.status === 'doing'"
               type="warning"
@@ -247,7 +265,7 @@
     <!-- 上传对话框 -->
     <el-dialog v-model="uploadVisible" title="上传完成凭证" width="500px" top="10vh">
       <div style="margin-bottom:16px;display:flex;align-items:center;gap:12px;">
-        <span style="font-size:14px;color:var(--dd-text-primary);white-space:nowrap;">完成数量</span>
+        <span style="font-size:14px;color:var(--dd-text-primary);white-space:nowrap;">完成次数</span>
         <el-input-number
           v-model="uploadQuantity"
           :min="1"
@@ -339,6 +357,8 @@ const uploadAllChecked = ref(false)
 const rawUploadFiles = ref([])
 const uploadProgress = ref(0)
 const inlineUploadingId = ref(null)
+const inlineSubmitId = ref(null)
+const inlineQuantityValues = ref({})
 
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || '' }
@@ -364,17 +384,32 @@ function canInlineSubmit(row) {
   return fixedStatus.value === 'accepted' && row?.status === 'accepted'
 }
 
+function getInlineQuantityValue(row) {
+  if (!row) return null
+  if (Object.prototype.hasOwnProperty.call(inlineQuantityValues.value, row.id)) {
+    return inlineQuantityValues.value[row.id]
+  }
+  return row.actual_quantity || null
+}
+
+function setInlineQuantityValue(row, value) {
+  if (!row) return
+  const parsed = parseInt(value)
+  const nextValue = Number.isFinite(parsed) && parsed > 0 ? parsed : null
+  inlineQuantityValues.value = { ...inlineQuantityValues.value, [row.id]: nextValue }
+}
+
 async function handleInlineProofUpload(row, files) {
   if (!canInlineSubmit(row) || inlineUploadingId.value) return
   inlineUploadingId.value = row.id
   try {
     const res = await uploadFilesApi(row.id, files, 'work', {
-      actualQuantity: row.quantity || 1
+      actualQuantity: getInlineQuantityValue(row),
+      saveOnly: true
     })
     if (res.code === 0) {
-      ElMessage.success(res.msg || '上传成功')
-      detailVisible.value = false
-      await loadData()
+      ElMessage.success(res.msg || '已保存，请确认后提交')
+      await loadData({ silent: true })
     } else {
       ElMessage.error(res.msg || '上传失败')
     }
@@ -382,6 +417,39 @@ async function handleInlineProofUpload(row, files) {
     ElMessage.error('上传失败: ' + (e.response?.data?.msg || e.message || '网络错误'))
   } finally {
     inlineUploadingId.value = null
+  }
+}
+
+async function submitInlineProof(row) {
+  if (!canInlineSubmit(row) || inlineSubmitId.value) return
+  inlineSubmitId.value = row.id
+  try {
+    const detailRes = await getTaskDetailApi({ taskId: row.id })
+    if (detailRes.code !== 0) {
+      ElMessage.error(detailRes.msg || '获取任务详情失败')
+      return
+    }
+    const workFiles = (detailRes.data.files || []).filter(file => file.file_category !== 'reference')
+    const quantityValue = getInlineQuantityValue(row)
+    if (!workFiles.length && !quantityValue) {
+      ElMessage.warning('请上传完成凭证或填写完成次数')
+      return
+    }
+
+    const res = await finishTaskApi({
+      taskId: row.id,
+      actualQuantity: quantityValue
+    })
+    if (res.code === 0) {
+      ElMessage.success('已提交完成，等待审核')
+      await loadData()
+    } else {
+      ElMessage.error(res.msg || '提交失败')
+    }
+  } catch (e) {
+    ElMessage.error('提交失败: ' + (e.response?.data?.msg || e.message || '网络错误'))
+  } finally {
+    inlineSubmitId.value = null
   }
 }
 
@@ -489,15 +557,19 @@ async function viewDetail(row) {
 function openUploadDialog(row) {
   uploadingTaskId.value = row.id
   uploadTaskQuantity.value = row.quantity || 1
-  uploadQuantity.value = row.quantity || 1
-  uploadAllChecked.value = true
+  uploadQuantity.value = null
+  uploadAllChecked.value = false
   uploadFiles.value = []
   rawUploadFiles.value = []
   uploadVisible.value = true
 }
 
 async function handleUpload() {
-  // 运营助理可以不选文件，仅提交完成数量
+  if (!rawUploadFiles.value.length && !uploadQuantity.value) {
+    ElMessage.warning('请上传完成凭证或填写完成次数')
+    return
+  }
+
   uploading.value = true
   uploadProgress.value = 0
   try {
@@ -558,7 +630,7 @@ watch(uploadAllChecked, (val) => {
 })
 
 useRealtime(loadData, 3000, {
-  shouldPause: () => detailVisible.value || uploadVisible.value || !!inlineUploadingId.value
+  shouldPause: () => detailVisible.value || uploadVisible.value || !!inlineUploadingId.value || !!inlineSubmitId.value
 })
 </script>
 

@@ -149,7 +149,6 @@
               link size="small"
               @click="openUpload(row)"
             >重新上传</el-button>
-            <span v-if="row.status === 'doing'" style="font-size:12px;color:var(--dd-primary);">已提交，待审核</span>
             <el-button
               v-if="row.status === 'doing'"
               type="warning"
