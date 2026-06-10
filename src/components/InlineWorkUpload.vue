@@ -34,17 +34,20 @@
     <div
       v-if="viewerVisible"
       class="inline-work-preview"
+      :style="viewerOverlayStyle"
       tabindex="-1"
       @click.self="closeViewer"
       @keydown.esc="closeViewer"
     >
-      <button class="inline-work-preview__close" type="button" @click="closeViewer">×</button>
+      <button class="inline-work-preview__close" :style="viewerCloseStyle" type="button" @click="closeViewer">×</button>
       <img
         v-if="viewerFile"
         class="inline-work-preview__image"
+        :style="viewerImageStyle"
         :src="getFileUrl(viewerFile)"
         :alt="viewerFile?.file_name || '作品预览'"
         draggable="true"
+        @click.stop
         @dragstart="setupFileDrag($event, viewerFile)"
       />
     </div>
@@ -78,6 +81,42 @@ const imageFile = computed(() => workFiles.value.find(file => file.file_type ===
 const imagePreviewList = computed(() => workFiles.value.filter(file => file.file_type === 'image').map(file => getFileUrl(file)))
 const viewerFile = computed(() => imageFile.value || null)
 const fileCount = computed(() => workFiles.value.length)
+const viewerOverlayStyle = {
+  position: 'fixed',
+  inset: '0',
+  zIndex: 2200,
+  display: 'flex',
+  alignItems: 'center',
+  justifyContent: 'center',
+  boxSizing: 'border-box',
+  padding: '48px',
+  background: 'rgba(0, 0, 0, 0.72)',
+  outline: 'none'
+}
+const viewerImageStyle = {
+  maxWidth: 'min(92vw, 1400px)',
+  maxHeight: '88vh',
+  objectFit: 'contain',
+  cursor: 'grab',
+  userSelect: 'none',
+  borderRadius: '4px',
+  boxShadow: '0 16px 48px rgba(0, 0, 0, 0.35)'
+}
+const viewerCloseStyle = {
+  position: 'fixed',
+  top: '20px',
+  right: '24px',
+  width: '40px',
+  height: '40px',
+  border: '0',
+  borderRadius: '50%',
+  background: 'rgba(0, 0, 0, 0.38)',
+  color: '#fff',
+  cursor: 'pointer',
+  fontSize: '30px',
+  lineHeight: '36px',
+  textAlign: 'center'
+}
 
 function createPastedFile(blob) {
   const ext = blob.type === 'image/jpeg' ? 'jpg' : blob.type?.split('/')[1] || 'png'
