@@ -23,8 +23,7 @@ function closeDetail(overlay) {
 
 function isBlankDetailArea(target, overlay) {
   if (!(target instanceof HTMLElement)) return false
-  if (!overlay.contains(target)) return true
-  return target === overlay || target.classList.contains('inline-detail-body')
+  return !overlay.contains(target)
 }
 
 export function installDetailDismiss() {
