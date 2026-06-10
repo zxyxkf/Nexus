@@ -153,6 +153,24 @@
               <label>款号</label>
               <span>{{ currentTask.style_number || '无' }}</span>
             </div>
+            <div class="inline-detail-stat-card">
+              <label>申请分数</label>
+              <span>{{ formatScoreValue(currentTask.applied_score) }}</span>
+            </div>
+            <div class="inline-detail-stat-card">
+              <label>分数审核状态</label>
+              <el-tag :type="scoreReviewTagType(currentTask.score_review_status)" size="small">
+                {{ formatScoreReviewStatus(currentTask.score_review_status, currentTask) }}
+              </el-tag>
+            </div>
+            <div class="inline-detail-stat-card">
+              <label>分数审核通过分数</label>
+              <span>{{ formatScoreReviewApprovedScore(currentTask) }}</span>
+            </div>
+            <div class="inline-detail-stat-card">
+              <label>分数审核时间</label>
+              <span>{{ formatScoreReviewTime(currentTask) }}</span>
+            </div>
           </template>
           <template v-else>
             <div class="inline-detail-stat-card">
@@ -175,6 +193,10 @@
           <div v-if="isCsAgent && currentTask.reject_reason" class="inline-detail-stat-card full-width">
             <label>驳回原因</label>
             <div class="value reject-reason-text">{{ currentTask.reject_reason }}</div>
+          </div>
+          <div v-if="isCsAgent && currentTask.score_review_reason" class="inline-detail-stat-card full-width">
+            <label>分数审核驳回原因</label>
+            <div class="value reject-reason-text">{{ currentTask.score_review_reason }}</div>
           </div>
 
           <template v-if="detailRefImages.length">
@@ -247,7 +269,7 @@ import { Close, PictureFilled, Document } from '@element-plus/icons-vue'
 import { getMyPublishedApi, getTaskDetailApi, reviewTaskApi, batchReviewApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
-import { formatFileSize, formatTaskHeaderTime } from '@/utils/format'
+import { formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreReviewTime, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 
 const route = useRoute()

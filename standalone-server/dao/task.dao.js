@@ -130,7 +130,7 @@ async function getTaskFiles(taskId) {
 async function getTaskForUpdate(conn, taskId) {
   const [rows] = await conn.execute(
     `SELECT id, title, task_no, status, publisher_id, designer_id, task_group,
-            score, applied_score, score_review_status
+            score, applied_score, score_review_status, score_review_score
      FROM task_info WHERE id = ? FOR UPDATE`,
     [taskId]
   );

@@ -201,6 +201,24 @@
               <span>{{ currentTask.publisher_name }}</span>
             </div>
             <div class="inline-detail-stat-card">
+              <label>申请分数</label>
+              <span>{{ formatScoreValue(currentTask.applied_score) }}</span>
+            </div>
+            <div class="inline-detail-stat-card">
+              <label>分数审核状态</label>
+              <el-tag :type="scoreReviewTagType(currentTask.score_review_status)" size="small">
+                {{ formatScoreReviewStatus(currentTask.score_review_status, currentTask) }}
+              </el-tag>
+            </div>
+            <div class="inline-detail-stat-card">
+              <label>分数审核通过分数</label>
+              <span>{{ formatScoreReviewApprovedScore(currentTask) }}</span>
+            </div>
+            <div class="inline-detail-stat-card">
+              <label>分数审核时间</label>
+              <span>{{ formatScoreReviewTime(currentTask) }}</span>
+            </div>
+            <div class="inline-detail-stat-card">
               <label>旺旺ID</label>
               <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
             </div>
@@ -215,6 +233,10 @@
             <div v-if="currentTask.status === 'rejected'" class="inline-detail-stat-card full-width">
               <label>驳回原因</label>
               <div class="value" style="color:#e63946;">{{ currentTask.reject_reason }}</div>
+            </div>
+            <div v-if="currentTask.score_review_reason" class="inline-detail-stat-card full-width">
+              <label>分数审核驳回原因</label>
+              <div class="value" style="color:#e63946;white-space:pre-wrap;">{{ currentTask.score_review_reason }}</div>
             </div>
 
             <template v-if="currentTask.files && currentTask.files.length > 0">
@@ -338,7 +360,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document, Search } from '@element-plus/icons-vue'
 import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, transferTaskApi, undoSubmitApi, getBasicDesignerListApi, getPublisherListApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreReviewTime, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'

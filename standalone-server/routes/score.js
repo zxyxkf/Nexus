@@ -122,7 +122,8 @@ router.get('/review/list', async (req, res) => {
 
     const [rows] = await execute(
       `SELECT t.id, t.task_no, t.title, t.description, t.status, t.score, t.applied_score,
-              t.score_review_status, t.wangwang_id, t.ref_path, t.style_number,
+              t.score_review_status, t.score_review_time, t.score_review_score,
+              t.wangwang_id, t.ref_path, t.style_number,
               t.designer_id, t.designer_name, t.publisher_name, t.create_time,
               t.specified_color
        FROM task_info t
@@ -171,16 +172,17 @@ router.get('/review/records', async (req, res) => {
     if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
     if (designerId) { where += ' AND t.designer_id = ?'; params.push(designerId); }
     if (status) { where += ' AND t.score_review_status = ?'; params.push(status); }
-    if (dateStart) { where += ' AND t.update_time >= ?'; params.push(dateStart); }
-    if (dateEnd) { where += ' AND t.update_time <= ?'; params.push(dateEnd + ' 23:59:59'); }
+    if (dateStart) { where += ' AND COALESCE(t.score_review_time, t.update_time) >= ?'; params.push(dateStart + ' 00:00:00'); }
+    if (dateEnd) { where += ' AND COALESCE(t.score_review_time, t.update_time) <= ?'; params.push(dateEnd + ' 23:59:59'); }
 
-    const allowedSort = { update_time: 't.update_time', create_time: 't.create_time', applied_score: 't.applied_score', score: 't.score' };
-    const orderBy = allowedSort[sortField] || 't.update_time';
+    const allowedSort = { score_review_time: 'COALESCE(t.score_review_time, t.update_time)', update_time: 't.update_time', create_time: 't.create_time', applied_score: 't.applied_score', score: 't.score' };
+    const orderBy = allowedSort[sortField] || 'COALESCE(t.score_review_time, t.update_time)';
     const direction = sortOrder === 'asc' ? 'ASC' : 'DESC';
 
     const [rows] = await execute(
       `SELECT t.id, t.task_no, t.title, t.score, t.applied_score, t.score_review_status,
-              t.score_review_reason, t.wangwang_id, t.style_number,
+              t.score_review_reason, t.score_review_time, t.score_review_score,
+              t.wangwang_id, t.style_number,
               t.designer_id, t.designer_name, t.publisher_name, t.create_time, t.update_time
        FROM task_info t
        WHERE ${where}
@@ -227,7 +229,13 @@ router.post('/review/approve', async (req, res) => {
       return res.json({ code: 400, msg: '该分值申请已失效或无需审核' });
     }
     await execute(
-      `UPDATE task_info SET score_review_status = 'approved', update_time = NOW() WHERE id = ?`,
+      `UPDATE task_info
+       SET score_review_status = 'approved',
+           score_review_reason = '',
+           score_review_time = NOW(),
+           score_review_score = applied_score,
+           update_time = NOW()
+       WHERE id = ?`,
       [taskId]
     );
     res.json({ code: 0, msg: '分值审核通过' });
@@ -248,7 +256,14 @@ router.post('/review/reject', async (req, res) => {
       return res.json({ code: 400, msg: '该分值申请已失效或无需审核' });
     }
     await execute(
-      `UPDATE task_info SET score = 1, score_review_status = 'rejected', score_review_reason = ?, update_time = NOW() WHERE id = ?`,
+      `UPDATE task_info
+       SET score = 1,
+           score_review_status = 'rejected',
+           score_review_reason = ?,
+           score_review_time = NOW(),
+           score_review_score = 0,
+           update_time = NOW()
+       WHERE id = ?`,
       [reason.trim(), taskId]
     );
     res.json({ code: 0, msg: '分值申请已驳回' });

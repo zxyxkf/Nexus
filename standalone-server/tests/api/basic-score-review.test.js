@@ -98,7 +98,9 @@ describe('基础美工申请分以客服通过为最终入账基准', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(detail.body.data.status).toBe('rejected');
     expect(Number(detail.body.data.score)).toBe(1);
-    expect(Number(detail.body.data.applied_score || 0)).toBe(0);
+    expect(Number(detail.body.data.applied_score || 0)).toBe(3);
+    expect(Number(detail.body.data.score_review_score || 0)).toBe(3);
+    expect(detail.body.data.score_review_time).toBeTruthy();
     expect(detail.body.data.score_review_status || '').toBe('');
 
     const reviewList = await request(app)
@@ -140,6 +142,10 @@ describe('基础美工申请分以客服通过为最终入账基准', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(detail.body.data.status).toBe('finished');
     expect(Number(detail.body.data.score)).toBe(3);
+    expect(Number(detail.body.data.applied_score || 0)).toBe(3);
+    expect(Number(detail.body.data.score_review_score || 0)).toBe(3);
+    expect(detail.body.data.score_review_status).toBe('approved');
+    expect(detail.body.data.score_review_time).toBeTruthy();
   });
 });
 

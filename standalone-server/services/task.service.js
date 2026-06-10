@@ -410,6 +410,9 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
         if (user.role === 'basic_designer') {
           extraFields.applied_score = appliedScore > 0 ? appliedScore : 1;
           extraFields.score_review_status = appliedScore > 1 ? 'pending' : '';
+          extraFields.score_review_reason = '';
+          extraFields.score_review_time = null;
+          extraFields.score_review_score = 0;
         }
         if (workPath) extraFields.work_path = workPath;
         await taskDao.updateTaskStatus(conn, taskId, 'doing', extraFields);
@@ -502,14 +505,13 @@ async function reviewTask(taskId, action, rejectReason, user) {
       if (action === 'pass') {
         const extra = { finish_time: new Date() };
         if (task.task_group === 'cs' && Number(task.applied_score) > 1 && task.score_review_status === 'approved') {
-          extra.score = Number(task.applied_score) || 1;
+          extra.score = Number(task.score_review_score || task.applied_score) || 1;
         }
         await taskDao.updateTaskStatus(conn, taskId, 'finished', extra);
       } else {
         const extra = { reject_reason: normalizedRejectReason };
         if (task.task_group === 'cs') {
           extra.score = 1;
-          extra.applied_score = 0;
           extra.score_review_status = '';
           extra.score_review_reason = '';
         }
@@ -540,7 +542,7 @@ async function batchReview(taskIds, user) {
   const count = await executeTransaction(async (conn) => {
     const placeholders = taskIds.map(() => '?').join(',');
     const [rows] = await conn.execute(
-      `SELECT id, status, publisher_id, task_group, applied_score, score_review_status FROM task_info WHERE id IN (${placeholders})`, taskIds
+      `SELECT id, status, publisher_id, task_group, applied_score, score_review_status, score_review_score FROM task_info WHERE id IN (${placeholders})`, taskIds
     );
     if ((user.role === 'operator' || user.role === 'cs_agent') && rows.some(r => Number(r.publisher_id) !== Number(user.id))) {
       throw new AppError(403, '无权审核他人发布的任务');
@@ -552,10 +554,11 @@ async function batchReview(taskIds, user) {
     await conn.execute(
       `UPDATE task_info
        SET status = 'finished',
-           score = CASE
-             WHEN task_group = 'cs' AND COALESCE(applied_score, 0) > 1 AND score_review_status = 'approved' THEN applied_score
-             ELSE score
-           END,
+            score = CASE
+              WHEN task_group = 'cs' AND COALESCE(applied_score, 0) > 1 AND score_review_status = 'approved'
+                THEN CASE WHEN COALESCE(score_review_score, 0) > 0 THEN score_review_score ELSE applied_score END
+              ELSE score
+            END,
            finish_time = NOW(),
            update_time = NOW()
        WHERE id IN (${vPlaceholders})`,
@@ -598,7 +601,15 @@ async function undoSubmit(taskId, user) {
     if (Number(task.designer_id) !== Number(user.id)) throw new AppError(403, '无权操作他人的任务');
     if (task.status !== 'doing') throw new AppError(400, '仅已提交待审核状态可撤回');
 
-    await taskDao.updateTaskStatus(conn, taskId, 'accepted');
+    const extra = {};
+    if (task.task_group === 'cs') {
+      extra.applied_score = 0;
+      extra.score_review_status = '';
+      extra.score_review_reason = '';
+      extra.score_review_time = null;
+      extra.score_review_score = 0;
+    }
+    await taskDao.updateTaskStatus(conn, taskId, 'accepted', extra);
     socketEmit(`user:${task.publisher_id}`);
   });
 

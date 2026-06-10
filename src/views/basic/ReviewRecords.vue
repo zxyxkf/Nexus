@@ -43,10 +43,13 @@
           <template #default="{ row }">{{ row.style_number || '-' }}</template>
         </el-table-column>
         <el-table-column label="申请分值" width="100" align="center">
-          <template #default="{ row }">{{ row.applied_score }}</template>
+          <template #default="{ row }">{{ formatScoreValue(row.applied_score) }}</template>
+        </el-table-column>
+        <el-table-column label="审核通过分数" width="120" align="center">
+          <template #default="{ row }">{{ formatScoreReviewApprovedScore(row) }}</template>
         </el-table-column>
         <el-table-column label="最终分值" width="100" align="center">
-          <template #default="{ row }">{{ row.score }}</template>
+          <template #default="{ row }">{{ formatScoreValue(row.score) }}</template>
         </el-table-column>
         <el-table-column label="美工" width="100" align="center">
           <template #default="{ row }">{{ row.designer_name || '-' }}</template>
@@ -56,8 +59,8 @@
         </el-table-column>
         <el-table-column label="状态" width="90" align="center">
           <template #default="{ row }">
-            <el-tag :type="row.score_review_status === 'approved' ? 'success' : 'danger'" size="small">
-              {{ row.score_review_status === 'approved' ? '已通过' : '已驳回' }}
+            <el-tag :type="scoreReviewTagType(row.score_review_status)" size="small">
+              {{ formatScoreReviewStatus(row.score_review_status, row) }}
             </el-tag>
           </template>
         </el-table-column>
@@ -123,8 +126,8 @@
         <el-table-column label="驳回原因" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.score_review_reason || '-' }}</template>
         </el-table-column>
-        <el-table-column prop="update_time" label="审核时间" width="170" sortable="custom" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.update_time || '-' }}</template>
+        <el-table-column prop="score_review_time" label="分数审核时间" width="170" sortable="custom" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatScoreReviewTime(row) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="100" fixed="right" align="center">
           <template #default="{ row }">
@@ -167,16 +170,24 @@
             </div>
             <div class="inline-detail-stat-card">
               <label>最终分值</label>
-              <span>{{ currentTask.score || '-' }}</span>
+              <span>{{ formatScoreValue(currentTask.score) }}</span>
             </div>
             <div class="inline-detail-stat-card">
               <label>申请分值</label>
-              <span style="color:var(--dd-primary);font-weight:600;font-size:18px;">{{ currentTask.applied_score }}</span>
+              <span style="color:var(--dd-primary);font-weight:600;font-size:18px;">{{ formatScoreValue(currentTask.applied_score) }}</span>
+            </div>
+            <div class="inline-detail-stat-card">
+              <label>分数审核通过分数</label>
+              <span>{{ formatScoreReviewApprovedScore(currentTask) }}</span>
+            </div>
+            <div class="inline-detail-stat-card">
+              <label>分数审核时间</label>
+              <span>{{ formatScoreReviewTime(currentTask) }}</span>
             </div>
             <div class="inline-detail-stat-card">
               <label>分值审核状态</label>
-              <el-tag :type="currentTask.score_review_status === 'approved' ? 'success' : 'danger'" size="small">
-                {{ currentTask.score_review_status === 'approved' ? '已通过' : '已驳回' }}
+              <el-tag :type="scoreReviewTagType(currentTask.score_review_status)" size="small">
+                {{ formatScoreReviewStatus(currentTask.score_review_status, currentTask) }}
               </el-tag>
             </div>
             <div class="inline-detail-stat-card">
@@ -253,7 +264,7 @@ import { Close, Document } from '@element-plus/icons-vue'
 import { getScoreReviewRecordsApi } from '@/api/score'
 import { getTaskDetailApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { getBasicDesignerListApi, getPublisherListApi } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreReviewTime, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import Pagination from '@/components/Pagination.vue'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import { useFileHelpers } from '@/composables/useFileHelpers'
@@ -271,7 +282,7 @@ const dateRange = ref(null)
 const publisherList = ref([])
 const basicDesignerList = ref([])
 
-const sortField = ref('update_time')
+const sortField = ref('score_review_time')
 const sortOrder = ref('descending')
 
 const detailVisible = ref(false)
@@ -357,7 +368,7 @@ async function viewDetail(row) {
 const formatSize = formatFileSize
 
 function onSortChange({ prop, order }) {
-  sortField.value = prop || 'update_time'
+  sortField.value = prop || 'score_review_time'
   sortOrder.value = order || 'descending'
   loadData()
 }

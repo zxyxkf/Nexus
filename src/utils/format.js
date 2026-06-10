@@ -20,6 +20,18 @@ export const STATUS_TAG_TYPE = {
   draft: ''
 }
 
+export const SCORE_REVIEW_STATUS_MAP = {
+  pending: '待审核',
+  approved: '已通过',
+  rejected: '已驳回'
+}
+
+export const SCORE_REVIEW_STATUS_TAG_TYPE = {
+  pending: 'warning',
+  approved: 'success',
+  rejected: 'danger'
+}
+
 export const PRIORITY_MAP = {
   1: '低',
   2: '中',
@@ -37,6 +49,34 @@ export const PRIORITY_TAG_TYPE = {
 export function formatDate(str) {
   if (!str) return '-'
   return str.replace('T', ' ').substring(0, 19)
+}
+
+export function formatScoreValue(value) {
+  const num = Number(value)
+  if (!Number.isFinite(num) || num <= 0) return '-'
+  return Math.round(num * 100) / 100
+}
+
+export function formatScoreReviewStatus(status, task = null) {
+  if (!status && task && (task.score_review_time || Number(task.score_review_score) > 0)) return '已撤销'
+  return SCORE_REVIEW_STATUS_MAP[status] || '无需审核'
+}
+
+export function scoreReviewTagType(status) {
+  return SCORE_REVIEW_STATUS_TAG_TYPE[status] || 'info'
+}
+
+export function formatScoreReviewApprovedScore(task) {
+  if (!task) return '-'
+  if (Number(task.score_review_score) > 0) return formatScoreValue(task.score_review_score)
+  if (task.score_review_status !== 'approved') return '-'
+  return formatScoreValue(task.applied_score || task.score)
+}
+
+export function formatScoreReviewTime(task) {
+  if (!task) return '-'
+  if (!task.score_review_time && !['approved', 'rejected'].includes(task.score_review_status)) return '-'
+  return formatDate(task.score_review_time || task.update_time)
 }
 
 export function getTaskHeaderTime(task) {
