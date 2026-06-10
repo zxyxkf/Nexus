@@ -98,7 +98,7 @@ function closeOtherPanels(activePanel) {
 
 function positionPanel(button, panel) {
   const rect = button.getBoundingClientRect()
-  const width = Math.max(panel.offsetWidth || 180, 180)
+  const width = Math.max(panel.offsetWidth || 220, 220)
   const margin = 8
   const left = Math.min(
     Math.max(margin, rect.right - width),
@@ -187,9 +187,28 @@ function closeAllPanels() {
   closeOtherPanels(null)
 }
 
+function getControlHost(table) {
+  const cardBody = table.closest('.el-card__body')
+  const card = cardBody?.parentElement?.classList.contains('el-card')
+    ? cardBody.parentElement
+    : table.closest('.el-card')
+  const header = card?.querySelector(':scope > .el-card__header .card-header')
+  const tablesInCard = cardBody ? cardBody.querySelectorAll('.el-table').length : 0
+  if (header && tablesInCard <= 1) return { host: header, placement: 'header' }
+  return { host: table, placement: 'table' }
+}
+
+function removeControl(tableId, table) {
+  document.querySelectorAll('.nexus-column-control').forEach(control => {
+    if (control.dataset.tableId === tableId) control.remove()
+  })
+  table?.querySelector(':scope > .nexus-column-control')?.remove()
+}
+
 function removeEnhancement(table) {
   if (table.dataset.nexusTableId) {
     document.getElementById(`${STYLE_ID_PREFIX}${table.dataset.nexusTableId}`)?.remove()
+    removeControl(table.dataset.nexusTableId, table)
   }
   table.querySelector(':scope > .nexus-column-control')?.remove()
   for (const className of [...table.classList]) {
@@ -201,14 +220,29 @@ function removeEnhancement(table) {
   delete table.dataset.nexusColumnSignature
 }
 
-function createControl(table, tableId, cells, storageKey, visible) {
+function createControl(table, tableId, cells, storageKey, visible, placement) {
   const control = document.createElement('div')
-  control.className = 'nexus-column-control'
+  control.className = `nexus-column-control nexus-column-control--${placement}`
+  control.dataset.tableId = tableId
 
   const button = document.createElement('button')
   button.type = 'button'
   button.className = 'nexus-column-button'
-  button.textContent = '列设置'
+  button.title = '列设置'
+  button.setAttribute('aria-label', '列设置')
+  button.textContent = ''
+  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg')
+  icon.setAttribute('viewBox', '0 0 24 24')
+  icon.setAttribute('aria-hidden', 'true')
+  icon.setAttribute('focusable', 'false')
+  const eyePath = document.createElementNS('http://www.w3.org/2000/svg', 'path')
+  eyePath.setAttribute('d', 'M2.1 12s3.6-6.3 9.9-6.3S21.9 12 21.9 12s-3.6 6.3-9.9 6.3S2.1 12 2.1 12Z')
+  const eyeCircle = document.createElementNS('http://www.w3.org/2000/svg', 'circle')
+  eyeCircle.setAttribute('cx', '12')
+  eyeCircle.setAttribute('cy', '12')
+  eyeCircle.setAttribute('r', '3')
+  icon.append(eyePath, eyeCircle)
+  button.appendChild(icon)
 
   const panel = document.createElement('div')
   panel.className = 'nexus-column-panel'
@@ -283,6 +317,17 @@ function createControl(table, tableId, cells, storageKey, visible) {
   return control
 }
 
+function mountControl(table, control, placementHost) {
+  const { host, placement } = placementHost
+  if (placement === 'header') {
+    const title = host.querySelector(':scope > .card-title')
+    if (title) title.appendChild(control)
+    else host.appendChild(control)
+    return
+  }
+  host.appendChild(control)
+}
+
 function enhanceTable(table, index) {
   const cells = getHeaderCells(table)
   if (!cells.length) return
@@ -301,7 +346,9 @@ function enhanceTable(table, index) {
   const storageKey = makeStorageKey(table, cells)
   const visible = loadVisible(storageKey, cells)
   applyVisibility(table, tableId, cells, visible)
-  table.appendChild(createControl(table, tableId, cells, storageKey, visible))
+  const placementHost = getControlHost(table)
+  const control = createControl(table, tableId, cells, storageKey, visible, placementHost.placement)
+  mountControl(table, control, placementHost)
 }
 
 function enhanceTables() {
