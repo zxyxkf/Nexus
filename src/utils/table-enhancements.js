@@ -5,6 +5,10 @@ const STYLE_ID_PREFIX = 'nexus-table-columns-style-'
 let tableSeq = 0
 let observer = null
 let scheduled = false
+let installed = false
+let resizeGuide = null
+let resizeFrame = null
+let resizeHoverHeader = null
 
 function getRouteKey() {
   return (window.location.hash || window.location.pathname || 'root').replace(/[^\w-]+/g, '_')
@@ -107,6 +111,80 @@ function positionPanel(button, panel) {
   panel.style.right = 'auto'
   panel.style.zIndex = '4000'
   panel.classList.add('is-teleported')
+}
+
+function ensureResizeGuide() {
+  if (!resizeGuide) {
+    resizeGuide = document.createElement('div')
+    resizeGuide.className = 'nexus-column-resize-guide'
+    document.body.appendChild(resizeGuide)
+  }
+  return resizeGuide
+}
+
+function getResizeHeader(event) {
+  const th = event.target?.closest?.('.el-table th.el-table__cell.is-leaf')
+  if (!th) return null
+  const rect = th.getBoundingClientRect()
+  return rect.right - event.clientX <= 10 ? th : null
+}
+
+function updateResizeGuide(x) {
+  if (resizeFrame) cancelAnimationFrame(resizeFrame)
+  resizeFrame = requestAnimationFrame(() => {
+    ensureResizeGuide().style.transform = `translateX(${Math.round(x)}px)`
+    resizeFrame = null
+  })
+}
+
+function clearResizeHover() {
+  resizeHoverHeader?.classList.remove('nexus-resize-hover')
+  resizeHoverHeader = null
+}
+
+function handleResizeHover(event) {
+  if (document.body.classList.contains('nexus-table-resizing')) return
+  const th = getResizeHeader(event)
+  if (th === resizeHoverHeader) return
+  clearResizeHover()
+  if (th) {
+    th.classList.add('nexus-resize-hover')
+    resizeHoverHeader = th
+  }
+}
+
+function startResizeFeedback(event) {
+  const th = getResizeHeader(event)
+  if (!th) return
+
+  const table = th.closest('.el-table')
+  const guide = ensureResizeGuide()
+  document.body.classList.add('nexus-table-resizing')
+  table?.classList.add('nexus-table-resizing-active')
+  th.classList.add('nexus-resize-active')
+  guide.classList.add('is-active')
+  updateResizeGuide(event.clientX)
+
+  const onMove = moveEvent => updateResizeGuide(moveEvent.clientX)
+  const onUp = () => {
+    document.removeEventListener('mousemove', onMove, true)
+    if (resizeFrame) {
+      cancelAnimationFrame(resizeFrame)
+      resizeFrame = null
+    }
+    document.body.classList.remove('nexus-table-resizing')
+    table?.classList.remove('nexus-table-resizing-active')
+    th.classList.remove('nexus-resize-active')
+    clearResizeHover()
+    guide.classList.remove('is-active')
+  }
+
+  document.addEventListener('mousemove', onMove, true)
+  document.addEventListener('mouseup', onUp, { once: true, capture: true })
+}
+
+function closeAllPanels() {
+  closeOtherPanels(null)
 }
 
 function removeEnhancement(table) {
@@ -237,6 +315,8 @@ function enhanceTables() {
 
 export function installTableEnhancements() {
   if (typeof window === 'undefined') return
+  if (installed) return
+  installed = true
 
   const scheduleEnhance = () => {
     if (scheduled) return
@@ -246,17 +326,34 @@ export function installTableEnhancements() {
       enhanceTables()
     })
   }
+  installTableEnhancements.scheduleEnhance = scheduleEnhance
   scheduleEnhance()
   window.addEventListener('hashchange', scheduleEnhance)
-  window.addEventListener('resize', () => closeOtherPanels(null))
-  window.addEventListener('scroll', () => closeOtherPanels(null), true)
-  document.addEventListener('click', () => closeOtherPanels(null))
+  window.addEventListener('resize', closeAllPanels)
+  window.addEventListener('scroll', closeAllPanels, true)
+  document.addEventListener('click', closeAllPanels)
+  document.addEventListener('mousemove', handleResizeHover, true)
+  document.addEventListener('mousedown', startResizeFeedback, true)
 
   observer = new MutationObserver(scheduleEnhance)
   observer.observe(document.body, { childList: true, subtree: true })
 }
 
 export function uninstallTableEnhancements() {
+  const scheduleEnhance = installTableEnhancements.scheduleEnhance
+  if (scheduleEnhance) {
+    window.removeEventListener('hashchange', scheduleEnhance)
+  }
+  window.removeEventListener('resize', closeAllPanels)
+  window.removeEventListener('scroll', closeAllPanels, true)
+  document.removeEventListener('click', closeAllPanels)
+  document.removeEventListener('mousemove', handleResizeHover, true)
+  document.removeEventListener('mousedown', startResizeFeedback, true)
   observer?.disconnect()
   observer = null
+  installed = false
+  clearResizeHover()
+  resizeGuide?.remove()
+  resizeGuide = null
+  document.body?.classList.remove('nexus-table-resizing')
 }
