@@ -109,33 +109,14 @@ function syncTableColumnState(table, cells, widths) {
 }
 
 function applyColumnWidths(table, tableId, cells, widths) {
-  const synced = syncTableColumnState(table, cells, widths)
   let style = document.getElementById(`${WIDTH_STYLE_ID_PREFIX}${tableId}`)
   if (!style) {
     style = document.createElement('style')
     style.id = `${WIDTH_STYLE_ID_PREFIX}${tableId}`
     document.head.appendChild(style)
   }
-
-  if (synced) {
-    style.textContent = ''
-    return
-  }
-
-  const rules = cells
-    .map(cell => [cell.index, widths[String(cell.index)]])
-    .filter(([, width]) => Number.isFinite(width) && width >= 40 && width <= 1600)
-    .flatMap(([index, width]) => {
-      const px = `${Math.round(width)}px`
-      return [
-        `.nexus-table-${tableId} .el-table__header-wrapper th:nth-child(${index}){width:${px}!important;min-width:${px}!important;max-width:${px}!important;}`,
-        `.nexus-table-${tableId} .el-table__body-wrapper td:nth-child(${index}){width:${px}!important;min-width:${px}!important;max-width:${px}!important;}`,
-        `.nexus-table-${tableId} .el-table__footer-wrapper td:nth-child(${index}){width:${px}!important;min-width:${px}!important;max-width:${px}!important;}`,
-        `.nexus-table-${tableId} colgroup col:nth-child(${index}){width:${px}!important;min-width:${px}!important;max-width:${px}!important;}`
-      ]
-    })
-
-  style.textContent = rules.join('')
+  style.textContent = ''
+  syncTableColumnState(table, cells, widths)
 }
 
 function persistColumnWidths(table) {
@@ -253,6 +234,9 @@ function startResizeFeedback(event) {
 
   const table = th.closest('.el-table')
   const guide = ensureResizeGuide()
+  if (table?.dataset?.nexusTableId) {
+    document.getElementById(`${WIDTH_STYLE_ID_PREFIX}${table.dataset.nexusTableId}`)?.remove()
+  }
   document.body.classList.add('nexus-table-resizing')
   table?.classList.add('nexus-table-resizing-active')
   th.classList.add('nexus-resize-active')
@@ -432,11 +416,7 @@ function enhanceTable(table, index) {
   const cells = getHeaderCells(table)
   if (!cells.length) return
   const signature = cells.map(cell => cell.label).join('|')
-  if (table.getAttribute(ENHANCED_ATTR) === '1' && table.dataset.nexusColumnSignature === signature) {
-    const widthKey = table.dataset.nexusColumnWidthKey
-    if (widthKey) applyColumnWidths(table, table.dataset.nexusTableId, cells, loadColumnWidths(widthKey, cells))
-    return
-  }
+  if (table.getAttribute(ENHANCED_ATTR) === '1' && table.dataset.nexusColumnSignature === signature) return
 
   removeEnhancement(table)
 
