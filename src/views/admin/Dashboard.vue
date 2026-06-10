@@ -590,7 +590,8 @@ const operatorPublishData = computed(() => {
 function buildDailyRows(source, nameKey = 'name') {
   if (!source?.length) return []
   return source.map(item => {
-    const row = { id: item.id, name: item[nameKey] || item.name }
+    const userId = item.user_id || item.userId || item.id
+    const row = { id: userId, userId, name: item[nameKey] || item.name }
     for (const day of monthDays.value) {
       row[day.key] = '0 / 0'
       row[`${day.key}_finished`] = 0
@@ -622,19 +623,19 @@ async function exportDashboardReport() {
 
 const dailyTaskTargets = {
   design: [
-    { permission: 'admin.tasks.design', path: '/admin/tasks/design', query: row => ({ designerId: row?.id }) },
+    { permission: 'admin.tasks.design', path: '/admin/tasks/design', query: row => ({ designerId: row?.userId }) },
     { permission: 'designer.tasks.design', path: '/designer/tasks', query: () => ({}) },
-    { permission: 'operator.tasks.design', path: '/operator/tasks', query: row => ({ designerId: row?.id }) }
+    { permission: 'operator.tasks.design', path: '/operator/tasks', query: row => ({ designerId: row?.userId }) }
   ],
   operator: [
-    { permission: 'admin.tasks.operator', path: '/admin/tasks/operator', query: row => ({ designerId: row?.id }) },
+    { permission: 'admin.tasks.operator', path: '/admin/tasks/operator', query: row => ({ designerId: row?.userId }) },
     { permission: 'assistant.tasks.operator', path: '/operator-assistant/tasks', query: () => ({}) },
-    { permission: 'operator.tasks.assistant', path: '/operator/op-tasks', query: row => ({ designerId: row?.id }) }
+    { permission: 'operator.tasks.assistant', path: '/operator/op-tasks', query: row => ({ designerId: row?.userId }) }
   ],
   cs: [
-    { permission: 'admin.tasks.cs', path: '/admin/tasks/cs', query: row => ({ designerId: row?.id }) },
+    { permission: 'admin.tasks.cs', path: '/admin/tasks/cs', query: row => ({ designerId: row?.userId }) },
     { permission: 'basic.tasks.cs', path: '/basic/tasks', query: () => ({}) },
-    { permission: 'cs.tasks.basic', path: '/cs/tasks', query: row => ({ designerId: row?.id }) }
+    { permission: 'cs.tasks.basic', path: '/cs/tasks', query: row => ({ designerId: row?.userId }) }
   ]
 }
 

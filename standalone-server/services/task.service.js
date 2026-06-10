@@ -898,6 +898,7 @@ function buildDailyScoreStats(users, tasks, refDate, taskGroup) {
 
     return {
       id: user.id,
+      user_id: user.id,
       name: user.name || user.username,
       daily_stats: dailyStats.map(item => ({
         day: item.day,

@@ -20,11 +20,11 @@
         </el-select>
         <el-select v-model="filter.publisherId" :placeholder="publisherLabel" clearable filterable style="width:150px;" @change="loadData">
           <el-option label="全部" value="" />
-          <el-option v-for="u in publisherList" :key="u.id" :label="u.real_name || u.name || u.username" :value="u.id" />
+          <el-option v-for="u in publisherList" :key="u.id" :label="u.real_name || u.name || u.username" :value="String(u.id)" />
         </el-select>
         <el-select v-model="filter.designerId" :placeholder="designerLabel" clearable filterable style="width:150px;" @change="loadData">
           <el-option label="全部" value="" />
-          <el-option v-for="u in designerList" :key="u.id" :label="u.real_name || u.name || u.username" :value="u.id" />
+          <el-option v-for="u in designerList" :key="u.id" :label="u.real_name || u.name || u.username" :value="String(u.id)" />
         </el-select>
         <el-date-picker v-model="filter.dateRange" type="daterange" range-separator="至" start-placeholder="开始日期" end-placeholder="结束日期" value-format="YYYY-MM-DD" style="width:260px;" @change="loadData" />
         <el-button @click="loadData" type="primary">查询</el-button>
@@ -405,8 +405,8 @@ function clearQueryFilters() {
 function applyQueryFilters() {
   clearQueryFilters()
   if (route.query.status) filter.status = route.query.status
-  if (route.query.publisherId) filter.publisherId = route.query.publisherId
-  if (route.query.designerId) filter.designerId = route.query.designerId
+  if (route.query.publisherId) filter.publisherId = String(route.query.publisherId)
+  if (route.query.designerId) filter.designerId = String(route.query.designerId)
   filter.dateField = ['finish', 'submit'].includes(route.query.dateField) ? route.query.dateField : ''
   if (route.query.startDate || route.query.endDate) {
     filter.dateRange = [route.query.startDate || route.query.endDate, route.query.endDate || route.query.startDate]
