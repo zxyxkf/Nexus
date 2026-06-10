@@ -39,16 +39,6 @@
         <el-button type="danger" :disabled="selectedRows.length === 0" @click="batchDeleteSelected">
           批量删除({{ selectedRows.length }})
         </el-button>
-        <el-popover placement="bottom-end" :width="220" trigger="click">
-          <template #reference>
-            <el-button>列设置</el-button>
-          </template>
-          <div class="column-settings">
-            <el-checkbox-group v-model="visibleColumns">
-              <el-checkbox v-for="col in columnOptions" :key="col.key" :value="col.key">{{ col.label }}</el-checkbox>
-            </el-checkbox-group>
-          </div>
-        </el-popover>
       </div>
 
       <el-table :data="list" v-loading="loading" stripe style="width:100%" @selection-change="onSelectionChange">
@@ -56,18 +46,18 @@
           <TaskEmptyState description="暂无任务记录" hint="可以调整筛选条件后重新查询" action-text="重置筛选" @action="resetFilter" />
         </template>
         <el-table-column type="selection" width="45" />
-        <el-table-column v-if="isColumnVisible('task_no')" prop="task_no" label="任务编号" min-width="140" />
-        <el-table-column v-if="isColumnVisible('title')" prop="title" label="工作项目" min-width="140" show-overflow-tooltip />
-        <el-table-column v-if="isColumnVisible('score')" label="分值" align="center">
+        <el-table-column prop="task_no" label="任务编号" min-width="140" />
+        <el-table-column prop="title" label="工作项目" min-width="140" show-overflow-tooltip />
+        <el-table-column label="分值" align="center">
           <template #default="{ row }">{{ row.score || '-' }}</template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('status')" label="状态">
+        <el-table-column label="状态">
           <template #default="{ row }">
             <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column v-if="isColumnVisible('publisher')" prop="publisher_name" :label="publisherLabel" />
-        <el-table-column v-if="isColumnVisible('designer')" prop="designer_name" :label="designerLabel" />
+        <el-table-column prop="publisher_name" :label="publisherLabel" />
+        <el-table-column prop="designer_name" :label="designerLabel" />
         <el-table-column label="操作" width="120">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
@@ -233,15 +223,6 @@ applyQueryFilters()
 const publisherList = ref([])
 const designerList = ref([])
 const selectedRows = ref([])
-const columnOptions = [
-  { key: 'task_no', label: '任务编号' },
-  { key: 'title', label: '工作项目' },
-  { key: 'score', label: '分值' },
-  { key: 'status', label: '状态' },
-  { key: 'publisher', label: '发布人' },
-  { key: 'designer', label: '接单人' }
-]
-const visibleColumns = ref(JSON.parse(localStorage.getItem(`admin_task_columns_${route.meta.taskGroup || 'design'}`) || 'null') || columnOptions.map(c => c.key))
 
 const detailVisible = ref(false)
 const currentTask = ref(null)
@@ -255,7 +236,6 @@ const designerLabel = computed(() => taskGroup.value === 'cs' ? '基础美工' :
 
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
-function isColumnVisible(key) { return visibleColumns.value.includes(key) }
 function onSelectionChange(rows) { selectedRows.value = rows }
 
 const refImageFiles = computed(() => {
@@ -509,10 +489,6 @@ async function batchDeleteSelected() {
   } catch {}
 }
 
-watch(visibleColumns, (cols) => {
-  localStorage.setItem(`admin_task_columns_${taskGroup.value}`, JSON.stringify(cols))
-}, { deep: true })
-
 watch(() => route.meta.taskGroup, () => {
   filter.keyword = ''
   filter.status = ''
@@ -520,7 +496,6 @@ watch(() => route.meta.taskGroup, () => {
   filter.designerId = ''
   filter.dateRange = null
   filter.dateField = ''
-  visibleColumns.value = JSON.parse(localStorage.getItem(`admin_task_columns_${route.meta.taskGroup || 'design'}`) || 'null') || columnOptions.map(c => c.key)
   applyQueryFilters()
   page.value = 1
   loadUsers()
@@ -548,6 +523,4 @@ onMounted(() => {
 }
 .file-card-size { font-size: 11px; color: var(--dd-text-secondary); }
 .file-download-btn { position: absolute; right: 12px; bottom: 12px; background: rgba(255, 255, 255, 0.9); border-radius: 4px; }
-.column-settings { display: flex; flex-direction: column; gap: 6px; }
-.column-settings :deep(.el-checkbox-group) { display: flex; flex-direction: column; gap: 6px; }
 </style>
