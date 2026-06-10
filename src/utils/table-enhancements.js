@@ -66,6 +66,17 @@ function escapeSelectorValue(value) {
   return window.CSS?.escape ? window.CSS.escape(value) : String(value).replace(/["\\]/g, '\\$&')
 }
 
+function escapeAttributeValue(value) {
+  return String(value).replace(/\\/g, '\\\\').replace(/"/g, '\\"')
+}
+
+function getTableScopeSelectors(tableId) {
+  return [
+    `[data-nexus-table-id="${escapeAttributeValue(tableId)}"]`,
+    `.nexus-table-${tableId}`
+  ]
+}
+
 function loadColumnWidths(key, cells) {
   try {
     const parsed = JSON.parse(localStorage.getItem(key) || 'null')
@@ -170,25 +181,27 @@ function applyVisibility(table, tableId, cells, visible) {
   }
 
   const hiddenCells = cells.filter(cell => hidden.includes(cell.index))
-  const selectors = hiddenCells.flatMap(cell => {
+  const scopeSelectors = getTableScopeSelectors(tableId)
+  const selectors = hiddenCells.flatMap(cell => scopeSelectors.flatMap(scope => {
     const indexSelectors = [
-      `.nexus-table-${tableId} .el-table__header-wrapper th:nth-child(${cell.index})`,
-      `.nexus-table-${tableId} .el-table__body-wrapper td:nth-child(${cell.index})`,
-      `.nexus-table-${tableId} .el-table__footer-wrapper td:nth-child(${cell.index})`,
-      `.nexus-table-${tableId} colgroup col:nth-child(${cell.index})`,
-      `.nexus-table-${tableId} .el-table__fixed th:nth-child(${cell.index})`,
-      `.nexus-table-${tableId} .el-table__fixed td:nth-child(${cell.index})`,
-      `.nexus-table-${tableId} .el-table__fixed-right th:nth-child(${cell.index})`,
-      `.nexus-table-${tableId} .el-table__fixed-right td:nth-child(${cell.index})`
+      `${scope} .el-table__header-wrapper th:nth-child(${cell.index})`,
+      `${scope} .el-table__body-wrapper td:nth-child(${cell.index})`,
+      `${scope} .el-table__footer-wrapper td:nth-child(${cell.index})`,
+      `${scope} colgroup col:nth-child(${cell.index})`,
+      `${scope} .el-table__fixed th:nth-child(${cell.index})`,
+      `${scope} .el-table__fixed td:nth-child(${cell.index})`,
+      `${scope} .el-table__fixed-right th:nth-child(${cell.index})`,
+      `${scope} .el-table__fixed-right td:nth-child(${cell.index})`
     ]
     if (!cell.columnClass) return indexSelectors
     const columnClass = escapeSelectorValue(cell.columnClass)
+    const columnName = escapeAttributeValue(cell.columnClass)
     return [
-      `.nexus-table-${tableId} .${columnClass}`,
-      `.nexus-table-${tableId} col[name="${cell.columnClass}"]`,
+      `${scope} .${columnClass}`,
+      `${scope} col[name="${columnName}"]`,
       ...indexSelectors
     ]
-  })
+  }))
   style.textContent = `${selectors.join(',')}{display:none!important;width:0!important;min-width:0!important;max-width:0!important;padding:0!important;border:0!important;}`
 
   table.__vueParentComponent?.proxy?.doLayout?.()
