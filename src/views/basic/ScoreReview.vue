@@ -134,6 +134,7 @@
           </div>
 
           <div class="inline-detail-body">
+            <TaskTransferTimeline :records="currentTask.transfer_records || []" />
             <div class="inline-detail-stat-card">
               <label>申请分值</label>
               <span style="color:var(--dd-primary);font-weight:600;font-size:18px;">{{ currentTask.applied_score }}</span>
@@ -213,6 +214,7 @@ import { getTaskDetailApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preload
 import { getBasicDesignerListApi, getPublisherListApi } from '@/api'
 import { formatDate, formatFileSize } from '@/utils/format'
 import Pagination from '@/components/Pagination.vue'
+import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 
 const loading = ref(false)

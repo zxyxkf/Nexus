@@ -35,6 +35,8 @@ export const getAdminDetailStatsApi = () => request.get('/api/task/stats/admin/d
 export const withdrawTaskApi = (data) => request.post('/api/task/withdraw', data)
 export const undoSubmitApi = (data) => request.post('/api/task/undo-submit', data)
 export const updateTaskApi = (data) => request.put('/api/task/update', data)
+export const reopenFinishedCsTaskApi = (data) => request.post('/api/task/reopen-finished-cs', data)
+export const updateCsTaskNoApi = (data) => request.put('/api/task/cs-task-no', data)
 export const batchReviewApi = (data) => request.post('/api/task/batch-review', data)
 export const deleteTaskApi = (data) => request.post('/api/task/delete', data)
 export const batchDeleteApi = (data) => request.post('/api/task/batch-delete', data)

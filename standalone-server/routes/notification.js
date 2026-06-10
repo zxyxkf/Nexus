@@ -112,6 +112,15 @@ router.post('/urge', requireAuth, createLogMiddleware('催促任务', '通知中
     if (!taskId || !designerId) return res.json({ code: 400, msg: '参数不完整' });
     const senderName = req.user.realName || req.user.username
     const content = `${senderName} 催促您尽快完成任务「${taskTitle}」`
+    const [updateResult] = await execute(
+      `UPDATE task_info
+       SET urge_time = NOW(), update_time = NOW()
+       WHERE id = ? AND designer_id = ? AND status = 'accepted'`,
+      [taskId, designerId]
+    );
+    if (!updateResult || updateResult.affectedRows === 0) {
+      return res.json({ code: 400, msg: '仅待做任务可以催促置顶' });
+    }
     await execute(
       `INSERT INTO sys_notification (user_id, type, title, content, task_id)
        VALUES (?, 'task_urge', '任务催促提醒', ?, ?)`,
@@ -127,6 +136,7 @@ router.post('/urge', requireAuth, createLogMiddleware('催促任务', '通知中
         title: '任务催促提醒',
         content
       });
+      global.io.to(`user:${designerId}`).emit('task:update');
     }
     res.json({ code: 0, msg: '催促已发送' });
   } catch (err) {

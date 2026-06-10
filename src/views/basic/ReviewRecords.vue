@@ -159,6 +159,7 @@
 
           <div class="inline-detail-body">
             <TaskStatusTimeline :task="currentTask" task-group="cs" />
+            <TaskTransferTimeline :records="currentTask.transfer_records || []" />
             <div class="inline-detail-stat-card">
               <label>发布人</label>
               <span>{{ currentTask.publisher_name || '-' }}</span>
@@ -266,6 +267,7 @@ import { getBasicDesignerListApi, getPublisherListApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreReviewTime, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import Pagination from '@/components/Pagination.vue'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 
 const loading = ref(false)

@@ -763,9 +763,7 @@ useRealtime(loadData, 3000, {
 .file-card-size { font-size: 11px; color: var(--dd-text-secondary); }
 .multiline-value { white-space: pre-wrap; word-break: break-word; }
 
-/* 逾期行样式 */
-:deep(.row-overdue) { background: rgba(230, 57, 70, 0.06) !important; }
-:deep(.row-overdue td) { color: var(--dd-danger); font-weight: 500; }
-:deep(.row-rejected) { background: rgba(230, 57, 70, 0.04) !important; border-left: 3px solid var(--dd-danger); }
-:deep(.row-rejected td) { color: #c0392b; }
+/* 催促任务置顶高亮 */
+:deep(.row-urged) { background: rgba(230, 57, 70, 0.14) !important; }
+:deep(.row-urged td) { color: #9f1d2a; font-weight: 600; }
 </style>

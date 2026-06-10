@@ -138,7 +138,10 @@ async function getTaskDetail(taskId, user) {
   }
 
   const files = await taskDao.getTaskFiles(taskId);
-  return { ...task, files };
+  const transferRecords = task.task_group === 'cs'
+    ? await taskDao.getTaskTransferRecords(taskId)
+    : [];
+  return { ...task, files, transfer_records: transferRecords };
 }
 
 async function deleteTask(taskId, user) {
@@ -193,6 +196,105 @@ async function updateTask(body, user) {
   return { msg: '任务已重新发布' };
 }
 
+async function reopenFinishedCsTask(body, user) {
+  const {
+    taskId, title, description, priority, deadline, scoreItemId, score,
+    wangwangId, styleNumber, designerId
+  } = body;
+
+  if (!taskId || !title) throw new AppError(400, '任务ID和工作项目不能为空');
+  if (user.role !== 'cs_agent') throw new AppError(403, '仅客服可重开基础美工任务');
+
+  let nextDesignerId = null;
+  let previousDesignerId = null;
+  await executeTransaction(async (conn) => {
+    const task = await taskDao.getTaskForUpdate(conn, taskId);
+    if (!task) throw new AppError(400, '任务不存在');
+    if (task.task_group !== 'cs') throw new AppError(400, '仅基础美工任务可重开');
+    if (task.status !== 'finished') throw new AppError(400, '仅已完成任务可重新发布');
+    if (Number(task.publisher_id) !== Number(user.id)) throw new AppError(403, '无权重开他人发布的任务');
+
+    previousDesignerId = task.designer_id || null;
+    const selectedDesignerId = designerId || task.designer_id;
+    let designerIdVal = null;
+    let designerNameVal = null;
+    let nextStatus = 'wait';
+
+    if (selectedDesignerId) {
+      const d = await taskDao.findDesigner(conn, selectedDesignerId, 'basic_designer');
+      if (!d) throw new AppError(400, '指定基础美工不存在或不可用');
+      designerIdVal = d.id;
+      designerNameVal = d.real_name;
+      nextStatus = 'accepted';
+    }
+    nextDesignerId = designerIdVal;
+
+    let baseScore = Number(score) || 0;
+    if (scoreItemId) {
+      const [scoreRows] = await conn.execute(
+        `SELECT score FROM sys_score_item_cs WHERE id = ? LIMIT 1`,
+        [scoreItemId]
+      );
+      if (scoreRows.length) baseScore = Number(scoreRows[0].score) || 0;
+    }
+
+    await taskDao.updateTaskFields(conn, taskId, {
+      title,
+      description: description || '',
+      priority: priority || 2,
+      deadline: deadline || null,
+      score_item_id: scoreItemId || null,
+      score: baseScore,
+      wangwang_id: wangwangId || '',
+      style_number: styleNumber || '',
+      designer_id: designerIdVal,
+      designer_name: designerNameVal,
+      status: nextStatus,
+      accept_time: designerIdVal ? new Date() : null,
+      finish_time: null,
+      submit_time: null,
+      reject_reason: '',
+      applied_score: 0,
+      score_review_status: '',
+      score_review_reason: '',
+      score_review_time: null,
+      score_review_score: 0,
+      actual_quantity: 0,
+      urge_time: null
+    });
+  });
+
+  if (previousDesignerId) socketEmit(`user:${previousDesignerId}`);
+  if (nextDesignerId && Number(nextDesignerId) !== Number(previousDesignerId)) socketEmit(`user:${nextDesignerId}`);
+  socketEmit('group:cs');
+  logger.info('客服重开已完成基础美工任务', { userId: user.id, taskId, designerId: nextDesignerId });
+  return { msg: '任务已重新发布，原完成分值已扣回' };
+}
+
+async function updateCsTaskNo(taskId, taskNo, user) {
+  const normalizedTaskNo = String(taskNo || '').trim();
+  if (!taskId || !normalizedTaskNo) throw new AppError(400, '任务ID和任务编号不能为空');
+  if (user.role !== 'cs_agent') throw new AppError(403, '仅客服可修改基础美工任务编号');
+
+  await executeTransaction(async (conn) => {
+    const task = await taskDao.getTaskForUpdate(conn, taskId);
+    if (!task) throw new AppError(400, '任务不存在');
+    if (task.task_group !== 'cs') throw new AppError(400, '仅基础美工任务可修改编号');
+    if (task.status !== 'finished') throw new AppError(400, '仅已完成任务可修改编号');
+    if (Number(task.publisher_id) !== Number(user.id)) throw new AppError(403, '无权修改他人发布的任务');
+
+    const [exists] = await conn.execute(
+      `SELECT id FROM task_info WHERE task_no = ? AND id <> ? LIMIT 1`,
+      [normalizedTaskNo, taskId]
+    );
+    if (exists.length) throw new AppError(400, '该任务编号已存在');
+    await taskDao.updateTaskFields(conn, taskId, { task_no: normalizedTaskNo });
+  });
+
+  logger.info('客服修改基础美工任务编号', { userId: user.id, taskId, taskNo: normalizedTaskNo });
+  return { msg: '任务编号已更新' };
+}
+
 async function batchDelete(taskIds) {
   if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
     throw new AppError(400, '请选择任务');
@@ -221,7 +323,7 @@ async function getMyPublished(query, user) {
     filterGroup: query.taskGroup,
     selfOnly: query.selfOnly === '1' || query.selfOnly === 'true',
     status: query.status, styleNumber: query.styleNumber,
-    keyword: query.keyword, designerId: query.designerId,
+    keyword: query.keyword, taskNo: query.taskNo, designerId: query.designerId,
     publisherId: query.publisherId,
     dateStart: query.dateStart, dateEnd: query.dateEnd,
     dateField: query.dateField,
@@ -365,7 +467,7 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
 
       if (isOpAssistant && (task.status === 'accepted' || task.status === 'rejected')) {
         if (!actualQuantity) throw new AppError(400, '请上传完成凭证或填写完成次数');
-        await taskDao.updateTaskStatus(conn, taskId, 'doing', { actual_quantity: actualQuantity });
+        await taskDao.updateTaskStatus(conn, taskId, 'doing', { actual_quantity: actualQuantity, urge_time: null });
         const { notifyTaskEvent } = require('../utils/notification');
         await notifyTaskEvent('task_submit', { ...task, id: taskId }, user);
       } else if (canUpdateWorkPathOnly && (task.status === 'accepted' || task.status === 'rejected')) {
@@ -451,7 +553,7 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
           await taskDao.updateTaskFields(conn, taskId, draftFields);
         }
       } else if (fileCategory !== 'reference' && (task.status === 'accepted' || task.status === 'rejected')) {
-        const extraFields = { actual_quantity: actualQuantity };
+        const extraFields = { actual_quantity: actualQuantity, urge_time: null };
         if (user.role === 'basic_designer') {
           extraFields.applied_score = appliedScore > 0 ? appliedScore : 1;
           extraFields.score_review_status = appliedScore > 1 ? 'pending' : '';
@@ -494,6 +596,16 @@ async function transferTask(taskId, newDesignerId, user) {
     const d = await taskDao.findDesigner(conn, newDesignerId, 'basic_designer');
     if (!d) throw new AppError(400, '接收人不存在或不可用');
 
+    await taskDao.insertTransferRecord(conn, {
+      taskId,
+      fromDesignerId: task.designer_id,
+      fromDesignerName: task.designer_name || '',
+      toDesignerId: newDesignerId,
+      toDesignerName: d.real_name || '',
+      operatorId: user.id,
+      operatorName: user.realName || user.username || ''
+    });
+
     await taskDao.updateTaskFields(conn, taskId, {
       designer_id: newDesignerId, designer_name: d.real_name
     });
@@ -523,7 +635,7 @@ async function finishTask(taskId, actualQuantity, user) {
       if (!workFiles.length && !qty) throw new AppError(400, '请上传完成凭证或填写完成次数');
     }
 
-    await taskDao.updateTaskStatus(conn, taskId, 'doing', { actual_quantity: qty });
+    await taskDao.updateTaskStatus(conn, taskId, 'doing', { actual_quantity: qty, urge_time: null });
 
     const { notifyTaskEvent } = require('../utils/notification');
     await notifyTaskEvent('task_submit', { ...task, id: taskId }, user);
@@ -556,7 +668,7 @@ async function reviewTask(taskId, action, rejectReason, user) {
       }
 
       if (action === 'pass') {
-        const extra = { finish_time: new Date() };
+        const extra = { finish_time: new Date(), urge_time: null };
         if (task.task_group === 'cs' && Number(task.applied_score) > 1 && task.score_review_status === 'approved') {
           extra.score = Number(task.score_review_score || task.applied_score) || 1;
         }
@@ -613,6 +725,7 @@ async function batchReview(taskIds, user) {
               ELSE score
             END,
            finish_time = NOW(),
+           urge_time = NULL,
            update_time = NOW()
        WHERE id IN (${vPlaceholders})`,
       validIds
@@ -1099,7 +1212,7 @@ async function getAdminDetailStats() {
 }
 
 module.exports = {
-  createTask, getTaskDetail, deleteTask, updateTask, batchDelete, batchReassign,
+  createTask, getTaskDetail, deleteTask, updateTask, reopenFinishedCsTask, updateCsTaskNo, batchDelete, batchReassign,
   getMyPublished, getMyAccepted, getTaskHall, getAllTasks, getAllTasksForUser, searchTasks,
   acceptTask, uploadFiles, transferTask, finishTask, reviewTask, batchReview,
   withdrawTask, undoSubmit,

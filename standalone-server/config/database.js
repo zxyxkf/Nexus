@@ -114,6 +114,7 @@ const CREATE_TABLES_SQL = {
       accept_time TEXT,
       finish_time TEXT,
       submit_time TEXT,
+      urge_time TEXT,
       task_group TEXT DEFAULT 'design',
       shop_name TEXT DEFAULT '',
       quantity INTEGER DEFAULT 1,
@@ -130,6 +131,17 @@ const CREATE_TABLES_SQL = {
       mime_type TEXT DEFAULT '',
       uploader_id INTEGER,
       file_category TEXT DEFAULT 'work',
+      create_time TEXT DEFAULT (datetime('now', 'localtime'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS task_transfer_record (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL,
+      from_designer_id INTEGER,
+      from_designer_name TEXT DEFAULT '',
+      to_designer_id INTEGER,
+      to_designer_name TEXT DEFAULT '',
+      operator_id INTEGER,
+      operator_name TEXT DEFAULT '',
       create_time TEXT DEFAULT (datetime('now', 'localtime'))
     )`,
     `CREATE TABLE IF NOT EXISTS sys_oper_log (
@@ -316,6 +328,7 @@ const CREATE_TABLES_SQL = {
       accept_time DATETIME,
       finish_time DATETIME,
       submit_time DATETIME,
+      urge_time DATETIME,
       task_group VARCHAR(20) DEFAULT 'design',
       shop_name VARCHAR(100) DEFAULT '',
       quantity INT DEFAULT 1,
@@ -332,6 +345,17 @@ const CREATE_TABLES_SQL = {
       mime_type VARCHAR(100) DEFAULT '',
       uploader_id INT,
       file_category VARCHAR(20) DEFAULT 'work',
+      create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    `CREATE TABLE IF NOT EXISTS task_transfer_record (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      task_id INT NOT NULL,
+      from_designer_id INT,
+      from_designer_name VARCHAR(100) DEFAULT '',
+      to_designer_id INT,
+      to_designer_name VARCHAR(100) DEFAULT '',
+      operator_id INT,
+      operator_name VARCHAR(100) DEFAULT '',
       create_time DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     `CREATE TABLE IF NOT EXISTS sys_oper_log (
@@ -476,6 +500,18 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN score_review_score DECIMAL(10,2) DEFAULT 0`,
       `ALTER TABLE task_info ADD COLUMN work_path VARCHAR(1000) DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN submit_time DATETIME`,
+      `ALTER TABLE task_info ADD COLUMN urge_time DATETIME`,
+      `CREATE TABLE IF NOT EXISTS task_transfer_record (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        task_id INT NOT NULL,
+        from_designer_id INT,
+        from_designer_name VARCHAR(100) DEFAULT '',
+        to_designer_id INT,
+        to_designer_name VARCHAR(100) DEFAULT '',
+        operator_id INT,
+        operator_name VARCHAR(100) DEFAULT '',
+        create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
       `CREATE TABLE IF NOT EXISTS sys_score_item_operator (
         id INT AUTO_INCREMENT PRIMARY KEY,
         name VARCHAR(200) NOT NULL UNIQUE,
@@ -521,6 +557,18 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN score_review_score REAL DEFAULT 0`,
       `ALTER TABLE task_info ADD COLUMN work_path TEXT DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN submit_time TEXT`,
+      `ALTER TABLE task_info ADD COLUMN urge_time TEXT`,
+      `CREATE TABLE IF NOT EXISTS task_transfer_record (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id INTEGER NOT NULL,
+        from_designer_id INTEGER,
+        from_designer_name TEXT DEFAULT '',
+        to_designer_id INTEGER,
+        to_designer_name TEXT DEFAULT '',
+        operator_id INTEGER,
+        operator_name TEXT DEFAULT '',
+        create_time TEXT DEFAULT (datetime('now', 'localtime'))
+      )`,
       `CREATE TABLE IF NOT EXISTS sys_shop (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         name TEXT NOT NULL UNIQUE,

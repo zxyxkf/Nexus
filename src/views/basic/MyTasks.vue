@@ -198,6 +198,7 @@
 
           <div class="inline-detail-body">
             <TaskStatusTimeline :task="currentTask" task-group="cs" />
+            <TaskTransferTimeline :records="currentTask.transfer_records || []" />
             <div class="inline-detail-stat-card">
               <label>发布人</label>
               <span>{{ currentTask.publisher_name }}</span>
@@ -367,6 +368,7 @@ import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { getUser } from '@/utils/auth'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -727,9 +729,7 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVi
 }
 .file-card-size { font-size: 11px; color: var(--dd-text-secondary); }
 
-/* 逾期行样式 */
-:deep(.row-overdue) { background: rgba(230, 57, 70, 0.06) !important; }
-:deep(.row-overdue td) { color: var(--dd-danger); font-weight: 500; }
-:deep(.row-rejected) { background: rgba(230, 57, 70, 0.04) !important; border-left: 3px solid var(--dd-danger); }
-:deep(.row-rejected td) { color: #c0392b; }
+/* 催促任务置顶高亮 */
+:deep(.row-urged) { background: rgba(230, 57, 70, 0.14) !important; }
+:deep(.row-urged td) { color: #9f1d2a; font-weight: 600; }
 </style>

@@ -149,7 +149,7 @@
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
             <el-button v-if="(row.status === 'wait' || row.status === 'accepted')" type="warning" link size="small" @click="handleWithdraw(row)">撤回</el-button>
             <el-button v-if="row.status === 'draft'" type="success" link size="small" @click="openEditDialog(row)">编辑</el-button>
-            <el-button v-if="row.designer_id && row.status !== 'finished'" type="warning" link size="small" @click="urgeTask(row)">催促</el-button>
+            <el-button v-if="row.designer_id && row.status === 'accepted'" type="warning" link size="small" @click="urgeTask(row)">催促</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -178,7 +178,7 @@
             <div class="detail-header-right">
               <el-button v-if="(currentTask.status === 'wait' || currentTask.status === 'accepted')" type="warning" size="small" @click="handleWithdraw(currentTask)">撤回</el-button>
               <el-button v-if="currentTask.status === 'draft'" type="success" size="small" @click="openEditDialog(currentTask)">编辑</el-button>
-              <el-button v-if="currentTask.designer_id && currentTask.status !== 'finished'" type="warning" size="small" @click="urgeTask(currentTask)">催促</el-button>
+              <el-button v-if="currentTask.designer_id && currentTask.status === 'accepted'" type="warning" size="small" @click="urgeTask(currentTask)">催促</el-button>
               <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
             </div>
           </div>

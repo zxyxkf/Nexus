@@ -127,9 +127,22 @@ async function getTaskFiles(taskId) {
 }
 
 /** 锁行查询（事务内 FOR UPDATE） */
+async function getTaskTransferRecords(taskId) {
+  const pool = getPool();
+  const [rows] = await pool.execute(
+    `SELECT *
+     FROM task_transfer_record
+     WHERE task_id = ?
+     ORDER BY create_time ASC, id ASC`,
+    [taskId]
+  );
+  return rows || [];
+}
+
 async function getTaskForUpdate(conn, taskId) {
   const [rows] = await conn.execute(
-    `SELECT id, title, task_no, status, publisher_id, designer_id, task_group,
+    `SELECT id, title, task_no, status, publisher_id, publisher_name,
+            designer_id, designer_name, task_group,
             score, applied_score, score_review_status, score_review_score
      FROM task_info WHERE id = ? FOR UPDATE`,
     [taskId]
@@ -154,7 +167,25 @@ async function updateTaskFields(conn, taskId, fields) {
 }
 
 /** 删除任务及所有关联数据 */
+async function insertTransferRecord(conn, data) {
+  await conn.execute(
+    `INSERT INTO task_transfer_record
+       (task_id, from_designer_id, from_designer_name, to_designer_id, to_designer_name, operator_id, operator_name)
+     VALUES (?,?,?,?,?,?,?)`,
+    [
+      data.taskId,
+      data.fromDesignerId || null,
+      data.fromDesignerName || '',
+      data.toDesignerId || null,
+      data.toDesignerName || '',
+      data.operatorId || null,
+      data.operatorName || ''
+    ]
+  );
+}
+
 async function deleteTaskData(taskId) {
+  await execute(`DELETE FROM task_transfer_record WHERE task_id = ?`, [taskId]);
   await execute(`DELETE FROM task_file WHERE task_id = ?`, [taskId]);
   await execute(`DELETE FROM sys_comment WHERE task_id = ?`, [taskId]);
   await execute(`DELETE FROM sys_score_record WHERE task_id = ?`, [taskId]);
@@ -164,6 +195,7 @@ async function deleteTaskData(taskId) {
 /** 批量删除 */
 async function batchDeleteTasks(taskIds) {
   const placeholders = taskIds.map(() => '?').join(',');
+  await execute(`DELETE FROM task_transfer_record WHERE task_id IN (${placeholders})`, taskIds);
   await execute(`DELETE FROM task_file WHERE task_id IN (${placeholders})`, taskIds);
   await execute(`DELETE FROM task_info WHERE id IN (${placeholders})`, taskIds);
 }
@@ -246,7 +278,7 @@ function taskDateColumn(dateField) {
 }
 
 /** 我发布的任务 */
-async function queryMyPublished({ userId, role, permissions = [], filterGroup, selfOnly, status, styleNumber, keyword, designerId, publisherId, dateStart, dateEnd, dateField, page, pageSize }) {
+async function queryMyPublished({ userId, role, permissions = [], filterGroup, selfOnly, status, styleNumber, keyword, taskNo, designerId, publisherId, dateStart, dateEnd, dateField, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE 1=1';
   const params = [];
@@ -276,6 +308,7 @@ async function queryMyPublished({ userId, role, permissions = [], filterGroup, s
   if (status) { where += ' AND t.status = ?'; params.push(status); }
   if (styleNumber) { where += ' AND t.style_number LIKE ?'; params.push(`%${styleNumber}%`); }
   if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`); }
+  if (taskNo) { where += ' AND t.task_no LIKE ?'; params.push(`%${taskNo}%`); }
   if (designerId) { where += ' AND t.designer_id = ?'; params.push(designerId); }
   if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
   if (dateStart) { where += ` AND ${dateColumn} >= ?`; params.push(dateStart + ' 00:00:00'); }
@@ -325,7 +358,12 @@ async function queryMyAccepted({ userId, role, permissions = [], taskGroup, stat
   const result = await paginate({
     countSql: `SELECT COUNT(*) as total FROM task_info t ${where}`,
     countParams: params,
-    dataSql: `SELECT ${TASK_SELECT} FROM task_info t ${TASK_JOIN} ${where} ORDER BY t.update_time DESC LIMIT ? OFFSET ?`,
+    dataSql: `SELECT ${TASK_SELECT} FROM task_info t ${TASK_JOIN} ${where}
+              ORDER BY
+                CASE WHEN t.status = 'accepted' AND t.urge_time IS NOT NULL THEN 0 ELSE 1 END,
+                t.urge_time DESC,
+                t.update_time DESC
+              LIMIT ? OFFSET ?`,
     dataParams: [...params, pageSize, offset],
     page, pageSize
   });
@@ -677,8 +715,10 @@ module.exports = {
   insertTask,
   getTaskDetail,
   getTaskFiles,
+  getTaskTransferRecords,
   getTaskForUpdate,
   updateTaskFields,
+  insertTransferRecord,
   deleteTaskData,
   batchDeleteTasks,
   batchReassignTasks,

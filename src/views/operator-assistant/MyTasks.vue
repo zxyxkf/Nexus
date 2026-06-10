@@ -36,7 +36,7 @@
         </div>
       </template>
 
-      <el-table :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无接单任务">
+      <el-table :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无接单任务" :row-class-name="tableRowClassName">
         <el-table-column prop="task_no" label="任务编号" width="95" align="center" show-overflow-tooltip />
         <el-table-column prop="shop_name" label="店铺" width="140" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ row.shop_name || '-' }}</template>
@@ -362,6 +362,9 @@ const inlineQuantityValues = ref({})
 
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || '' }
+function tableRowClassName({ row }) {
+  return row?.status === 'accepted' && row?.urge_time ? 'row-urged' : ''
+}
 
 const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList } = useFileHelpers()
 const detailRefImages = computed(() => {
@@ -642,6 +645,8 @@ useRealtime(loadData, 3000, {
 }
 .file-badge:hover { color: var(--dd-primary); }
 .file-badge span { font-size: 10px; }
+:deep(.row-urged) { background: rgba(230, 57, 70, 0.14) !important; }
+:deep(.row-urged td) { color: #9f1d2a; font-weight: 600; }
 .file-grid { display: flex; flex-wrap: wrap; gap: 12px; }
 .file-item { text-align: center; }
 .attachment-item {

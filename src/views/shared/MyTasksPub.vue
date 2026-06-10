@@ -15,6 +15,17 @@
             >
               <template #prefix><el-icon><Search /></el-icon></template>
             </el-input>
+            <el-input
+              v-if="isCsAgent"
+              v-model="taskNoFilter"
+              placeholder="任务编号筛选"
+              clearable
+              style="width:150px;"
+              @clear="loadData"
+              @keyup.enter="loadData"
+            >
+              <template #prefix><el-icon><Search /></el-icon></template>
+            </el-input>
             <el-select
               v-if="isCsAgent"
               v-model="designerFilter"
@@ -166,12 +177,14 @@
         <el-table-column prop="create_time" label="发布时间" width="170" align="center" sortable show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="220" align="center" fixed="right">
+        <el-table-column label="操作" width="260" align="center" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
             <el-button v-if="(row.status === 'wait' || row.status === 'accepted')" type="warning" link size="small" @click="handleWithdraw(row)">撤回</el-button>
             <el-button v-if="row.status === 'draft'" type="success" link size="small" @click="openEditDialog(row)">编辑</el-button>
-            <el-button v-if="row.designer_id && row.status !== 'finished'" type="warning" link size="small" @click="urgeTask(row)">催促</el-button>
+            <el-button v-if="isCsAgent && row.status === 'finished'" type="danger" link size="small" @click="openReopenDialog(row)">重开</el-button>
+            <el-button v-if="isCsAgent && row.status === 'finished'" type="primary" link size="small" @click="openTaskNoDialog(row)">改编号</el-button>
+            <el-button v-if="row.designer_id && row.status === 'accepted'" type="warning" link size="small" @click="urgeTask(row)">催促</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -201,13 +214,16 @@
             <div class="detail-header-right">
               <el-button v-if="(currentTask.status === 'wait' || currentTask.status === 'accepted')" type="warning" size="small" @click="handleWithdraw(currentTask)">撤回</el-button>
               <el-button v-if="currentTask.status === 'draft'" type="success" size="small" @click="openEditDialog(currentTask)">编辑</el-button>
-              <el-button v-if="currentTask.designer_id && currentTask.status !== 'finished'" type="warning" size="small" @click="urgeTask(currentTask)">催促</el-button>
+              <el-button v-if="isCsAgent && currentTask.status === 'finished'" type="danger" size="small" @click="openReopenDialog(currentTask)">重开</el-button>
+              <el-button v-if="isCsAgent && currentTask.status === 'finished'" type="primary" size="small" @click="openTaskNoDialog(currentTask)">改编号</el-button>
+              <el-button v-if="currentTask.designer_id && currentTask.status === 'accepted'" type="warning" size="small" @click="urgeTask(currentTask)">催促</el-button>
               <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
             </div>
           </div>
 
           <div class="inline-detail-body">
             <TaskStatusTimeline :task="currentTask" :task-group="taskGroup" />
+            <TaskTransferTimeline v-if="isCsAgent" :records="currentTask.transfer_records || []" />
             <div class="inline-detail-stat-card">
               <label>{{ designerLabel }}</label>
               <span>{{ currentTask.designer_name || '未接单' }}</span>
@@ -337,7 +353,7 @@
     </el-card>
 
     <!-- 编辑草稿任务对话框 -->
-    <el-dialog v-model="editVisible" title="编辑任务" width="600px" :close-on-click-modal="false" top="5vh">
+    <el-dialog v-model="editVisible" :title="editMode === 'reopen' ? '重开任务' : '编辑任务'" width="600px" :close-on-click-modal="false" top="5vh">
       <el-form ref="editFormRef" :model="editForm" :rules="editRules" label-width="80px">
         <el-form-item label="工作项目" prop="scoreItemId">
           <el-select v-model="editForm.scoreItemId" placeholder="请选择工作项目" filterable @change="onEditScoreItemChange" style="width:100%;">
@@ -399,7 +415,7 @@
       </el-form>
       <template #footer>
         <el-button @click="editVisible = false">取消</el-button>
-        <el-button type="primary" @click="handleEditSave" :loading="editSaving">保存并重新发布</el-button>
+        <el-button type="primary" @click="handleEditSave" :loading="editSaving">{{ editMode === 'reopen' ? '保存并重开' : '保存并重新发布' }}</el-button>
       </template>
     </el-dialog>
   </div>
@@ -410,7 +426,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document, Search, Plus } from '@element-plus/icons-vue'
-import { getMyPublishedApi, getTaskDetailApi, urgeTaskApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getMyPublishedApi, getTaskDetailApi, urgeTaskApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, reopenFinishedCsTaskApi, updateCsTaskNoApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { getScoreItemsApi } from '@/api'
 import { getBasicDesignerListApi, getDesignerListApi, getOperatorAssistantListApi, getPublisherListApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
@@ -419,6 +435,7 @@ import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -442,11 +459,12 @@ const pageSize = ref(15)
 const statusFilter = ref('')
 const styleNumberFilter = ref('')
 const keywordFilter = ref('')
+const taskNoFilter = ref('')
 const designerFilter = ref('')
 const operatorDesignerFilter = ref('')
 const publisherFilter = ref('')
 const dateRange = ref(null)
-usePersistedFilters(`my_tasks_pub_${taskGroup.value}`, { statusFilter, styleNumberFilter, keywordFilter, designerFilter, operatorDesignerFilter, publisherFilter, dateRange })
+usePersistedFilters(`my_tasks_pub_${taskGroup.value}`, { statusFilter, styleNumberFilter, keywordFilter, taskNoFilter, designerFilter, operatorDesignerFilter, publisherFilter, dateRange })
 const dateField = ref('')
 const basicDesignerList = ref([])
 const operatorDesignerList = ref([])
@@ -487,6 +505,7 @@ async function loadData(options = {}) {
       status: statusFilter.value || undefined,
       styleNumber: isCsAgent.value ? undefined : (styleNumberFilter.value || undefined),
       keyword: isCsAgent.value ? (keywordFilter.value || undefined) : undefined,
+      taskNo: isCsAgent.value ? (taskNoFilter.value || undefined) : undefined,
       designerId: isCsAgent.value ? (designerFilter.value || undefined) : (operatorDesignerFilter.value || undefined),
       publisherId: !isCsAgent.value ? (publisherFilter.value || undefined) : undefined,
       taskGroup: taskGroup.value,
@@ -613,6 +632,7 @@ async function handleWithdraw(row) {
 // ===== 编辑草稿 =====
 const editVisible = ref(false)
 const editSaving = ref(false)
+const editMode = ref('draft')
 const editFormRef = ref(null)
 const editUploadRef = ref(null)
 const editForm = ref({ taskId: null, scoreItemId: null, score: 0, description: '', deadline: null, refPath: '', wangwangId: '', styleNumber: '', specifiedColor: '', designerId: null })
@@ -664,6 +684,7 @@ function onEditScoreItemChange(id) {
 }
 
 function openEditDialog(row) {
+  editMode.value = 'draft'
   if (scoreItems.value.length === 0) loadScoreItems()
   if (designerList.value.length === 0) loadDesigners()
 
@@ -685,13 +706,63 @@ function openEditDialog(row) {
   editFormRef.value?.clearValidate?.()
 }
 
+async function openReopenDialog(row) {
+  try {
+    await ElMessageBox.confirm(
+      `确认重开已完成任务「${row.title}」？保存后该任务会回到基础美工待做任务，已完成分值会扣回。`,
+      '重开任务',
+      { type: 'warning', confirmButtonText: '继续重开' }
+    )
+    editMode.value = 'reopen'
+    if (scoreItems.value.length === 0) await loadScoreItems()
+    if (designerList.value.length === 0) await loadDesigners()
+    const scoreItem = scoreItems.value.find(item => Number(item.id) === Number(row.score_item_id))
+    editRefImages.value = []
+    editRefRawFiles.value = []
+    editForm.value = {
+      taskId: row.id,
+      scoreItemId: row.score_item_id || null,
+      score: scoreItem ? scoreItem.score : (row.score || 0),
+      description: row.description || '',
+      deadline: row.deadline || null,
+      refPath: row.ref_path || '',
+      wangwangId: row.wangwang_id || row.ref_path || '',
+      styleNumber: row.style_number || '',
+      specifiedColor: row.specified_color || '',
+      designerId: row.designer_id || null
+    }
+    editVisible.value = true
+    editFormRef.value?.clearValidate?.()
+  } catch {}
+}
+
+async function openTaskNoDialog(row) {
+  try {
+    const { value } = await ElMessageBox.prompt('请输入新的任务编号', '修改任务编号', {
+      inputValue: row.task_no || '',
+      inputPattern: /\S+/,
+      inputErrorMessage: '任务编号不能为空',
+      confirmButtonText: '保存',
+      cancelButtonText: '取消'
+    })
+    const res = await updateCsTaskNoApi({ taskId: row.id, taskNo: value })
+    if (res.code === 0) {
+      ElMessage.success(res.msg || '任务编号已更新')
+      if (currentTask.value?.id === row.id) currentTask.value.task_no = value
+      await loadData()
+    } else {
+      ElMessage.error(res.msg || '修改失败')
+    }
+  } catch {}
+}
+
 async function handleEditSave() {
   const valid = await editFormRef.value?.validate().catch(() => false)
   if (!valid) return
   editSaving.value = true
   try {
     const f = editForm.value
-    const res = await updateTaskApi({
+    const payload = {
       taskId: f.taskId,
       title: scoreItems.value.find(s => s.id === f.scoreItemId)?.name || '',
       description: f.description,
@@ -703,7 +774,10 @@ async function handleEditSave() {
       styleNumber: f.styleNumber,
       specifiedColor: f.specifiedColor,
       designerId: f.designerId
-    })
+    }
+    const res = editMode.value === 'reopen'
+      ? await reopenFinishedCsTaskApi(payload)
+      : await updateTaskApi(payload)
     if (res.code === 0) {
       if (editRefImages.value.length) {
         const rawFiles = editRefRawFiles.value.length

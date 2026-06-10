@@ -144,6 +144,7 @@
 
         <div class="inline-detail-body">
           <TaskStatusTimeline :task="currentTask" :task-group="taskGroup" />
+          <TaskTransferTimeline v-if="isCsAgent" :records="currentTask.transfer_records || []" />
           <div class="inline-detail-stat-card">
             <label>工作项目</label>
             <span>{{ currentTask.title }}</span>
@@ -271,6 +272,7 @@ import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 
 const route = useRoute()
 const taskGroup = computed(() => route.meta.taskGroup || (route.meta.role === 'cs_agent' ? 'cs' : 'design'))

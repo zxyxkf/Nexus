@@ -38,6 +38,22 @@ router.put('/update', requireAnyPermission(['task.create.design', 'task.create.o
   } catch (err) { next(err); }
 });
 
+// 客服重开已完成基础美工任务
+router.post('/reopen-finished-cs', requireAnyPermission(['task.create.cs'], 'cs_agent'), async (req, res, next) => {
+  try {
+    const result = await taskService.reopenFinishedCsTask(req.body, req.user);
+    res.json({ code: 0, ...result });
+  } catch (err) { next(err); }
+});
+
+// 客服修改已完成基础美工任务编号
+router.put('/cs-task-no', requireAnyPermission(['task.create.cs'], 'cs_agent'), async (req, res, next) => {
+  try {
+    const result = await taskService.updateCsTaskNo(req.body.taskId, req.body.taskNo, req.user);
+    res.json({ code: 0, ...result });
+  } catch (err) { next(err); }
+});
+
 // 批量删除
 router.post('/batch-delete', requireRole('admin', 'sub_admin'), async (req, res, next) => {
   try {
