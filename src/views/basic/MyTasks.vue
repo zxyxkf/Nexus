@@ -754,6 +754,5 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVi
 .file-card-size { font-size: 11px; color: var(--dd-text-secondary); }
 
 /* 催促任务置顶高亮 */
-:deep(.row-urged) { background: rgba(230, 57, 70, 0.14) !important; }
 :deep(.row-urged td) { color: #9f1d2a; font-weight: 600; }
 </style>

@@ -645,7 +645,6 @@ useRealtime(loadData, 3000, {
 }
 .file-badge:hover { color: var(--dd-primary); }
 .file-badge span { font-size: 10px; }
-:deep(.row-urged) { background: rgba(230, 57, 70, 0.14) !important; }
 :deep(.row-urged td) { color: #9f1d2a; font-weight: 600; }
 .file-grid { display: flex; flex-wrap: wrap; gap: 12px; }
 .file-item { text-align: center; }

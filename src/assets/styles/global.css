@@ -962,6 +962,17 @@ body.nexus-table-resizing .el-table__body tr.el-table__row:hover td {
   background: var(--dd-border, #dcdfe6);
 }
 
+/* 催促任务行：淡红背景 + 深红文字，覆盖普通/斑马纹/固定列背景 */
+.el-table .el-table__body tr.row-urged > td.el-table__cell,
+.el-table.el-table--striped .el-table__body tr.row-urged.el-table__row--striped > td.el-table__cell,
+.el-table .el-table__body tr.row-urged.hover-row > td.el-table__cell,
+.el-table .el-table__body tr.row-urged.current-row > td.el-table__cell,
+.el-table .el-table__body tr.row-urged > td.el-table-fixed-column--right {
+  background: rgba(230, 57, 70, 0.12) !important;
+  color: #9f1d2a !important;
+  font-weight: 600;
+}
+
 /* 按钮激活态微交互 */
 .el-button:active { transform: scale(0.97); transition: transform 0.1s ease; }
 .el-button--primary { box-shadow: 0 2px 8px rgba(67, 97, 238, 0.15); }

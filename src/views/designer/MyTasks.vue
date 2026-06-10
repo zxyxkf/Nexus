@@ -764,6 +764,5 @@ useRealtime(loadData, 3000, {
 .multiline-value { white-space: pre-wrap; word-break: break-word; }
 
 /* 催促任务置顶高亮 */
-:deep(.row-urged) { background: rgba(230, 57, 70, 0.14) !important; }
 :deep(.row-urged td) { color: #9f1d2a; font-weight: 600; }
 </style>
