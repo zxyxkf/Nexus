@@ -304,13 +304,10 @@ body,
   border-right-color: var(--dd-border-light) !important;
 }
 
-.el-table th.el-table__cell.is-leaf {
-  cursor: col-resize;
-}
-
 .el-table th.el-table__cell.is-leaf.nexus-resize-hover,
 .el-table th.el-table__cell.is-leaf.nexus-resize-active {
   position: relative;
+  cursor: col-resize;
 }
 
 .el-table th.el-table__cell.is-leaf.nexus-resize-hover::after,

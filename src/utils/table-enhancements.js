@@ -100,7 +100,6 @@ function syncTableColumnState(table, cells, widths) {
     const width = widths[String(cell.index)]
     const column = columns[cell.index - 1]
     if (!column || !Number.isFinite(width) || width < 40 || width > 1600) return
-    column.width = width
     column.realWidth = width
     changed = true
   })
@@ -201,7 +200,8 @@ function getResizeHeader(event) {
   const th = event.target?.closest?.('.el-table th.el-table__cell.is-leaf')
   if (!th) return null
   const rect = th.getBoundingClientRect()
-  return rect.right - event.clientX <= 10 ? th : null
+  const distance = rect.right - event.clientX
+  return rect.width > 12 && distance >= 0 && distance < 8 ? th : null
 }
 
 function updateResizeGuide(x) {
@@ -472,7 +472,7 @@ export function installTableEnhancements() {
   window.addEventListener('scroll', closeAllPanels, true)
   document.addEventListener('click', closeAllPanels)
   document.addEventListener('mousemove', handleResizeHover, true)
-  document.addEventListener('mousedown', startResizeFeedback, true)
+  document.addEventListener('mousedown', startResizeFeedback)
 
   observer = new MutationObserver(scheduleEnhance)
   observer.observe(document.body, { childList: true, subtree: true })
@@ -487,7 +487,7 @@ export function uninstallTableEnhancements() {
   window.removeEventListener('scroll', closeAllPanels, true)
   document.removeEventListener('click', closeAllPanels)
   document.removeEventListener('mousemove', handleResizeHover, true)
-  document.removeEventListener('mousedown', startResizeFeedback, true)
+  document.removeEventListener('mousedown', startResizeFeedback)
   observer?.disconnect()
   observer = null
   installed = false
