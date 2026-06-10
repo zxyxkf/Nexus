@@ -165,7 +165,7 @@
       />
       <el-tabs v-model="permissionTab">
         <el-tab-pane label="额外允许" name="allow">
-          <el-checkbox-group v-model="permissionForm.allow">
+          <el-checkbox-group v-model="permissionForm.allow" class="permission-group-list">
             <div v-for="group in permissionGroups" :key="'allow-' + group.name" class="permission-group">
               <div class="permission-group-title">{{ group.name }}</div>
               <el-checkbox
@@ -181,7 +181,7 @@
           </el-checkbox-group>
         </el-tab-pane>
         <el-tab-pane label="禁用默认权限" name="deny">
-          <el-checkbox-group v-model="permissionForm.deny">
+          <el-checkbox-group v-model="permissionForm.deny" class="permission-group-list">
             <div v-for="group in defaultPermissionGroups" :key="'deny-' + group.name" class="permission-group">
               <div class="permission-group-title">{{ group.name }}</div>
               <el-checkbox v-for="p in group.items" :key="p.code" :label="p.code" :disabled="isProtectedPermission(p.code)">
@@ -192,11 +192,13 @@
           </el-checkbox-group>
         </el-tab-pane>
         <el-tab-pane label="最终权限" name="effective">
-          <div v-for="group in effectivePermissionGroups" :key="'eff-' + group.name" class="permission-group">
-            <div class="permission-group-title">{{ group.name }}</div>
-            <el-tag v-for="p in group.items" :key="p.code" size="small" effect="plain" style="margin:0 6px 6px 0;">
-              {{ p.name }}
-            </el-tag>
+          <div class="permission-group-list">
+            <div v-for="group in effectivePermissionGroups" :key="'eff-' + group.name" class="permission-group">
+              <div class="permission-group-title">{{ group.name }}</div>
+              <el-tag v-for="p in group.items" :key="p.code" size="small" effect="plain" style="margin:0 6px 6px 0;">
+                {{ p.name }}
+              </el-tag>
+            </div>
           </div>
         </el-tab-pane>
       </el-tabs>
@@ -238,6 +240,53 @@ const permissionDefaults = ref([])
 const permissionEffective = ref([])
 const permissionForm = reactive({ allow: [], deny: [] })
 const PROTECTED_ADMIN_PERMISSIONS = ['admin.users']
+const ALLOW_PERMISSION_GROUPS = [
+  {
+    name: '运营角色',
+    codes: [
+      'operator.publish.design',
+      'operator.tasks.design',
+      'operator.review.design',
+      'operator.publish.assistant',
+      'operator.tasks.assistant',
+      'operator.review.assistant',
+      'task.create.design',
+      'task.create.operator'
+    ]
+  },
+  {
+    name: '客服角色',
+    codes: [
+      'cs.publish.basic',
+      'cs.tasks.basic',
+      'cs.review.basic',
+      'task.create.cs'
+    ]
+  },
+  {
+    name: '美工设计师角色',
+    codes: [
+      'designer.hall.design',
+      'designer.tasks.design'
+    ]
+  },
+  {
+    name: '基础美工角色',
+    codes: [
+      'basic.hall.cs',
+      'basic.tasks.cs',
+      'score.review.basic',
+      'score.records.basic'
+    ]
+  },
+  {
+    name: '运营助理角色',
+    codes: [
+      'assistant.hall.operator',
+      'assistant.tasks.operator'
+    ]
+  }
+]
 
 async function loadShops() {
   try {
@@ -300,7 +349,25 @@ function groupPermissions(catalog, codes = null) {
   return [...map.entries()].map(([name, items]) => ({ name, items }))
 }
 
-const permissionGroups = computed(() => groupPermissions(permissionCatalog.value))
+function groupAllowPermissions(catalog) {
+  const byCode = new Map(catalog.map(p => [p.code, p]))
+  const usedCodes = new Set()
+  const groups = []
+
+  for (const group of ALLOW_PERMISSION_GROUPS) {
+    const items = group.codes.map(code => byCode.get(code)).filter(Boolean)
+    if (items.length === 0) continue
+    items.forEach(p => usedCodes.add(p.code))
+    groups.push({ name: group.name, items })
+  }
+
+  const commonItems = catalog.filter(p => !usedCodes.has(p.code))
+  if (commonItems.length) groups.push({ name: '通用权限', items: commonItems })
+
+  return groups
+}
+
+const permissionGroups = computed(() => groupAllowPermissions(permissionCatalog.value))
 const defaultPermissionGroups = computed(() => groupPermissions(permissionCatalog.value, permissionDefaults.value))
 const effectivePermissionGroups = computed(() => groupPermissions(permissionCatalog.value, permissionEffective.value))
 
@@ -505,8 +572,9 @@ onMounted(() => loadData())
 <style scoped>
 .permission-header { display: flex; justify-content: space-between; gap: 16px; align-items: center; margin-bottom: 12px; }
 .permission-hint { font-size: 12px; color: var(--dd-text-muted); }
+.permission-group-list { display: block; max-height: 58vh; overflow-y: auto; padding-right: 6px; }
 .permission-group { padding: 10px 0; border-bottom: 1px solid var(--dd-border-light); }
-.permission-group-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; color: var(--dd-text-primary); }
+.permission-group-title { font-size: 13px; font-weight: 700; margin-bottom: 8px; color: var(--dd-text-primary); position: sticky; top: 0; z-index: 1; background: var(--dd-bg-card); padding: 2px 0; }
 .permission-group :deep(.el-checkbox) { width: 230px; margin-right: 8px; margin-bottom: 8px; }
 .permission-code { display: block; font-size: 10px; color: var(--dd-text-muted); line-height: 1.2; }
 </style>
