@@ -81,6 +81,19 @@ function saveColumnWidths(key, widths) {
 }
 
 function readColumnWidths(table, cells) {
+  const columns = table.__vueParentComponent?.proxy?.store?.states?.columns?.value
+  if (Array.isArray(columns)) {
+    const stateWidths = Object.fromEntries(
+      cells
+        .map(cell => {
+          const column = columns[cell.index - 1]
+          return [String(cell.index), Math.round(Number(column?.realWidth || column?.width || 0))]
+        })
+        .filter(([, width]) => Number.isFinite(width) && width >= 40 && width <= 1600)
+    )
+    if (Object.keys(stateWidths).length) return stateWidths
+  }
+
   const rows = table.querySelectorAll('.el-table__header-wrapper thead tr')
   const row = rows[rows.length - 1]
   if (!row) return {}
@@ -128,6 +141,12 @@ function persistColumnWidths(table) {
   const widths = readColumnWidths(table, cells)
   if (!Object.keys(widths).length) return
   saveColumnWidths(widthKey, widths)
+}
+
+function schedulePersistColumnWidths(table) {
+  requestAnimationFrame(() => {
+    requestAnimationFrame(() => persistColumnWidths(table))
+  })
 }
 
 function applyVisibility(table, tableId, cells, visible) {
@@ -255,11 +274,11 @@ function startResizeFeedback(event) {
     th.classList.remove('nexus-resize-active')
     clearResizeHover()
     guide.classList.remove('is-active')
-    requestAnimationFrame(() => persistColumnWidths(table))
+    schedulePersistColumnWidths(table)
   }
 
   document.addEventListener('mousemove', onMove, true)
-  document.addEventListener('mouseup', onUp, { once: true, capture: true })
+  document.addEventListener('mouseup', onUp, { once: true })
 }
 
 function closeAllPanels() {
