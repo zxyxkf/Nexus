@@ -61,6 +61,10 @@ function makeWidthStorageKey(storageKey) {
   return `${storageKey}_widths`
 }
 
+function escapeSelectorValue(value) {
+  return window.CSS?.escape ? window.CSS.escape(value) : String(value).replace(/["\\]/g, '\\$&')
+}
+
 function loadColumnWidths(key, cells) {
   try {
     const parsed = JSON.parse(localStorage.getItem(key) || 'null')
@@ -317,6 +321,7 @@ function removeEnhancement(table) {
   delete table.dataset.nexusTableId
   delete table.dataset.nexusTableIndex
   delete table.dataset.nexusColumnSignature
+  delete table.dataset.nexusColumnStorageKey
   delete table.dataset.nexusColumnWidthKey
 }
 
@@ -431,11 +436,26 @@ function mountControl(table, control, placementHost) {
   host.appendChild(control)
 }
 
+function ensureControlMounted(table, cells) {
+  const tableId = table.dataset.nexusTableId
+  const storageKey = table.dataset.nexusColumnStorageKey
+  const widthKey = table.dataset.nexusColumnWidthKey
+  if (!tableId || !storageKey || !widthKey) return
+  if (document.querySelector(`.nexus-column-control[data-table-id="${escapeSelectorValue(tableId)}"]`)) return
+  const visible = loadVisible(storageKey, cells)
+  const placementHost = getControlHost(table)
+  const control = createControl(table, tableId, cells, storageKey, visible, placementHost.placement, widthKey)
+  mountControl(table, control, placementHost)
+}
+
 function enhanceTable(table, index) {
   const cells = getHeaderCells(table)
   if (!cells.length) return
   const signature = cells.map(cell => cell.label).join('|')
-  if (table.getAttribute(ENHANCED_ATTR) === '1' && table.dataset.nexusColumnSignature === signature) return
+  if (table.getAttribute(ENHANCED_ATTR) === '1' && table.dataset.nexusColumnSignature === signature) {
+    ensureControlMounted(table, cells)
+    return
+  }
 
   removeEnhancement(table)
 
@@ -450,6 +470,7 @@ function enhanceTable(table, index) {
   const widthKey = makeWidthStorageKey(storageKey)
   const visible = loadVisible(storageKey, cells)
   const widths = loadColumnWidths(widthKey, cells)
+  table.dataset.nexusColumnStorageKey = storageKey
   table.dataset.nexusColumnWidthKey = widthKey
   applyColumnWidths(table, tableId, cells, widths, true)
   applyVisibility(table, tableId, cells, visible)
