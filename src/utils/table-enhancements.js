@@ -10,6 +10,11 @@ function getRouteKey() {
   return (window.location.hash || window.location.pathname || 'root').replace(/[^\w-]+/g, '_')
 }
 
+function isDashboardRoute() {
+  const hash = window.location.hash || ''
+  return hash === '#/dashboard' || hash.startsWith('#/dashboard/')
+}
+
 function getUserKey() {
   const user = getUser()
   return user?.id || user?.username || 'guest'
@@ -81,6 +86,20 @@ function closeOtherPanels(activePanel) {
   document.querySelectorAll('.nexus-column-panel.is-open').forEach(panel => {
     if (panel !== activePanel) panel.classList.remove('is-open')
   })
+}
+
+function removeEnhancement(table) {
+  if (table.dataset.nexusTableId) {
+    document.getElementById(`${STYLE_ID_PREFIX}${table.dataset.nexusTableId}`)?.remove()
+  }
+  table.querySelector(':scope > .nexus-column-control')?.remove()
+  for (const className of [...table.classList]) {
+    if (className.startsWith('nexus-table-')) table.classList.remove(className)
+  }
+  table.removeAttribute(ENHANCED_ATTR)
+  delete table.dataset.nexusTableId
+  delete table.dataset.nexusTableIndex
+  delete table.dataset.nexusColumnSignature
 }
 
 function createControl(table, tableId, cells, storageKey, visible) {
@@ -165,13 +184,7 @@ function enhanceTable(table, index) {
   const signature = cells.map(cell => cell.label).join('|')
   if (table.getAttribute(ENHANCED_ATTR) === '1' && table.dataset.nexusColumnSignature === signature) return
 
-  if (table.dataset.nexusTableId) {
-    document.getElementById(`${STYLE_ID_PREFIX}${table.dataset.nexusTableId}`)?.remove()
-  }
-  table.querySelector(':scope > .nexus-column-control')?.remove()
-  for (const className of [...table.classList]) {
-    if (className.startsWith('nexus-table-')) table.classList.remove(className)
-  }
+  removeEnhancement(table)
 
   const tableId = `${Date.now()}_${tableSeq++}`
   table.classList.add(`nexus-table-${tableId}`)
@@ -187,7 +200,12 @@ function enhanceTable(table, index) {
 }
 
 function enhanceTables() {
-  document.querySelectorAll('.el-table').forEach((table, index) => enhanceTable(table, index))
+  const tables = document.querySelectorAll('.el-table')
+  if (isDashboardRoute()) {
+    tables.forEach(removeEnhancement)
+    return
+  }
+  tables.forEach((table, index) => enhanceTable(table, index))
 }
 
 export function installTableEnhancements() {
