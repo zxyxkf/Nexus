@@ -215,10 +215,6 @@
               <span>{{ formatScoreReviewApprovedScore(currentTask) }}</span>
             </div>
             <div class="inline-detail-stat-card">
-              <label>分数审核时间</label>
-              <span>{{ formatScoreReviewTime(currentTask) }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
               <label>旺旺ID</label>
               <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
             </div>
@@ -360,7 +356,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document, Search } from '@element-plus/icons-vue'
 import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, transferTaskApi, undoSubmitApi, getBasicDesignerListApi, getPublisherListApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreReviewTime, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'

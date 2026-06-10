@@ -181,10 +181,6 @@
               <span>{{ formatScoreReviewApprovedScore(currentTask) }}</span>
             </div>
             <div class="inline-detail-stat-card">
-              <label>分数审核时间</label>
-              <span>{{ formatScoreReviewTime(currentTask) }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
               <label>分值审核状态</label>
               <el-tag :type="scoreReviewTagType(currentTask.score_review_status)" size="small">
                 {{ formatScoreReviewStatus(currentTask.score_review_status, currentTask) }}

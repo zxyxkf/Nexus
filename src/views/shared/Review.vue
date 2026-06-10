@@ -167,10 +167,6 @@
               <label>分数审核通过分数</label>
               <span>{{ formatScoreReviewApprovedScore(currentTask) }}</span>
             </div>
-            <div class="inline-detail-stat-card">
-              <label>分数审核时间</label>
-              <span>{{ formatScoreReviewTime(currentTask) }}</span>
-            </div>
           </template>
           <template v-else>
             <div class="inline-detail-stat-card">
@@ -269,7 +265,7 @@ import { Close, PictureFilled, Document } from '@element-plus/icons-vue'
 import { getMyPublishedApi, getTaskDetailApi, reviewTaskApi, batchReviewApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
-import { formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreReviewTime, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
+import { formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 
 const route = useRoute()

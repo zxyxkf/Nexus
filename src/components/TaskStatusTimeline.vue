@@ -51,12 +51,21 @@ const reviewHint = computed(() => `任务已提交，等待${reviewerName.value}
 const timeline = computed(() => {
   const task = props.task
   const hasSubmitTime = ['doing', 'rejected', 'finished'].includes(task.status)
+  const hasScoreReview = props.taskGroup === 'cs' && (task.score_review_time || ['approved', 'rejected'].includes(task.score_review_status))
   const items = [
     { key: 'create', label: '发布任务', time: task.create_time, done: true },
     { key: 'accept', label: `${workerName.value}接单`, time: task.designer_id ? (task.accept_time || '') : '', done: ['accepted', 'doing', 'rejected', 'finished'].includes(task.status) },
     { key: 'submit', label: '上传提交', time: hasSubmitTime ? (task.submit_time || task.update_time || '') : '', done: hasSubmitTime },
     { key: 'review', label: `${reviewerName.value}审核`, time: task.finish_time || (task.status === 'rejected' ? task.update_time : ''), done: ['rejected', 'finished'].includes(task.status) }
   ]
+  if (hasScoreReview) {
+    items.push({
+      key: 'score-review',
+      label: '分数审核',
+      time: task.score_review_time || task.update_time || '',
+      done: true
+    })
+  }
   return items.map(item => ({ ...item, active: !item.done && item.key === activeKey(task.status) }))
 })
 
@@ -79,7 +88,7 @@ function activeKey(status) {
 }
 .task-status-head { display: flex; justify-content: flex-end; gap: 12px; align-items: flex-start; }
 .task-status-alert { margin-top: 10px; }
-.task-timeline { display: grid; grid-template-columns: repeat(4, minmax(120px, 1fr)); gap: 8px; margin-top: 12px; }
+.task-timeline { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 8px; margin-top: 12px; }
 .task-timeline-item { display: flex; gap: 8px; align-items: flex-start; color: var(--dd-text-muted); }
 .task-timeline-dot { width: 10px; height: 10px; border-radius: 50%; margin-top: 4px; background: var(--dd-border); flex-shrink: 0; }
 .task-timeline-item.done .task-timeline-dot { background: var(--dd-success); }

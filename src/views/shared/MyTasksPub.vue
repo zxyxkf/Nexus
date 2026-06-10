@@ -239,10 +239,6 @@
                 <label>分数审核通过分数</label>
                 <span>{{ formatScoreReviewApprovedScore(currentTask) }}</span>
               </div>
-              <div class="inline-detail-stat-card">
-                <label>分数审核时间</label>
-                <span>{{ formatScoreReviewTime(currentTask) }}</span>
-              </div>
             </template>
             <template v-else>
               <div class="inline-detail-stat-card">
@@ -413,7 +409,7 @@ import { Close, Document, Search, Plus } from '@element-plus/icons-vue'
 import { getMyPublishedApi, getTaskDetailApi, urgeTaskApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { getScoreItemsApi } from '@/api'
 import { getBasicDesignerListApi, getDesignerListApi, getOperatorAssistantListApi, getPublisherListApi } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreReviewTime, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
