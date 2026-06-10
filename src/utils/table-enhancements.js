@@ -92,7 +92,7 @@ function readColumnWidths(table, cells) {
   )
 }
 
-function syncTableColumnState(table, cells, widths) {
+function syncTableColumnState(table, cells, widths, persistAsColumnWidth = false) {
   const columns = table.__vueParentComponent?.proxy?.store?.states?.columns?.value
   if (!Array.isArray(columns)) return false
   let changed = false
@@ -100,6 +100,7 @@ function syncTableColumnState(table, cells, widths) {
     const width = widths[String(cell.index)]
     const column = columns[cell.index - 1]
     if (!column || !Number.isFinite(width) || width < 40 || width > 1600) return
+    if (persistAsColumnWidth) column.width = width
     column.realWidth = width
     changed = true
   })
@@ -107,7 +108,7 @@ function syncTableColumnState(table, cells, widths) {
   return changed
 }
 
-function applyColumnWidths(table, tableId, cells, widths) {
+function applyColumnWidths(table, tableId, cells, widths, persistAsColumnWidth = false) {
   let style = document.getElementById(`${WIDTH_STYLE_ID_PREFIX}${tableId}`)
   if (!style) {
     style = document.createElement('style')
@@ -115,7 +116,7 @@ function applyColumnWidths(table, tableId, cells, widths) {
     document.head.appendChild(style)
   }
   style.textContent = ''
-  syncTableColumnState(table, cells, widths)
+  syncTableColumnState(table, cells, widths, persistAsColumnWidth)
 }
 
 function persistColumnWidths(table) {
@@ -127,7 +128,6 @@ function persistColumnWidths(table) {
   const widths = readColumnWidths(table, cells)
   if (!Object.keys(widths).length) return
   saveColumnWidths(widthKey, widths)
-  applyColumnWidths(table, tableId, cells, widths)
 }
 
 function applyVisibility(table, tableId, cells, visible) {
@@ -432,13 +432,13 @@ function enhanceTable(table, index) {
   const visible = loadVisible(storageKey, cells)
   const widths = loadColumnWidths(widthKey, cells)
   table.dataset.nexusColumnWidthKey = widthKey
-  applyColumnWidths(table, tableId, cells, widths)
+  applyColumnWidths(table, tableId, cells, widths, true)
   applyVisibility(table, tableId, cells, visible)
   const placementHost = getControlHost(table)
   const control = createControl(table, tableId, cells, storageKey, visible, placementHost.placement, widthKey)
   mountControl(table, control, placementHost)
   requestAnimationFrame(() => {
-    applyColumnWidths(table, tableId, cells, widths)
+    applyColumnWidths(table, tableId, cells, widths, true)
     table.__vueParentComponent?.proxy?.doLayout?.()
   })
 }
