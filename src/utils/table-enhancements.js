@@ -31,7 +31,8 @@ function getHeaderCells(table) {
   if (!row) return []
   return Array.from(row.querySelectorAll('th')).map((th, index) => {
     const text = th.querySelector('.cell')?.textContent?.trim() || `第${index + 1}列`
-    return { index: index + 1, label: text || `第${index + 1}列` }
+    const columnClass = Array.from(th.classList).find(className => /^el-table_\d+_column_\d+$/.test(className))
+    return { index: index + 1, label: text || `第${index + 1}列`, columnClass }
   })
 }
 
@@ -168,16 +169,26 @@ function applyVisibility(table, tableId, cells, visible) {
     return
   }
 
-  const selectors = hidden.flatMap(index => [
-    `.nexus-table-${tableId} .el-table__header-wrapper th:nth-child(${index})`,
-    `.nexus-table-${tableId} .el-table__body-wrapper td:nth-child(${index})`,
-    `.nexus-table-${tableId} .el-table__footer-wrapper td:nth-child(${index})`,
-    `.nexus-table-${tableId} colgroup col:nth-child(${index})`,
-    `.nexus-table-${tableId} .el-table__fixed th:nth-child(${index})`,
-    `.nexus-table-${tableId} .el-table__fixed td:nth-child(${index})`,
-    `.nexus-table-${tableId} .el-table__fixed-right th:nth-child(${index})`,
-    `.nexus-table-${tableId} .el-table__fixed-right td:nth-child(${index})`
-  ])
+  const hiddenCells = cells.filter(cell => hidden.includes(cell.index))
+  const selectors = hiddenCells.flatMap(cell => {
+    const indexSelectors = [
+      `.nexus-table-${tableId} .el-table__header-wrapper th:nth-child(${cell.index})`,
+      `.nexus-table-${tableId} .el-table__body-wrapper td:nth-child(${cell.index})`,
+      `.nexus-table-${tableId} .el-table__footer-wrapper td:nth-child(${cell.index})`,
+      `.nexus-table-${tableId} colgroup col:nth-child(${cell.index})`,
+      `.nexus-table-${tableId} .el-table__fixed th:nth-child(${cell.index})`,
+      `.nexus-table-${tableId} .el-table__fixed td:nth-child(${cell.index})`,
+      `.nexus-table-${tableId} .el-table__fixed-right th:nth-child(${cell.index})`,
+      `.nexus-table-${tableId} .el-table__fixed-right td:nth-child(${cell.index})`
+    ]
+    if (!cell.columnClass) return indexSelectors
+    const columnClass = escapeSelectorValue(cell.columnClass)
+    return [
+      `.nexus-table-${tableId} .${columnClass}`,
+      `.nexus-table-${tableId} col[name="${cell.columnClass}"]`,
+      ...indexSelectors
+    ]
+  })
   style.textContent = `${selectors.join(',')}{display:none!important;width:0!important;min-width:0!important;max-width:0!important;padding:0!important;border:0!important;}`
 
   table.__vueParentComponent?.proxy?.doLayout?.()
