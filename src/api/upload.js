@@ -21,12 +21,81 @@ function appendToken(url) {
   return url + sep + 'token=' + encodeURIComponent(token)
 }
 
+const dragFileByUrl = new Map()
+let imageDragBridgeReady = false
+
+function normalizeDragUrl(url) {
+  if (!url || url.startsWith('data:') || url.startsWith('blob:')) return url || ''
+  try {
+    const parsed = new URL(url, window.location?.href || undefined)
+    parsed.searchParams.delete('token')
+    return parsed.href
+  } catch (e) {
+    return url
+  }
+}
+
+function registerDragFileUrl(url, file) {
+  if (!url || !file?.id || !file.file_name) return
+  dragFileByUrl.set(url, file)
+  dragFileByUrl.set(normalizeDragUrl(url), file)
+  ensureImageDragBridge()
+}
+
+function findDragFileByUrl(url) {
+  if (!url) return null
+  return dragFileByUrl.get(url) || dragFileByUrl.get(normalizeDragUrl(url)) || null
+}
+
+function applyFileDragData(event, file) {
+  if (!file?.id || !file.file_name || !event?.dataTransfer) return
+
+  const token = getToken()
+  if (!token) return
+
+  const serverBase = getServerBase()
+  const downloadUrl = `${serverBase}/api/task/download/${file.id}?token=${encodeURIComponent(token)}`
+  event.dataTransfer.setData('DownloadURL', `application/octet-stream:${file.file_name}:${downloadUrl}`)
+  event.dataTransfer.effectAllowed = 'copy'
+}
+
+function getImageDragFile(target) {
+  if (!(target instanceof HTMLImageElement)) return null
+  return findDragFileByUrl(target.currentSrc || target.src)
+}
+
+function isPreviewImage(target) {
+  return target.closest?.('.el-image-viewer__wrapper, .inline-work-preview')
+}
+
+function ensureImageDragBridge() {
+  if (imageDragBridgeReady || typeof document === 'undefined') return
+  imageDragBridgeReady = true
+
+  document.addEventListener('mousedown', event => {
+    if (event.button !== 0) return
+    const file = getImageDragFile(event.target)
+    if (!file || !isPreviewImage(event.target)) return
+    event.target.draggable = true
+    event.target.style.cursor = 'grab'
+    event.stopImmediatePropagation()
+  }, true)
+
+  document.addEventListener('dragstart', event => {
+    const file = getImageDragFile(event.target)
+    if (!file) return
+    applyFileDragData(event, file)
+  }, true)
+}
+
 export function getFileUrl(fileOrPath) {
   if (!fileOrPath) return ''
 
   // File object with id → use preview API (files stored in Design_BOX dirs, not ./upload static)
   if (typeof fileOrPath === 'object' && fileOrPath.id) {
-    return getServerBase() + appendToken(`/api/task/preview/${fileOrPath.id}`)
+    const url = getServerBase() + appendToken(`/api/task/preview/${fileOrPath.id}`)
+    registerDragFileUrl(url, fileOrPath)
+    return url
   }
 
   const filePath = typeof fileOrPath === 'string' ? fileOrPath : (fileOrPath.fileUrl || fileOrPath.file_path || '')
@@ -56,10 +125,13 @@ export async function fetchImageDataUrl(file) {
     try {
       const token = getToken()
       if (!token) return getFileUrl(file)
-      return await window.electronAPI.previewImage({
+      const previewUrl = await window.electronAPI.previewImage({
         fileId, token,
         fileName: file.file_name || undefined
       })
+      registerDragFileUrl(previewUrl, file)
+      registerDragFileUrl(getFileUrl(file), file)
+      return previewUrl
     } catch (e) {
       console.warn('[API] IPC 预览失败，降级到 HTTP:', e.message)
       return getFileUrl(file)
@@ -95,15 +167,7 @@ export async function saveFileToDisk(file) {
 // ==================== 文件拖拽到桌面 ====================
 
 export function setupFileDrag(event, file) {
-  if (!file?.id || !file.file_name) return
-
-  const token = getToken()
-  if (!token) return
-
-  const serverBase = getServerBase()
-  const downloadUrl = `${serverBase}/api/task/download/${file.id}?token=${encodeURIComponent(token)}`
-  event.dataTransfer.setData('DownloadURL', `application/octet-stream:${file.file_name}:${downloadUrl}`)
-  event.dataTransfer.effectAllowed = 'copy'
+  applyFileDragData(event, file)
 }
 
 export async function preloadFilesForDrag(files) {
