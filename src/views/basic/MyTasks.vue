@@ -131,6 +131,9 @@
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
           </template>
         </el-table-column>
+        <el-table-column prop="create_time" label="发布时间" width="170" sortable="custom" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="240" fixed="right" align="center">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
@@ -356,7 +359,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document, Search } from '@element-plus/icons-vue'
 import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, transferTaskApi, undoSubmitApi, getBasicDesignerListApi, getPublisherListApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
@@ -416,6 +419,11 @@ const displayList = computed(() => {
   if (sortKey.value === 'task_no' && sortOrder.value) {
     arr.sort((a, b) => {
       const cmp = String(a.task_no || '').localeCompare(String(b.task_no || ''), undefined, { numeric: true })
+      return sortOrder.value === 'ascending' ? cmp : -cmp
+    })
+  } else if (sortKey.value === 'create_time' && sortOrder.value) {
+    arr.sort((a, b) => {
+      const cmp = new Date(a.create_time || 0) - new Date(b.create_time || 0)
       return sortOrder.value === 'ascending' ? cmp : -cmp
     })
   }

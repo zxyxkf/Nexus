@@ -58,6 +58,9 @@
         </el-table-column>
         <el-table-column prop="publisher_name" :label="publisherLabel" />
         <el-table-column prop="designer_name" :label="designerLabel" />
+        <el-table-column prop="create_time" label="发布时间" width="170" sortable show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="120">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
@@ -85,7 +88,7 @@
       <div v-if="detailVisible" class="inline-detail-overlay">
         <div class="inline-detail-header">
           <div class="detail-header-left">
-            <span class="detail-number">#{{ currentTask.task_no }}</span>
+            <span class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
             <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
             <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
           </div>
@@ -203,8 +206,8 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Delete, Document } from '@element-plus/icons-vue'
-import { getAllTasksApi, getTaskDetailApi, getTaskPublisherListApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, deleteTaskApi, batchDeleteApi, batchDownloadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
+import { getAllTasksApi, getTaskDetailApi, getTaskPublisherListApi, getTaskDesignerListApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, deleteTaskApi, batchDeleteApi, batchDownloadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
@@ -229,7 +232,6 @@ const currentTask = ref(null)
 
 const taskGroup = computed(() => route.meta.taskGroup || 'design')
 const pageTitle = computed(() => `${route.meta.title || '全量任务'}管理`)
-const designerRole = computed(() => taskGroup.value === 'cs' ? 'basic_designer' : taskGroup.value === 'operator' ? 'operator_assistant' : 'designer')
 const publisherLabel = computed(() => '发布人')
 const designerLabel = computed(() => taskGroup.value === 'cs' ? '基础美工' : taskGroup.value === 'operator' ? '运营助理' : '美工')
 
@@ -339,23 +341,23 @@ watch(() => route.query.openTask, (newTaskId) => {
 })
 
 async function loadUsers() {
-  try {
-    const publisherRes = await getTaskPublisherListApi({ taskGroup: taskGroup.value })
-    if (publisherRes.code === 0) {
-      publisherList.value = publisherRes.data || []
-    }
+  const [publisherResult, designerResult] = await Promise.allSettled([
+    getTaskPublisherListApi({ taskGroup: taskGroup.value }),
+    getTaskDesignerListApi({ taskGroup: taskGroup.value })
+  ])
 
-    const designerApi = designerRole.value === 'basic_designer'
-      ? getBasicDesignerListApi
-      : designerRole.value === 'operator_assistant'
-        ? getOperatorAssistantListApi
-        : getDesignerListApi
-    const designerRes = await designerApi()
-    if (designerRes.code === 0) {
-      designerList.value = designerRes.data || []
-    }
-  } catch (e) {
-    console.error('[AllTasks] 加载用户列表失败:', e)
+  if (publisherResult.status === 'fulfilled' && publisherResult.value.code === 0) {
+    publisherList.value = publisherResult.value.data || []
+  } else {
+    publisherList.value = []
+    console.error('[AllTasks] 加载发布人列表失败:', publisherResult.reason || publisherResult.value)
+  }
+
+  if (designerResult.status === 'fulfilled' && designerResult.value.code === 0) {
+    designerList.value = designerResult.value.data || []
+  } else {
+    designerList.value = []
+    console.error('[AllTasks] 加载接单人列表失败:', designerResult.reason || designerResult.value)
   }
 }
 

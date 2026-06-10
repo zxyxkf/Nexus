@@ -93,6 +93,9 @@
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
           </template>
         </el-table-column>
+        <el-table-column prop="create_time" label="发布时间" width="170" sortable show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="260" fixed="right" align="center">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>

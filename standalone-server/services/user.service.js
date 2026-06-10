@@ -82,6 +82,7 @@ function canViewAllTaskGroup(user, taskGroup) {
   const permission = permissionMap[taskGroup];
   return !!permission && (
     user?.role === 'admin' ||
+    user?.role === 'sub_admin' ||
     (user?.permissions || []).includes(permission)
   );
 }
@@ -91,7 +92,45 @@ async function getTaskPublisherList(taskGroup, user) {
   if (!canViewAllTaskGroup(user, group)) {
     throw new AppError(403, '无权查看该分区发布人');
   }
-  return userDao.getTaskPublishersByGroup(group);
+  const defaultRole = group === 'cs' ? 'cs_agent' : 'operator';
+  const [defaultPublishers, taskPublishers] = await Promise.all([
+    userDao.getPublishersByRole(defaultRole),
+    userDao.getTaskPublishersByGroup(group)
+  ]);
+  const merged = new Map();
+  for (const item of [...defaultPublishers, ...taskPublishers]) {
+    if (!item?.id) continue;
+    merged.set(Number(item.id), {
+      id: item.id,
+      username: item.username || '',
+      real_name: item.real_name || item.name || item.username || '未知发布人',
+      role: item.role || ''
+    });
+  }
+  return [...merged.values()].sort((a, b) => String(a.real_name || '').localeCompare(String(b.real_name || ''), 'zh-Hans-CN'));
+}
+
+async function getTaskDesignerList(taskGroup, user) {
+  const group = taskGroup || 'design';
+  if (!canViewAllTaskGroup(user, group)) {
+    throw new AppError(403, '无权查看该分区接单人');
+  }
+  const defaultRole = group === 'cs' ? 'basic_designer' : group === 'operator' ? 'operator_assistant' : 'designer';
+  const [defaultDesigners, taskDesigners] = await Promise.all([
+    userDao.getUsersByRole(defaultRole),
+    userDao.getTaskDesignersByGroup(group)
+  ]);
+  const merged = new Map();
+  for (const item of [...defaultDesigners, ...taskDesigners]) {
+    if (!item?.id) continue;
+    merged.set(Number(item.id), {
+      id: item.id,
+      username: item.username || '',
+      real_name: item.real_name || item.name || item.username || '未知接单人',
+      role: item.role || ''
+    });
+  }
+  return [...merged.values()].sort((a, b) => String(a.real_name || '').localeCompare(String(b.real_name || ''), 'zh-Hans-CN'));
 }
 
 // ==================== 创建 ====================
@@ -170,6 +209,7 @@ module.exports = {
   getOperatorAssistantList,
   getPublisherList,
   getTaskPublisherList,
+  getTaskDesignerList,
   createUser,
   updateUser,
   resetPassword,

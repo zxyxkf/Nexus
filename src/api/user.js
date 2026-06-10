@@ -11,6 +11,7 @@ export const getBasicDesignerListApi = () => request.get('/api/user/basic-design
 export const getOperatorAssistantListApi = () => request.get('/api/user/operator-assistants')
 export const getPublisherListApi = () => request.get('/api/user/publishers')
 export const getTaskPublisherListApi = (params) => request.get('/api/user/task-publishers', { params })
+export const getTaskDesignerListApi = (params) => request.get('/api/user/task-designers', { params })
 export const getPermissionCatalogApi = () => request.get('/api/user/permissions/catalog')
 export const getUserPermissionsApi = (userId) => request.get(`/api/user/permissions/${userId}`)
 export const saveUserPermissionsApi = (data) => request.post('/api/user/permissions/save', data)

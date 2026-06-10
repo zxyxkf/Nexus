@@ -87,6 +87,9 @@
           <template #default="{ row }">{{ row.deadline || '-' }}</template>
         </el-table-column>
         <el-table-column prop="publisher_name" label="发布人" width="105" />
+        <el-table-column prop="create_time" label="发布时间" width="170" sortable show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="130" fixed="right" align="center">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
@@ -112,7 +115,8 @@
         <div v-if="detailVisible" class="inline-detail-overlay">
           <div class="inline-detail-header">
             <div class="detail-header-left">
-              <span class="detail-number">#{{ currentTask.task_no }}</span>
+              <span v-if="isBasicDesigner" class="detail-number">#{{ currentTask.task_no }}</span>
+              <span v-else class="detail-project-title" :title="currentTask.title || currentTask.score_item_name || '-'">{{ currentTask.title || currentTask.score_item_name || '-' }}</span>
               <span style="font-size:14px;font-weight:600;">{{ currentTask.publisher_name }}</span>
               <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
             </div>
@@ -235,7 +239,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document } from '@element-plus/icons-vue'
 import { getTaskHallApi, acceptTaskApi, getTaskDetailApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
-import { formatFileSize, formatTaskHeaderTime } from '@/utils/format'
+import { formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'

@@ -141,6 +141,9 @@
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
           </template>
         </el-table-column>
+        <el-table-column prop="create_time" label="发布时间" width="170" align="center" sortable show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="220" align="center" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
@@ -168,7 +171,7 @@
         <div v-if="detailVisible" class="inline-detail-overlay">
           <div class="inline-detail-header">
             <div class="detail-header-left">
-              <span class="detail-number">#{{ currentTask.task_no }}</span>
+              <span class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
               <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
               <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
             </div>
@@ -326,7 +329,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document, Plus } from '@element-plus/icons-vue'
 import { getMyPublishedApi, getTaskDetailApi, urgeTaskApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag, getOperatorAssistantListApi, getScoreItemsApi, getPublisherListApi } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'

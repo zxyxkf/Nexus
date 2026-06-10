@@ -1006,6 +1006,7 @@ html.dark .inline-detail-overlay {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .inline-detail-header .detail-number {
@@ -1013,6 +1014,17 @@ html.dark .inline-detail-overlay {
   font-weight: 800;
   color: var(--dd-text-muted);
   font-family: var(--dd-font-mono);
+}
+
+.inline-detail-header .detail-project-title {
+  min-width: 0;
+  max-width: min(520px, 46vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e63946;
+  font-size: 18px;
+  font-weight: 800;
 }
 
 .inline-detail-header .detail-header-time {
@@ -1144,6 +1156,7 @@ html.dark .inline-detail-overlay {
   display: flex;
   align-items: center;
   gap: 12px;
+  min-width: 0;
 }
 
 .inline-detail-header .detail-number {
@@ -1151,6 +1164,17 @@ html.dark .inline-detail-overlay {
   font-weight: 800;
   color: var(--dd-text-muted);
   font-family: var(--dd-font-mono);
+}
+
+.inline-detail-header .detail-project-title {
+  min-width: 0;
+  max-width: min(520px, 46vw);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #e63946;
+  font-size: 18px;
+  font-weight: 800;
 }
 
 .inline-detail-header .detail-header-time {

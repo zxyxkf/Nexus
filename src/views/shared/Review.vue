@@ -93,6 +93,9 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column prop="create_time" label="发布时间" width="170" sortable="custom" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="180" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">查看作品</el-button>
@@ -127,7 +130,8 @@
       <div v-if="detailVisible" class="inline-detail-overlay">
         <div class="inline-detail-header">
           <div class="detail-header-left">
-            <span class="detail-number">#{{ currentTask.task_no }}</span>
+            <span v-if="isCsAgent" class="detail-number">#{{ currentTask.task_no }}</span>
+            <span v-else class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
             <span style="font-size:14px;font-weight:600;">{{ currentTask.designer_name }}</span>
             <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
           </div>
@@ -265,7 +269,7 @@ import { Close, PictureFilled, Document } from '@element-plus/icons-vue'
 import { getMyPublishedApi, getTaskDetailApi, reviewTaskApi, batchReviewApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
-import { formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
+import { formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 
 const route = useRoute()
@@ -284,6 +288,11 @@ const displayList = computed(() => {
   if (sortKey.value === 'task_no' && sortOrder.value) {
     arr.sort((a, b) => {
       const cmp = String(a.task_no || '').localeCompare(String(b.task_no || ''), undefined, { numeric: true })
+      return sortOrder.value === 'ascending' ? cmp : -cmp
+    })
+  } else if (sortKey.value === 'create_time' && sortOrder.value) {
+    arr.sort((a, b) => {
+      const cmp = new Date(a.create_time || 0) - new Date(b.create_time || 0)
       return sortOrder.value === 'ascending' ? cmp : -cmp
     })
   } else {

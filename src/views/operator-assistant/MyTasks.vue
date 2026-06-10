@@ -124,7 +124,9 @@
             <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="创建时间" width="160" prop="create_time" align="center" sortable />
+        <el-table-column label="发布时间" width="170" prop="create_time" align="center" sortable show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="200" align="center" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
@@ -168,7 +170,7 @@
         <div v-if="detailVisible" class="inline-detail-overlay">
           <div class="inline-detail-header">
             <div class="detail-header-left">
-              <span class="detail-number">#{{ currentTask.task_no }}</span>
+              <span class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
               <span style="font-size:14px;font-weight:600;">{{ currentTask.publisher_name }}</span>
               <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
             </div>
@@ -315,7 +317,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Plus, Document } from '@element-plus/icons-vue'
 import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, undoSubmitApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag, getPublisherListApi } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'

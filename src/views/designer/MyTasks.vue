@@ -134,6 +134,9 @@
         <el-table-column label="上传路径" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">{{ row.work_path || '-' }}</template>
         </el-table-column>
+        <el-table-column prop="create_time" label="发布时间" width="170" sortable show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
+        </el-table-column>
         <el-table-column label="操作" width="180" fixed="right" align="center">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
@@ -177,7 +180,7 @@
         <div v-if="detailVisible" class="inline-detail-overlay">
           <div class="inline-detail-header">
             <div class="detail-header-left">
-              <span class="detail-number">#{{ currentTask.task_no }}</span>
+              <span class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
               <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
               <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
             </div>
@@ -315,7 +318,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document, Search } from '@element-plus/icons-vue'
 import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, undoSubmitApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag, getPublisherListApi, getScoreItemsApi } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'

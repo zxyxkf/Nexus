@@ -126,6 +126,9 @@
         <el-table-column label="驳回原因" min-width="140" show-overflow-tooltip>
           <template #default="{ row }">{{ row.score_review_reason || '-' }}</template>
         </el-table-column>
+        <el-table-column prop="create_time" label="发布时间" width="170" sortable="custom" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
+        </el-table-column>
         <el-table-column prop="score_review_time" label="分数审核时间" width="170" sortable="custom" show-overflow-tooltip>
           <template #default="{ row }">{{ formatScoreReviewTime(row) }}</template>
         </el-table-column>
@@ -260,7 +263,7 @@ import { Close, Document } from '@element-plus/icons-vue'
 import { getScoreReviewRecordsApi } from '@/api/score'
 import { getTaskDetailApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { getBasicDesignerListApi, getPublisherListApi } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreReviewTime, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreReviewTime, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import Pagination from '@/components/Pagination.vue'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import { useFileHelpers } from '@/composables/useFileHelpers'

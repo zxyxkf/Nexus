@@ -133,7 +133,7 @@ async function deleteUserById(id) {
 async function getUsersByRole(role) {
   const pool = getPool();
   const [rows] = await pool.execute(
-    `SELECT u.id, u.username, u.real_name,
+    `SELECT u.id, u.username, u.real_name, u.role,
       IFNULL(
         (SELECT JSON_ARRAYAGG(
            JSON_OBJECT('id', t.id, 'title', t.title, 'task_no', t.task_no, 'status', t.status)
@@ -150,10 +150,21 @@ async function getUsersByRole(role) {
   return rows;
 }
 
+function taskGroupWhere(alias, taskGroup) {
+  const params = [];
+  if (!taskGroup) return { sql: '1=1', params };
+  if (taskGroup === 'design') {
+    params.push(taskGroup);
+    return { sql: `(${alias}.task_group = ? OR ${alias}.task_group IS NULL OR ${alias}.task_group = '')`, params };
+  }
+  params.push(taskGroup);
+  return { sql: `${alias}.task_group = ?`, params };
+}
+
 async function getPublishersByRole(role) {
   const pool = getPool();
   const [rows] = await pool.execute(
-    `SELECT id, username, real_name FROM sys_user WHERE role = ? AND status = 1 ORDER BY real_name ASC`,
+    `SELECT id, username, real_name, role FROM sys_user WHERE role = ? AND status = 1 ORDER BY real_name ASC`,
     [role]
   );
   return rows;
@@ -163,7 +174,7 @@ async function getPublishersByRoleAndStore(role, store) {
   const pool = getPool();
   if (store) {
     const [rows] = await pool.execute(
-      `SELECT id, username, real_name FROM sys_user WHERE role = ? AND status = 1 AND store = ? ORDER BY real_name ASC`,
+      `SELECT id, username, real_name, role FROM sys_user WHERE role = ? AND status = 1 AND store = ? ORDER BY real_name ASC`,
       [role, store]
     );
     return rows;
@@ -173,17 +184,7 @@ async function getPublishersByRoleAndStore(role, store) {
 
 async function getTaskPublishersByGroup(taskGroup) {
   const pool = getPool();
-  const params = [];
-  let groupWhere = '1=1';
-  if (taskGroup) {
-    if (taskGroup === 'design') {
-      groupWhere = `(t.task_group = ? OR t.task_group IS NULL OR t.task_group = '')`;
-      params.push(taskGroup);
-    } else {
-      groupWhere = 't.task_group = ?';
-      params.push(taskGroup);
-    }
-  }
+  const groupWhere = taskGroupWhere('t', taskGroup);
 
   const [rows] = await pool.execute(
     `SELECT DISTINCT
@@ -193,9 +194,28 @@ async function getTaskPublishersByGroup(taskGroup) {
         COALESCE(u.role, '') AS role
      FROM task_info t
      LEFT JOIN sys_user u ON t.publisher_id = u.id
-     WHERE t.publisher_id IS NOT NULL AND ${groupWhere}
+     WHERE t.publisher_id IS NOT NULL AND ${groupWhere.sql}
      ORDER BY real_name ASC`,
-    params
+    groupWhere.params
+  );
+  return rows;
+}
+
+async function getTaskDesignersByGroup(taskGroup) {
+  const pool = getPool();
+  const groupWhere = taskGroupWhere('t', taskGroup);
+
+  const [rows] = await pool.execute(
+    `SELECT DISTINCT
+        t.designer_id AS id,
+        COALESCE(u.username, '') AS username,
+        COALESCE(u.real_name, t.designer_name, u.username, '未知接单人') AS real_name,
+        COALESCE(u.role, '') AS role
+     FROM task_info t
+     LEFT JOIN sys_user u ON t.designer_id = u.id
+     WHERE t.designer_id IS NOT NULL AND ${groupWhere.sql}
+     ORDER BY real_name ASC`,
+    groupWhere.params
   );
   return rows;
 }
@@ -217,4 +237,5 @@ module.exports = {
   getPublishersByRole,
   getPublishersByRoleAndStore,
   getTaskPublishersByGroup,
+  getTaskDesignersByGroup,
 };
