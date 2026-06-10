@@ -392,6 +392,9 @@ function resetFilter() {
 }
 
 function clearQueryFilters() {
+  if (route.query.from === 'dashboard') {
+    filter.keyword = ''
+  }
   filter.status = ''
   filter.publisherId = ''
   filter.designerId = ''
@@ -413,7 +416,7 @@ function applyQueryFilters() {
 }
 
 watch(
-  () => [route.query.startDate, route.query.endDate, route.query.dateStart, route.query.dateEnd, route.query.status, route.query.publisherId, route.query.designerId, route.query.dateField],
+  () => [route.query.startDate, route.query.endDate, route.query.dateStart, route.query.dateEnd, route.query.status, route.query.publisherId, route.query.designerId, route.query.dateField, route.query.from],
   () => {
     applyQueryFilters()
     page.value = 1

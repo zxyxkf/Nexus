@@ -662,6 +662,7 @@ function openDailyTasks(group, day, row, status = 'finished') {
       endDate: date,
       status,
       dateField,
+      from: 'dashboard',
       ...Object.fromEntries(Object.entries(extraQuery).filter(([, value]) => value !== undefined && value !== null && value !== ''))
     }
   })
