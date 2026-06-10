@@ -389,7 +389,7 @@ function getInlineQuantityValue(row) {
   if (Object.prototype.hasOwnProperty.call(inlineQuantityValues.value, row.id)) {
     return inlineQuantityValues.value[row.id]
   }
-  return row.actual_quantity || null
+  return row.actual_quantity || row.quantity || 1
 }
 
 function setInlineQuantityValue(row, value) {
@@ -557,8 +557,8 @@ async function viewDetail(row) {
 function openUploadDialog(row) {
   uploadingTaskId.value = row.id
   uploadTaskQuantity.value = row.quantity || 1
-  uploadQuantity.value = null
-  uploadAllChecked.value = false
+  uploadQuantity.value = row.quantity || 1
+  uploadAllChecked.value = true
   uploadFiles.value = []
   rawUploadFiles.value = []
   uploadVisible.value = true
