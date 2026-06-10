@@ -2,6 +2,7 @@ import { getUser } from '@/utils/auth'
 
 const ENHANCED_ATTR = 'data-nexus-column-settings'
 const STYLE_ID_PREFIX = 'nexus-table-columns-style-'
+const WIDTH_STYLE_ID_PREFIX = 'nexus-table-widths-style-'
 let tableSeq = 0
 let observer = null
 let scheduled = false
@@ -54,6 +55,99 @@ function loadVisible(key, cells) {
 
 function saveVisible(key, visible) {
   localStorage.setItem(key, JSON.stringify(visible))
+}
+
+function makeWidthStorageKey(storageKey) {
+  return `${storageKey}_widths`
+}
+
+function loadColumnWidths(key, cells) {
+  try {
+    const parsed = JSON.parse(localStorage.getItem(key) || 'null')
+    if (!parsed || typeof parsed !== 'object') return {}
+    const valid = new Set(cells.map(cell => String(cell.index)))
+    return Object.fromEntries(
+      Object.entries(parsed)
+        .map(([index, width]) => [String(index), Math.round(Number(width))])
+        .filter(([index, width]) => valid.has(index) && Number.isFinite(width) && width >= 40 && width <= 1600)
+    )
+  } catch {
+    return {}
+  }
+}
+
+function saveColumnWidths(key, widths) {
+  localStorage.setItem(key, JSON.stringify(widths))
+}
+
+function readColumnWidths(table, cells) {
+  const rows = table.querySelectorAll('.el-table__header-wrapper thead tr')
+  const row = rows[rows.length - 1]
+  if (!row) return {}
+  const headers = Array.from(row.querySelectorAll('th'))
+  return Object.fromEntries(
+    cells
+      .map(cell => [String(cell.index), Math.round(headers[cell.index - 1]?.getBoundingClientRect().width || 0)])
+      .filter(([, width]) => Number.isFinite(width) && width >= 40 && width <= 1600)
+  )
+}
+
+function syncTableColumnState(table, cells, widths) {
+  const columns = table.__vueParentComponent?.proxy?.store?.states?.columns?.value
+  if (!Array.isArray(columns)) return false
+  let changed = false
+  cells.forEach(cell => {
+    const width = widths[String(cell.index)]
+    const column = columns[cell.index - 1]
+    if (!column || !Number.isFinite(width) || width < 40 || width > 1600) return
+    column.width = width
+    column.realWidth = width
+    changed = true
+  })
+  if (changed) table.__vueParentComponent?.proxy?.doLayout?.()
+  return changed
+}
+
+function applyColumnWidths(table, tableId, cells, widths) {
+  const synced = syncTableColumnState(table, cells, widths)
+  let style = document.getElementById(`${WIDTH_STYLE_ID_PREFIX}${tableId}`)
+  if (!style) {
+    style = document.createElement('style')
+    style.id = `${WIDTH_STYLE_ID_PREFIX}${tableId}`
+    document.head.appendChild(style)
+  }
+
+  if (synced) {
+    style.textContent = ''
+    return
+  }
+
+  const rules = cells
+    .map(cell => [cell.index, widths[String(cell.index)]])
+    .filter(([, width]) => Number.isFinite(width) && width >= 40 && width <= 1600)
+    .flatMap(([index, width]) => {
+      const px = `${Math.round(width)}px`
+      return [
+        `.nexus-table-${tableId} .el-table__header-wrapper th:nth-child(${index}){width:${px}!important;min-width:${px}!important;max-width:${px}!important;}`,
+        `.nexus-table-${tableId} .el-table__body-wrapper td:nth-child(${index}){width:${px}!important;min-width:${px}!important;max-width:${px}!important;}`,
+        `.nexus-table-${tableId} .el-table__footer-wrapper td:nth-child(${index}){width:${px}!important;min-width:${px}!important;max-width:${px}!important;}`,
+        `.nexus-table-${tableId} colgroup col:nth-child(${index}){width:${px}!important;min-width:${px}!important;max-width:${px}!important;}`
+      ]
+    })
+
+  style.textContent = rules.join('')
+}
+
+function persistColumnWidths(table) {
+  const tableId = table?.dataset?.nexusTableId
+  const widthKey = table?.dataset?.nexusColumnWidthKey
+  if (!tableId || !widthKey) return
+  const cells = getHeaderCells(table)
+  if (!cells.length) return
+  const widths = readColumnWidths(table, cells)
+  if (!Object.keys(widths).length) return
+  saveColumnWidths(widthKey, widths)
+  applyColumnWidths(table, tableId, cells, widths)
 }
 
 function applyVisibility(table, tableId, cells, visible) {
@@ -177,6 +271,7 @@ function startResizeFeedback(event) {
     th.classList.remove('nexus-resize-active')
     clearResizeHover()
     guide.classList.remove('is-active')
+    requestAnimationFrame(() => persistColumnWidths(table))
   }
 
   document.addEventListener('mousemove', onMove, true)
@@ -208,6 +303,7 @@ function removeControl(tableId, table) {
 function removeEnhancement(table) {
   if (table.dataset.nexusTableId) {
     document.getElementById(`${STYLE_ID_PREFIX}${table.dataset.nexusTableId}`)?.remove()
+    document.getElementById(`${WIDTH_STYLE_ID_PREFIX}${table.dataset.nexusTableId}`)?.remove()
     removeControl(table.dataset.nexusTableId, table)
   }
   table.querySelector(':scope > .nexus-column-control')?.remove()
@@ -218,9 +314,10 @@ function removeEnhancement(table) {
   delete table.dataset.nexusTableId
   delete table.dataset.nexusTableIndex
   delete table.dataset.nexusColumnSignature
+  delete table.dataset.nexusColumnWidthKey
 }
 
-function createControl(table, tableId, cells, storageKey, visible, placement) {
+function createControl(table, tableId, cells, storageKey, visible, placement, widthKey) {
   const control = document.createElement('div')
   control.className = `nexus-column-control nexus-column-control--${placement}`
   control.dataset.tableId = tableId
@@ -296,8 +393,11 @@ function createControl(table, tableId, cells, storageKey, visible, placement) {
   resetButton.addEventListener('click', () => {
     const all = cells.map(cell => cell.index)
     localStorage.removeItem(storageKey)
+    localStorage.removeItem(widthKey)
     panel.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = true })
+    document.getElementById(`${WIDTH_STYLE_ID_PREFIX}${tableId}`)?.remove()
     applyVisibility(table, tableId, cells, all)
+    table.__vueParentComponent?.proxy?.doLayout?.()
   })
 
   button.addEventListener('click', event => {
@@ -332,7 +432,11 @@ function enhanceTable(table, index) {
   const cells = getHeaderCells(table)
   if (!cells.length) return
   const signature = cells.map(cell => cell.label).join('|')
-  if (table.getAttribute(ENHANCED_ATTR) === '1' && table.dataset.nexusColumnSignature === signature) return
+  if (table.getAttribute(ENHANCED_ATTR) === '1' && table.dataset.nexusColumnSignature === signature) {
+    const widthKey = table.dataset.nexusColumnWidthKey
+    if (widthKey) applyColumnWidths(table, table.dataset.nexusTableId, cells, loadColumnWidths(widthKey, cells))
+    return
+  }
 
   removeEnhancement(table)
 
@@ -344,11 +448,19 @@ function enhanceTable(table, index) {
   table.setAttribute(ENHANCED_ATTR, '1')
 
   const storageKey = makeStorageKey(table, cells)
+  const widthKey = makeWidthStorageKey(storageKey)
   const visible = loadVisible(storageKey, cells)
+  const widths = loadColumnWidths(widthKey, cells)
+  table.dataset.nexusColumnWidthKey = widthKey
+  applyColumnWidths(table, tableId, cells, widths)
   applyVisibility(table, tableId, cells, visible)
   const placementHost = getControlHost(table)
-  const control = createControl(table, tableId, cells, storageKey, visible, placementHost.placement)
+  const control = createControl(table, tableId, cells, storageKey, visible, placementHost.placement, widthKey)
   mountControl(table, control, placementHost)
+  requestAnimationFrame(() => {
+    applyColumnWidths(table, tableId, cells, widths)
+    table.__vueParentComponent?.proxy?.doLayout?.()
+  })
 }
 
 function enhanceTables() {
