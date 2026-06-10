@@ -407,15 +407,31 @@ function queryValue(key) {
   return Array.isArray(value) ? value[0] : value
 }
 
+function readDrilldownFallback() {
+  try {
+    const raw = sessionStorage.getItem('nexus_dashboard_drilldown')
+    if (!raw) return {}
+    const saved = JSON.parse(raw)
+    if (saved.path !== route.path) return {}
+    if (Date.now() - Number(saved.time || 0) > 60_000) return {}
+    sessionStorage.removeItem('nexus_dashboard_drilldown')
+    return saved.query || {}
+  } catch {
+    return {}
+  }
+}
+
 function applyQueryFilters() {
   clearQueryFilters()
-  const status = queryValue('status')
-  const publisherId = queryValue('publisherId')
-  const designerId = queryValue('designerId')
-  const dateField = queryValue('dateField')
-  const drilldownDate = queryValue('drilldownDate')
-  const startDate = queryValue('startDate') || queryValue('dateStart')
-  const endDate = queryValue('endDate') || queryValue('dateEnd')
+  const fallback = readDrilldownFallback()
+  const getParam = key => queryValue(key) || fallback[key]
+  const status = getParam('status')
+  const publisherId = getParam('publisherId')
+  const designerId = getParam('designerId')
+  const dateField = getParam('dateField')
+  const drilldownDate = getParam('drilldownDate')
+  const startDate = getParam('startDate') || getParam('dateStart')
+  const endDate = getParam('endDate') || getParam('dateEnd')
 
   if (status) filter.status = status
   if (publisherId) filter.publisherId = String(publisherId)
@@ -426,6 +442,15 @@ function applyQueryFilters() {
     filter.dateRange = [String(drilldownDate), String(drilldownDate)]
   } else if (startDate || endDate) {
     filter.dateRange = [String(startDate || endDate), String(endDate || startDate)]
+  }
+
+  if (import.meta.env.DEV && (route.query.from === 'dashboard' || fallback.from === 'dashboard')) {
+    console.log('[AllTasks] dashboard drilldown filters', {
+      path: route.path,
+      query: { ...route.query },
+      fallback,
+      filter: { ...filter }
+    })
   }
 }
 
@@ -502,7 +527,11 @@ watch(() => route.meta.taskGroup, () => {
   loadData()
 })
 
-onMounted(() => { loadData(); loadUsers() })
+onMounted(() => {
+  applyQueryFilters()
+  loadUsers()
+  loadData()
+})
 </script>
 
 <style scoped>

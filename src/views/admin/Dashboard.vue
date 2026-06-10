@@ -641,8 +641,10 @@ const dailyTaskTargets = {
 
 function pickDailyTaskTarget(group) {
   const user = getUser()
-  if (user?.role === 'admin') return dailyTaskTargets[group]?.[0]
-  return dailyTaskTargets[group]?.find(target => hasPermission(target.permission, user))
+  const targets = dailyTaskTargets[group] || []
+  const adminTarget = targets[0]
+  if (adminTarget && hasPermission(adminTarget.permission, user)) return adminTarget
+  return targets.find(target => hasPermission(target.permission, user))
 }
 
 function openDailyTasks(group, day, row, status = 'finished') {
@@ -654,20 +656,27 @@ function openDailyTasks(group, day, row, status = 'finished') {
   const date = `${nowForView.getFullYear()}-${String(nowForView.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
   const extraQuery = target.query?.(row) || {}
   const dateField = status === 'doing' ? 'submit' : 'finish'
+  const drilldownKey = `${group}-${status}-${row?.userId || 'all'}-${date}-${Date.now()}`
+  const query = {
+    dateStart: date,
+    dateEnd: date,
+    startDate: date,
+    endDate: date,
+    drilldownDate: date,
+    drilldownKey,
+    status,
+    dateField,
+    from: 'dashboard',
+    ...Object.fromEntries(Object.entries(extraQuery).filter(([, value]) => value !== undefined && value !== null && value !== ''))
+  }
+  sessionStorage.setItem('nexus_dashboard_drilldown', JSON.stringify({
+    path: target.path,
+    query,
+    time: Date.now()
+  }))
   router.push({
     path: target.path,
-    query: {
-      dateStart: date,
-      dateEnd: date,
-      startDate: date,
-      endDate: date,
-      drilldownDate: date,
-      drilldownKey: `${group}-${status}-${row?.userId || 'all'}-${date}-${Date.now()}`,
-      status,
-      dateField,
-      from: 'dashboard',
-      ...Object.fromEntries(Object.entries(extraQuery).filter(([, value]) => value !== undefined && value !== null && value !== ''))
-    }
+    query
   })
 }
 
