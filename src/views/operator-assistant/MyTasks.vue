@@ -26,7 +26,7 @@
             />
             <el-select v-model="publisherFilter" placeholder="发布人筛选" clearable style="width:150px;" @change="loadData">
               <el-option label="全部" value="" />
-              <el-option v-for="p in publisherList" :key="p.id" :label="p.real_name || p.username" :value="p.id" />
+              <el-option v-for="p in publisherList" :key="p.id" :label="p.real_name || p.username" :value="String(p.id)" />
             </el-select>
             <el-select v-model="shopFilter" placeholder="店铺筛选" clearable style="width:130px;" @change="loadData">
               <el-option label="全部" value="" />
@@ -411,7 +411,7 @@ async function loadData(options = {}) {
     })
     if (res.code === 0) {
       list.value = res.data.list || []
-      total.value = res.data.total || 0
+      total.value = Number(res.data.total) || 0
       const openTaskId = route.query.openTask
       if (openTaskId) {
         const task = list.value.find(t => t.id == openTaskId)
@@ -432,13 +432,20 @@ watch(() => route.query.openTask, (newTaskId) => {
   }
 })
 
+function queryValue(key) {
+  const value = route.query[key]
+  return Array.isArray(value) ? value[0] : value
+}
+
 function applyDashboardQueryFilters() {
-  if (route.query.status && !fixedStatus.value) statusFilter.value = route.query.status
-  dateField.value = ['finish', 'submit'].includes(route.query.dateField) ? route.query.dateField : ''
+  const status = queryValue('status')
+  const dateFieldQuery = queryValue('dateField')
+  if (status && !fixedStatus.value) statusFilter.value = String(status)
+  dateField.value = ['finish', 'submit'].includes(dateFieldQuery) ? dateFieldQuery : ''
   if (route.query.dateStart || route.query.dateEnd || route.query.startDate || route.query.endDate) {
-    const start = route.query.dateStart || route.query.startDate || route.query.dateEnd || route.query.endDate
-    const end = route.query.dateEnd || route.query.endDate || route.query.dateStart || route.query.startDate
-    dateRange.value = [start, end]
+    const start = queryValue('dateStart') || queryValue('startDate') || queryValue('dateEnd') || queryValue('endDate')
+    const end = queryValue('dateEnd') || queryValue('endDate') || queryValue('dateStart') || queryValue('startDate')
+    dateRange.value = [String(start), String(end)]
   }
 }
 

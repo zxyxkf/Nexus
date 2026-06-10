@@ -29,7 +29,7 @@
                 v-for="p in publisherList"
                 :key="p.id"
                 :label="p.real_name || p.username"
-                :value="p.id"
+                :value="String(p.id)"
               />
             </el-select>
             <el-date-picker
@@ -451,7 +451,7 @@ async function loadData(options = {}) {
     })
     if (res.code === 0) {
       list.value = res.data.list
-      total.value = res.data.total
+      total.value = Number(res.data.total) || 0
       const openTaskId = route.query.openTask
       if (openTaskId) {
         const task = list.value.find(t => t.id == openTaskId)
@@ -472,11 +472,18 @@ watch(() => route.query.openTask, (newTaskId) => {
   }
 })
 
+function queryValue(key) {
+  const value = route.query[key]
+  return Array.isArray(value) ? value[0] : value
+}
+
 function applyDashboardQueryFilters() {
-  if (route.query.status && !fixedStatus.value) statusFilter.value = route.query.status
-  dateField.value = ['finish', 'submit'].includes(route.query.dateField) ? route.query.dateField : ''
-  const date = route.query.dateStart || route.query.startDate || route.query.dateEnd || route.query.endDate
-  if (date) dateFilter.value = date
+  const status = queryValue('status')
+  const dateFieldQuery = queryValue('dateField')
+  if (status && !fixedStatus.value) statusFilter.value = String(status)
+  dateField.value = ['finish', 'submit'].includes(dateFieldQuery) ? dateFieldQuery : ''
+  const date = queryValue('dateStart') || queryValue('startDate') || queryValue('dateEnd') || queryValue('endDate')
+  if (date) dateFilter.value = String(date)
 }
 
 watch(() => [route.query.dateStart, route.query.dateEnd, route.query.startDate, route.query.endDate, route.query.status, route.query.dateField], () => {
