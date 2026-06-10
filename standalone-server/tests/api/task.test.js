@@ -257,6 +257,48 @@ describe('完整状态流转（大厅接单模式）', () => {
   });
 });
 
+describe('内联上传辅助能力', () => {
+  let pathOnlyTaskId;
+
+  afterAll(async () => {
+    if (pathOnlyTaskId) {
+      await request(app)
+        .post('/api/task/delete')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ taskId: pathOnlyTaskId });
+    }
+  });
+
+  it('美工仅保存上传路径时不提交到待审核', async () => {
+    const create = await request(app)
+      .post('/api/task/create')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({
+        title: '仅保存上传路径测试',
+        shopName: '路径测试',
+        taskGroup: 'design',
+        priority: 1,
+        designerId
+      });
+    expect(create.body.code).toBe(0);
+    pathOnlyTaskId = create.body.data.id;
+
+    const savePath = await request(app)
+      .post('/api/task/upload-files')
+      .set('Authorization', `Bearer ${designerToken}`)
+      .field('taskId', String(pathOnlyTaskId))
+      .field('fileCategory', 'work')
+      .field('workPath', 'D:\\works\\inline-path.psd');
+    expect(savePath.body.code).toBe(0);
+
+    const detail = await request(app)
+      .get(`/api/task/detail?taskId=${pathOnlyTaskId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(detail.body.data.status).toBe('accepted');
+    expect(detail.body.data.work_path).toBe('D:\\works\\inline-path.psd');
+  });
+});
+
 // ==================== 驳回 + 重新提交流程 ====================
 
 describe('驳回与重新提交', () => {

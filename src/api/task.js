@@ -12,7 +12,9 @@ export const uploadFilesApi = (taskId, files, fileCategory = 'work', extraData =
   formData.append('fileCategory', fileCategory)
   if (extraData.actualQuantity) formData.append('actualQuantity', extraData.actualQuantity)
   if (extraData.appliedScore !== undefined) formData.append('appliedScore', extraData.appliedScore)
-  if (extraData.workPath) formData.append('workPath', extraData.workPath)
+  if (Object.prototype.hasOwnProperty.call(extraData, 'workPath')) {
+    formData.append('workPath', extraData.workPath ?? '')
+  }
   if (extraData.replaceExisting !== undefined) formData.append('replaceExisting', extraData.replaceExisting ? '1' : '0')
   files.forEach(file => formData.append('files', file))
   return request.post('/api/task/upload-files', formData, {

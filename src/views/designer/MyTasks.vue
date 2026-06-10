@@ -101,38 +101,37 @@
           </template>
         </el-table-column>
         <el-table-column prop="publisher_name" label="发布人" width="90" />
-        <el-table-column label="作品预览" width="110" align="center">
+        <el-table-column label="作品预览" width="130" align="center">
           <template #default="{ row }">
-            <div
-              v-if="getFirstImage(row.files)"
-              draggable="true"
-              @dragstart="setupFileDrag($event, getFirstImage(row.files))"
-              style="display:inline-block;"
-            >
-              <el-image
-                :src="getFileUrl(getFirstImage(row.files))"
-                fit="cover"
-                :preview-src-list="getImageSrcList(row.files)"
-                :initial-index="0"
-                preview-teleported
-                style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
-              />
-            </div>
-            <el-tooltip
-              v-else-if="getWorkFiles(row.files).length"
-              :content="getWorkFiles(row.files).map(f => f.file_name).join('\n')"
-              placement="top"
-            >
-              <div class="file-badge" @click="viewDetail(row)" draggable="true" @dragstart="setupFileDrag($event, getWorkFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getWorkFiles(row.files))">
-                <el-icon :size="18"><Document /></el-icon>
-                <span>{{ getWorkFiles(row.files).length }}个附件</span>
-              </div>
-            </el-tooltip>
-            <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
+            <InlineWorkUpload
+              :files="row.files"
+              :disabled="!canInlineSubmit(row)"
+              :uploading="inlineUploadingId === row.id"
+              :max-count="maxFileCount"
+              :max-size-m-b="maxFileSizeMB"
+              placeholder="粘贴/拖入"
+              paste-prefix="designer-work"
+              @upload="files => handleInlineWorkUpload(row, files)"
+            />
           </template>
         </el-table-column>
-        <el-table-column label="上传路径" min-width="120" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.work_path || '-' }}</template>
+        <el-table-column label="上传路径" min-width="180">
+          <template #default="{ row }">
+            <input
+              class="inline-work-path-input"
+              :class="{ 'is-editing': inlinePathEditingId === row.id }"
+              :value="getInlinePathValue(row)"
+              :readonly="inlinePathEditingId !== row.id"
+              :disabled="!canInlineSubmit(row)"
+              placeholder="单击粘贴，双击编辑"
+              @click.stop="focusInlinePath"
+              @dblclick.stop="startInlinePathEdit(row, $event)"
+              @paste="handleInlinePathPaste(row, $event)"
+              @input="setInlinePathValue(row, $event.target.value)"
+              @keydown.enter.prevent="saveInlineWorkPath(row, $event.target.value)"
+              @blur="saveInlineWorkPath(row, $event.target.value)"
+            />
+          </template>
         </el-table-column>
         <el-table-column prop="create_time" label="发布时间" width="170" sortable show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
@@ -326,6 +325,7 @@ import { useOverdueSort } from '@/composables/useOverdueSort'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import InlineWorkUpload from '@/components/InlineWorkUpload.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -355,6 +355,10 @@ const fileList = ref([])
 const uploadRef = ref(null)
 const workPath = ref('')
 const uploadProgress = ref(0)
+const inlineUploadingId = ref(null)
+const inlinePathEditingId = ref(null)
+const inlinePathValues = ref({})
+const savingInlinePathId = ref(null)
 
 const detailVisible = ref(false)
 const currentTask = ref(null)
@@ -388,6 +392,94 @@ const detailRefAttachments = computed(() => {
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type !== 'image')
 })
 
+function canInlineSubmit(row) {
+  return row?.status === 'accepted' || row?.status === 'rejected'
+}
+
+function getInlinePathValue(row) {
+  if (!row) return ''
+  if (Object.prototype.hasOwnProperty.call(inlinePathValues.value, row.id)) {
+    return inlinePathValues.value[row.id]
+  }
+  return row.work_path || ''
+}
+
+function setInlinePathValue(row, value) {
+  if (!row) return
+  inlinePathValues.value = { ...inlinePathValues.value, [row.id]: value }
+}
+
+function focusInlinePath(event) {
+  event.currentTarget?.focus()
+}
+
+function startInlinePathEdit(row, event) {
+  if (!canInlineSubmit(row)) return
+  inlinePathEditingId.value = row.id
+  setInlinePathValue(row, event.currentTarget?.value || row.work_path || '')
+  requestAnimationFrame(() => {
+    event.currentTarget?.focus()
+    event.currentTarget?.select()
+  })
+}
+
+async function handleInlinePathPaste(row, event) {
+  if (!canInlineSubmit(row)) return
+  const text = event.clipboardData?.getData('text') || ''
+  if (!text.trim()) return
+  event.preventDefault()
+  setInlinePathValue(row, text.trim())
+  await saveInlineWorkPath(row, text.trim())
+}
+
+async function saveInlineWorkPath(row, value) {
+  if (!canInlineSubmit(row) || savingInlinePathId.value === row.id) return
+  const nextValue = (value || '').trim()
+  const currentValue = row.work_path || ''
+  inlinePathEditingId.value = null
+  if (nextValue === currentValue) return
+
+  savingInlinePathId.value = row.id
+  try {
+    const res = await uploadFilesApi(row.id, [], 'work', { workPath: nextValue })
+    if (res.code === 0) {
+      row.work_path = nextValue
+      setInlinePathValue(row, nextValue)
+      ElMessage.success(res.msg || '上传路径已保存')
+      await loadData({ silent: true })
+    } else {
+      setInlinePathValue(row, currentValue)
+      ElMessage.error(res.msg || '保存上传路径失败')
+    }
+  } catch (err) {
+    setInlinePathValue(row, currentValue)
+    ElMessage.error('保存上传路径失败: ' + (err.response?.data?.msg || err.message || '未知错误'))
+  } finally {
+    savingInlinePathId.value = null
+  }
+}
+
+async function handleInlineWorkUpload(row, files) {
+  if (!canInlineSubmit(row) || inlineUploadingId.value) return
+  inlineUploadingId.value = row.id
+  try {
+    const res = await uploadFilesApi(row.id, files, 'work', {
+      workPath: getInlinePathValue(row)
+    })
+    if (res.code === 0) {
+      ElMessage.success(res.msg || '上传成功')
+      detailVisible.value = false
+      await loadData()
+    } else {
+      ElMessage.error(res.msg || '上传失败')
+    }
+  } catch (err) {
+    ElMessage.error('上传失败: ' + (err.response?.data?.msg || err.message || '未知错误'))
+  } finally {
+    inlineUploadingId.value = null
+  }
+}
+
 async function loadData(options = {}) {
   if (!options.silent) loading.value = true
   try {
@@ -405,6 +497,9 @@ async function loadData(options = {}) {
     })
     if (res.code === 0) {
       list.value = res.data.list
+      if (!inlinePathEditingId.value && !savingInlinePathId.value) {
+        inlinePathValues.value = {}
+      }
       total.value = Number(res.data.total) || 0
       // 从通知跳转打开任务详情
       const openTaskId = route.query.openTask
@@ -599,7 +694,9 @@ const { getInt, configMap } = useConfig()
 const maxFileCount = computed(() => getInt('upload.max_file_count', 10))
 const maxFileSizeMB = computed(() => getInt('upload.max_file_size_mb', 50))
 const formatSize = formatFileSize
-useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVisible.value })
+useRealtime(loadData, 3000, {
+  shouldPause: () => detailVisible.value || uploadVisible.value || !!inlineUploadingId.value || !!inlinePathEditingId.value || !!savingInlinePathId.value
+})
 </script>
 
 <style scoped>

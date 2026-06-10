@@ -921,7 +921,45 @@ body.nexus-table-resizing .el-table__body tr.el-table__row:hover td {
 
 /* 固定列阴影增强 */
 .el-table__fixed-right-patch {
-  background: transparent;
+  background: var(--dd-bg-card);
+}
+
+.el-table .el-table__fixed-right,
+.el-table .el-table__fixed-right-patch {
+  z-index: 12 !important;
+}
+
+.el-table .el-table__fixed-right td.el-table__cell,
+.el-table .el-table__fixed-right th.el-table__cell {
+  background: var(--dd-bg-card) !important;
+}
+
+.el-table .el-table__fixed-right::before {
+  background: linear-gradient(to left, rgba(0, 0, 0, 0.08), transparent);
+}
+
+.el-table .el-table__header-wrapper tr th.el-table-fixed-column--right,
+.el-table .el-table__body-wrapper tr td.el-table-fixed-column--right,
+.el-table .el-table__footer-wrapper tr td.el-table-fixed-column--right {
+  z-index: 18 !important;
+  background: var(--dd-bg-card, #fff) !important;
+}
+
+.el-table--striped .el-table__body tr.el-table__row--striped td.el-table-fixed-column--right,
+.el-table__body tr.hover-row > td.el-table-fixed-column--right,
+.el-table__body tr.current-row > td.el-table-fixed-column--right {
+  background: var(--dd-bg-card, #fff) !important;
+}
+
+.el-table .el-table__body-wrapper tr td.el-table-fixed-column--right::after,
+.el-table .el-table__header-wrapper tr th.el-table-fixed-column--right::after {
+  content: "";
+  position: absolute;
+  left: -1px;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: var(--dd-border, #dcdfe6);
 }
 
 /* 按钮激活态微交互 */
@@ -938,6 +976,102 @@ body.nexus-table-resizing .el-table__body tr.el-table__row:hover td {
 /* Element Plus 下拉菜单增强 */
 .el-dropdown-menu { border-radius: var(--dd-radius-md) !important; padding: 4px !important; box-shadow: var(--dd-shadow-lg) !important; border: 1px solid var(--dd-border-light) !important; }
 .el-dropdown-menu__item { border-radius: var(--dd-radius-sm); margin: 2px 4px; padding: 8px 12px; }
+
+.inline-work-upload {
+  width: 100%;
+  min-height: 54px;
+  border: 1px dashed var(--dd-border);
+  border-radius: 6px;
+  background: var(--dd-bg-secondary, #f8fafc);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: text;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.inline-work-upload:focus {
+  border-color: var(--dd-primary);
+  box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.12);
+  outline: none;
+}
+
+.inline-work-upload.is-drag-over {
+  border-color: var(--dd-primary);
+  background: rgba(67, 97, 238, 0.08);
+  box-shadow: inset 0 0 0 1px var(--dd-primary);
+}
+
+.inline-work-upload.is-disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
+
+.inline-work-upload__input {
+  display: none;
+}
+
+.inline-work-upload__preview {
+  position: relative;
+  width: 48px;
+  height: 48px;
+}
+
+.inline-work-upload__preview .el-image {
+  width: 48px;
+  height: 48px;
+  border-radius: 6px;
+  border: 1px solid var(--dd-border-light);
+}
+
+.inline-work-upload__count {
+  position: absolute;
+  right: -7px;
+  top: -7px;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: var(--dd-primary);
+  color: #fff;
+  font-size: 11px;
+  line-height: 18px;
+  font-weight: 700;
+}
+
+.inline-work-upload__text {
+  color: var(--dd-text-secondary);
+  font-size: 12px;
+  line-height: 1.3;
+}
+
+.inline-work-path-input {
+  width: 100%;
+  height: 54px;
+  box-sizing: border-box;
+  border: 1px dashed var(--dd-border);
+  border-radius: 6px;
+  background: var(--dd-bg-secondary, #f8fafc);
+  color: var(--dd-text-primary);
+  font-size: 12px;
+  line-height: 1.4;
+  padding: 8px 10px;
+  outline: none;
+  cursor: text;
+  transition: border-color 0.15s ease, background-color 0.15s ease, box-shadow 0.15s ease;
+}
+
+.inline-work-path-input:focus,
+.inline-work-path-input.is-editing {
+  border-color: var(--dd-primary);
+  background: var(--dd-bg-card, #fff);
+  box-shadow: 0 0 0 3px rgba(67, 97, 238, 0.12);
+}
+
+.inline-work-path-input:disabled {
+  cursor: not-allowed;
+  opacity: 0.72;
+}
 
 /* 标签页增强 */
 .el-tag { border-radius: var(--dd-radius-sm); font-weight: 500; letter-spacing: 0.3px; }

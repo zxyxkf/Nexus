@@ -86,38 +86,19 @@
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="完成凭证" width="190" align="center">
+        <el-table-column label="完成凭证" width="130" align="center">
           <template #default="{ row }">
-            <div
-              v-if="getFirstImage(row.files)"
-              draggable="true"
-              @dragstart="setupFileDrag($event, getFirstImage(row.files))"
-              style="display:inline-block;"
-            >
-              <el-image
-                :src="getFileUrl(getFirstImage(row.files))"
-                fit="cover"
-                :preview-src-list="getImageSrcList(row.files)"
-                :initial-index="0"
-                preview-teleported
-                style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
-              />
-            </div>
-            <el-tooltip
-              v-else-if="getWorkFiles(row.files).length"
-              :content="getWorkFiles(row.files).map(f => f.file_name).join('\n')"
-              placement="top"
-            >
-              <div class="file-badge" @click="viewDetail(row)" draggable="true" @dragstart="setupFileDrag($event, getWorkFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getWorkFiles(row.files))">
-                <el-icon :size="18"><Document /></el-icon>
-                <span>{{ getWorkFiles(row.files).length }}个附件</span>
-              </div>
-            </el-tooltip>
-            <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
+            <InlineWorkUpload
+              :files="row.files"
+              :disabled="!canInlineSubmit(row)"
+              :uploading="inlineUploadingId === row.id"
+              :max-count="maxFileCount"
+              :max-size-m-b="maxFileSizeMB"
+              placeholder="粘贴/拖入"
+              paste-prefix="assistant-proof"
+              @upload="files => handleInlineProofUpload(row, files)"
+            />
           </template>
-        </el-table-column>
-        <el-table-column label="上传路径" width="160" align="center" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.work_path || '-' }}</template>
         </el-table-column>
         <el-table-column label="状态" width="100" align="center">
           <template #default="{ row }">
@@ -214,10 +195,6 @@
               <label>任务描述</label>
               <div class="value" style="white-space:pre-wrap;">{{ currentTask.description || '暂无' }}</div>
             </div>
-            <div class="inline-detail-stat-card full-width">
-              <label>上传路径</label>
-              <span>{{ currentTask.work_path || '无' }}</span>
-            </div>
             <div v-if="currentTask.status === 'rejected'" class="inline-detail-stat-card full-width">
               <label>驳回原因</label>
               <div class="value" style="color:#e63946;">{{ currentTask.reject_reason }}</div>
@@ -269,9 +246,6 @@
 
     <!-- 上传对话框 -->
     <el-dialog v-model="uploadVisible" title="上传完成凭证" width="500px" top="10vh">
-      <el-form-item label="上传路径">
-        <el-input v-model="workPath" placeholder="作品文件路径或链接（可选）" />
-      </el-form-item>
       <div style="margin-bottom:16px;display:flex;align-items:center;gap:12px;">
         <span style="font-size:14px;color:var(--dd-text-primary);white-space:nowrap;">完成数量</span>
         <el-input-number
@@ -324,6 +298,7 @@ import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import InlineWorkUpload from '@/components/InlineWorkUpload.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -362,8 +337,8 @@ const uploadTaskQuantity = ref(1)
 const uploadQuantity = ref(1)
 const uploadAllChecked = ref(false)
 const rawUploadFiles = ref([])
-const workPath = ref('')
 const uploadProgress = ref(0)
+const inlineUploadingId = ref(null)
 
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || '' }
@@ -384,6 +359,31 @@ const detailRefAttachments = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type !== 'image')
 })
+
+function canInlineSubmit(row) {
+  return row?.status === 'accepted' || row?.status === 'rejected'
+}
+
+async function handleInlineProofUpload(row, files) {
+  if (!canInlineSubmit(row) || inlineUploadingId.value) return
+  inlineUploadingId.value = row.id
+  try {
+    const res = await uploadFilesApi(row.id, files, 'work', {
+      actualQuantity: row.quantity || 1
+    })
+    if (res.code === 0) {
+      ElMessage.success(res.msg || '上传成功')
+      detailVisible.value = false
+      await loadData()
+    } else {
+      ElMessage.error(res.msg || '上传失败')
+    }
+  } catch (e) {
+    ElMessage.error('上传失败: ' + (e.response?.data?.msg || e.message || '网络错误'))
+  } finally {
+    inlineUploadingId.value = null
+  }
+}
 
 function onUploadChange(uf, ufs) {
   rawUploadFiles.value = syncRawFiles(ufs)
@@ -493,7 +493,6 @@ function openUploadDialog(row) {
   uploadAllChecked.value = true
   uploadFiles.value = []
   rawUploadFiles.value = []
-  workPath.value = row.work_path || ''
   uploadVisible.value = true
 }
 
@@ -504,7 +503,6 @@ async function handleUpload() {
   try {
     const res = await uploadFilesApi(uploadingTaskId.value, rawUploadFiles.value, 'work', {
       actualQuantity: uploadQuantity.value,
-      workPath: workPath.value,
       onUploadProgress: (event) => {
         if (event.total) uploadProgress.value = Math.min(99, Math.round((event.loaded * 100) / event.total))
       }
@@ -513,7 +511,6 @@ async function handleUpload() {
       uploadProgress.value = 100
       ElMessage.success('上传成功')
       uploadVisible.value = false
-      workPath.value = ''
       detailVisible.value = false
       loadData()
     } else {
@@ -560,7 +557,9 @@ watch(uploadAllChecked, (val) => {
   if (val) uploadQuantity.value = uploadTaskQuantity.value
 })
 
-useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVisible.value })
+useRealtime(loadData, 3000, {
+  shouldPause: () => detailVisible.value || uploadVisible.value || !!inlineUploadingId.value
+})
 </script>
 
 <style scoped>

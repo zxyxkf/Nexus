@@ -343,34 +343,42 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
   if (!taskId) throw new AppError(400, '任务ID不能为空');
   appliedScore = parseFloat(appliedScore) || 0;
   workPath = (workPath || '').trim();
+  const hasWorkPathField = Object.prototype.hasOwnProperty.call(options, 'hasWorkPathField')
+    ? options.hasWorkPathField
+    : !!workPath;
 
   const isOpAssistant = user.role === 'operator_assistant';
+  const canUpdateWorkPathOnly = user.role === 'designer' && fileCategory === 'work' && hasWorkPathField;
 
-  // 运营助理允许无文件仅更新数量
-  if ((!files || files.length === 0) && !isOpAssistant) {
+  // 运营助理允许无文件仅更新数量；美工允许无文件仅保存上传路径
+  if ((!files || files.length === 0) && !isOpAssistant && !canUpdateWorkPathOnly) {
     throw new AppError(400, '请选择文件');
   }
 
   if (!files || files.length === 0) {
+    let pathOnlyUpdated = false;
     await executeTransaction(async (conn) => {
       const task = await taskDao.getTaskForUpdate(conn, taskId);
       if (!task) throw new AppError(400, '任务不存在');
       if (Number(task.designer_id) !== Number(user.id)) throw new AppError(403, '无权操作此任务');
 
-      if (task.status === 'accepted' || task.status === 'rejected') {
+      if (isOpAssistant && (task.status === 'accepted' || task.status === 'rejected')) {
         const extra = { actual_quantity: actualQuantity };
         if (workPath) extra.work_path = workPath;
         await taskDao.updateTaskStatus(conn, taskId, 'doing', extra);
         const { notifyTaskEvent } = require('../utils/notification');
         await notifyTaskEvent('task_submit', { ...task, id: taskId }, user);
-      } else if (workPath) {
+      } else if (canUpdateWorkPathOnly && (task.status === 'accepted' || task.status === 'rejected')) {
         await conn.execute(`UPDATE task_info SET work_path = ? WHERE id = ?`, [workPath, taskId]);
+        pathOnlyUpdated = true;
+      } else if (canUpdateWorkPathOnly) {
+        throw new AppError(400, '当前状态不能修改上传路径');
       }
 
       const [pubRows] = await conn.execute(`SELECT publisher_id FROM task_info WHERE id = ?`, [taskId]);
       if (pubRows.length) socketEmit(`user:${pubRows[0].publisher_id}`);
     });
-    return { msg: '完成数量已提交，等待审核' };
+    return { msg: pathOnlyUpdated ? '上传路径已保存' : '完成数量已提交，等待审核' };
   }
 
   await executeTransaction(async (conn) => {
@@ -435,10 +443,10 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
           extraFields.score_review_time = null;
           extraFields.score_review_score = 0;
         }
-        if (workPath) extraFields.work_path = workPath;
+        if (hasWorkPathField) extraFields.work_path = workPath;
         await taskDao.updateTaskStatus(conn, taskId, 'doing', extraFields);
         submitted = true;
-      } else if (workPath && fileCategory !== 'reference') {
+      } else if (hasWorkPathField && fileCategory !== 'reference') {
         // 再次上传时也更新路径
         await conn.execute(`UPDATE task_info SET work_path = ? WHERE id = ?`, [workPath, taskId]);
       }
