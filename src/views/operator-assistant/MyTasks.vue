@@ -361,7 +361,7 @@ const detailRefAttachments = computed(() => {
 })
 
 function canInlineSubmit(row) {
-  return row?.status === 'accepted' || row?.status === 'rejected'
+  return fixedStatus.value === 'accepted' && row?.status === 'accepted'
 }
 
 async function handleInlineProofUpload(row, files) {

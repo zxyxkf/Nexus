@@ -30,6 +30,13 @@
       <span class="inline-work-upload__text">{{ placeholder }}</span>
     </template>
   </div>
+  <el-image-viewer
+    v-if="viewerVisible"
+    :url-list="imagePreviewList"
+    :initial-index="0"
+    teleported
+    @close="viewerVisible = false"
+  />
 </template>
 
 <script setup>
@@ -52,9 +59,11 @@ const emit = defineEmits(['upload'])
 const rootEl = ref(null)
 const fileInput = ref(null)
 const dragOver = ref(false)
+const viewerVisible = ref(false)
 
 const workFiles = computed(() => (props.files || []).filter(file => file.file_category !== 'reference'))
 const imageFile = computed(() => workFiles.value.find(file => file.file_type === 'image') || null)
+const imagePreviewList = computed(() => workFiles.value.filter(file => file.file_type === 'image').map(file => getFileUrl(file)))
 const fileCount = computed(() => workFiles.value.length)
 
 function createPastedFile(blob) {
@@ -120,7 +129,12 @@ function handleDrop(event) {
 }
 
 function openPicker() {
-  if (props.disabled || props.uploading) return
+  if (props.uploading) return
+  if (fileCount.value > 0) {
+    if (imagePreviewList.value.length) viewerVisible.value = true
+    return
+  }
+  if (props.disabled) return
   fileInput.value?.click()
 }
 

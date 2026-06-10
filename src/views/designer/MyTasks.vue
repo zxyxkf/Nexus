@@ -122,8 +122,8 @@
               :class="{ 'is-editing': inlinePathEditingId === row.id }"
               :value="getInlinePathValue(row)"
               :readonly="inlinePathEditingId !== row.id"
-              :disabled="!canInlineSubmit(row)"
-              placeholder="单击粘贴，双击编辑"
+              :disabled="false"
+              :placeholder="canInlineSubmit(row) ? '单击粘贴，双击编辑' : '-'"
               @click.stop="focusInlinePath"
               @dblclick.stop="startInlinePathEdit(row, $event)"
               @paste="handleInlinePathPaste(row, $event)"
@@ -393,7 +393,7 @@ const detailRefAttachments = computed(() => {
 })
 
 function canInlineSubmit(row) {
-  return row?.status === 'accepted' || row?.status === 'rejected'
+  return fixedStatus.value === 'accepted' && row?.status === 'accepted'
 }
 
 function getInlinePathValue(row) {
