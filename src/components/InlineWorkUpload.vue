@@ -30,19 +30,31 @@
       <span class="inline-work-upload__text">{{ placeholder }}</span>
     </template>
   </div>
-  <el-image-viewer
-    v-if="viewerVisible"
-    :url-list="imagePreviewList"
-    :initial-index="0"
-    teleported
-    @close="viewerVisible = false"
-  />
+  <teleport to="body">
+    <div
+      v-if="viewerVisible"
+      class="inline-work-preview"
+      tabindex="-1"
+      @click.self="closeViewer"
+      @keydown.esc="closeViewer"
+    >
+      <button class="inline-work-preview__close" type="button" @click="closeViewer">×</button>
+      <img
+        v-if="viewerFile"
+        class="inline-work-preview__image"
+        :src="getFileUrl(viewerFile)"
+        :alt="viewerFile?.file_name || '作品预览'"
+        draggable="true"
+        @dragstart="setupFileDrag($event, viewerFile)"
+      />
+    </div>
+  </teleport>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, nextTick, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getFileUrl } from '@/api'
+import { getFileUrl, setupFileDrag } from '@/api'
 
 const props = defineProps({
   files: { type: Array, default: () => [] },
@@ -64,6 +76,7 @@ const viewerVisible = ref(false)
 const workFiles = computed(() => (props.files || []).filter(file => file.file_category !== 'reference'))
 const imageFile = computed(() => workFiles.value.find(file => file.file_type === 'image') || null)
 const imagePreviewList = computed(() => workFiles.value.filter(file => file.file_type === 'image').map(file => getFileUrl(file)))
+const viewerFile = computed(() => imageFile.value || null)
 const fileCount = computed(() => workFiles.value.length)
 
 function createPastedFile(blob) {
@@ -131,11 +144,21 @@ function handleDrop(event) {
 function openPicker() {
   if (props.uploading) return
   if (fileCount.value > 0) {
-    if (imagePreviewList.value.length) viewerVisible.value = true
+    if (imagePreviewList.value.length) openViewer()
     return
   }
   if (props.disabled) return
   fileInput.value?.click()
+}
+
+async function openViewer() {
+  viewerVisible.value = true
+  await nextTick()
+  document.querySelector('.inline-work-preview')?.focus()
+}
+
+function closeViewer() {
+  viewerVisible.value = false
 }
 
 function focusSelf() {

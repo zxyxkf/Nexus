@@ -1073,6 +1073,52 @@ body.nexus-table-resizing .el-table__body tr.el-table__row:hover td {
   opacity: 0.72;
 }
 
+.inline-work-preview {
+  position: fixed;
+  inset: 0;
+  z-index: 2200;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 48px;
+  background: rgba(0, 0, 0, 0.72);
+  outline: none;
+}
+
+.inline-work-preview__image {
+  max-width: min(92vw, 1400px);
+  max-height: 88vh;
+  object-fit: contain;
+  cursor: grab;
+  user-select: none;
+  border-radius: 4px;
+  box-shadow: 0 16px 48px rgba(0, 0, 0, 0.35);
+}
+
+.inline-work-preview__image:active {
+  cursor: grabbing;
+}
+
+.inline-work-preview__close {
+  position: fixed;
+  top: 20px;
+  right: 24px;
+  width: 40px;
+  height: 40px;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(0, 0, 0, 0.38);
+  color: #fff;
+  cursor: pointer;
+  font-size: 30px;
+  line-height: 36px;
+  text-align: center;
+}
+
+.inline-work-preview__close:hover {
+  background: rgba(0, 0, 0, 0.58);
+}
+
 /* 标签页增强 */
 .el-tag { border-radius: var(--dd-radius-sm); font-weight: 500; letter-spacing: 0.3px; }
 
