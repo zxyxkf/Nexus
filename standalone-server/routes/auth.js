@@ -187,6 +187,7 @@ router.post('/refresh', async (req, res, next) => {
       role: record.role,
       realName: record.real_name,
       store: record.store || '',
+      isTeamLead: record.is_team_lead || 0,
       permissions
     });
 
@@ -201,6 +202,7 @@ router.post('/refresh', async (req, res, next) => {
           realName: record.real_name,
           role: record.role,
           store: record.store || '',
+          isTeamLead: record.is_team_lead || 0,
           permissions
         }
       }

@@ -6,8 +6,9 @@ const express = require('express');
 const router = express.Router();
 const ExcelJS = require('exceljs');
 const { execute } = require('../config/database');
-const { requireAuth } = require('../middleware/auth');
+const { requireAuth, requireAnyPermission } = require('../middleware/auth');
 const taskService = require('../services/task.service');
+const { defaultPermissionsFor } = require('../config/permissions');
 
 router.use(requireAuth);
 
@@ -31,6 +32,18 @@ const ROLE_LABELS = {
 
 function roleLabel(role) {
   return ROLE_LABELS[role] || role || '-';
+}
+
+function allowedDashboardGroups(user) {
+  const rawPermissions = user?.hasPermissionClaim
+    ? (Array.isArray(user?.permissions) ? user.permissions : [])
+    : defaultPermissionsFor(user?.role, user?.isTeamLead || user?.is_team_lead);
+  const permissions = new Set(rawPermissions);
+  const allowed = [];
+  if (user?.role === 'admin' || permissions.has('*') || permissions.has('dashboard.design')) allowed.push('design');
+  if (user?.role === 'admin' || permissions.has('*') || permissions.has('dashboard.operator')) allowed.push('operator');
+  if (user?.role === 'admin' || permissions.has('*') || permissions.has('dashboard.cs')) allowed.push('cs');
+  return allowed;
 }
 
 function addSheet(workbook, name, columns, rows) {
@@ -270,14 +283,16 @@ router.get('/logs', async (req, res) => {
 /**
  * GET /api/export/dashboard - 导出 Dashboard 报表
  */
-router.get('/dashboard', async (req, res) => {
+router.get('/dashboard', requireAnyPermission(['dashboard.design', 'dashboard.operator', 'dashboard.cs'], 'admin', 'sub_admin', 'designer', 'basic_designer', 'operator_assistant', 'operator', 'cs_agent'), async (req, res) => {
   try {
     const requestedGroups = String(req.query.groups || 'design,operator,cs')
       .split(',')
       .map(g => g.trim())
       .filter(g => ['design', 'operator', 'cs'].includes(g));
-    const groups = requestedGroups.length ? requestedGroups : ['design', 'operator', 'cs'];
-    const detailStats = await taskService.getAdminDetailStats();
+    const allowedGroups = allowedDashboardGroups(req.user);
+    const groups = (requestedGroups.length ? requestedGroups : allowedGroups)
+      .filter(group => allowedGroups.includes(group));
+    const detailStats = await taskService.getAdminDetailStats(req.user);
     const workbook = new ExcelJS.Workbook();
 
     if (groups.includes('design')) {

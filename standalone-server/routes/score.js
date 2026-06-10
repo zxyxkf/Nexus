@@ -32,6 +32,10 @@ router.get('/items', async (req, res) => {
 router.get('/records', async (req, res) => {
   try {
     const userId = req.query.userId || req.user.id;
+    const canViewOthers = req.user.role === 'admin' || req.user.role === 'sub_admin' || (req.user.permissions || []).includes('*') || (req.user.permissions || []).includes('task.view.all');
+    if (Number(userId) !== Number(req.user.id) && !canViewOthers) {
+      return res.status(403).json({ code: 403, msg: '无权查看他人积分明细' });
+    }
     const [rows] = await execute(
       `SELECT r.*,
               COALESCE(si.name, cs.name, op.name) as item_name
@@ -109,7 +113,7 @@ router.post('/delete', requireAnyPermission(['admin.config'], 'admin'), async (r
 // ===== 基础美工分值审核 =====
 
 // 待审核列表（组长查看 pending 状态的任务）
-router.get('/review/list', async (req, res) => {
+router.get('/review/list', requireAnyPermission(['score.review.basic'], 'admin', 'sub_admin'), async (req, res) => {
   try {
     const { page = 1, pageSize = 15, publisherId, designerId } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
@@ -161,7 +165,7 @@ router.get('/review/list', async (req, res) => {
 });
 
 // 审核记录（已通过/已驳回）
-router.get('/review/records', async (req, res) => {
+router.get('/review/records', requireAnyPermission(['score.records.basic'], 'admin', 'sub_admin'), async (req, res) => {
   try {
     const { page = 1, pageSize = 15, publisherId, designerId, status, dateStart, dateEnd, sortField, sortOrder } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
@@ -219,7 +223,7 @@ router.get('/review/records', async (req, res) => {
 });
 
 // 通过分值申请
-router.post('/review/approve', async (req, res) => {
+router.post('/review/approve', requireAnyPermission(['score.review.basic'], 'admin', 'sub_admin'), async (req, res) => {
   try {
     const { taskId } = req.body;
     if (!taskId) return res.json({ code: 400, msg: '任务ID不能为空' });
@@ -245,7 +249,7 @@ router.post('/review/approve', async (req, res) => {
 });
 
 // 驳回分值申请
-router.post('/review/reject', async (req, res) => {
+router.post('/review/reject', requireAnyPermission(['score.review.basic'], 'admin', 'sub_admin'), async (req, res) => {
   try {
     const { taskId, reason } = req.body;
     if (!taskId) return res.json({ code: 400, msg: '任务ID不能为空' });

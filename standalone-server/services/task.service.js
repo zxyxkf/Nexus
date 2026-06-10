@@ -13,6 +13,7 @@ const { IMAGE_EXTS, fixFilenameEncoding } = require('../utils/upload');
 const logger = require('../utils/business-logger');
 const { sendNotification } = require('../utils/notification');
 const { isUserOnline } = require('../utils/online');
+const { defaultPermissionsFor } = require('../config/permissions');
 
 // ==================== 辅助 ====================
 
@@ -411,6 +412,60 @@ async function searchTasks(query, user) {
     keyword,
     pageSize: query.pageSize
   });
+}
+
+function allowedDashboardGroups(user) {
+  const permissionMap = {
+    design: 'dashboard.design',
+    operator: 'dashboard.operator',
+    cs: 'dashboard.cs'
+  };
+  const rawPermissions = user?.hasPermissionClaim
+    ? (Array.isArray(user?.permissions) ? user.permissions : [])
+    : defaultPermissionsFor(user?.role, user?.isTeamLead || user?.is_team_lead);
+  const permissions = new Set(rawPermissions);
+  return Object.entries(permissionMap)
+    .filter(([, permission]) => user?.role === 'admin' || permissions.has('*') || permissions.has(permission))
+    .map(([group]) => group);
+}
+
+function emptyGroupStats(taskGroup) {
+  return { task_group: taskGroup, total: 0, wait_count: 0, accepted_count: 0, doing_count: 0, finished_count: 0, rejected_count: 0 };
+}
+
+function filterDashboardStatsByPermission(data, user) {
+  const allowed = new Set(allowedDashboardGroups(user));
+  return {
+    designStats: allowed.has('design') ? data.designStats : emptyGroupStats('design'),
+    csStats: allowed.has('cs') ? data.csStats : emptyGroupStats('cs'),
+    operatorStats: allowed.has('operator') ? data.operatorStats : emptyGroupStats('operator'),
+    designerLastMonthRank: allowed.has('design') ? data.designerLastMonthRank : [],
+    designerCurrentMonthRank: allowed.has('design') ? data.designerCurrentMonthRank : [],
+    basicDesignerLastMonthRank: allowed.has('cs') ? data.basicDesignerLastMonthRank : [],
+    basicDesignerCurrentMonthRank: allowed.has('cs') ? data.basicDesignerCurrentMonthRank : [],
+    operatorAssistantLastMonthRank: allowed.has('operator') ? data.operatorAssistantLastMonthRank : [],
+    operatorAssistantCurrentMonthRank: allowed.has('operator') ? data.operatorAssistantCurrentMonthRank : [],
+    designerRank: allowed.has('design') ? data.designerRank : [],
+    csAgentRank: allowed.has('cs') ? data.csAgentRank : [],
+    operatorPublisherRank: allowed.has('operator') ? data.operatorPublisherRank : []
+  };
+}
+
+function filterAdminDetailStatsByPermission(data, user) {
+  const allowed = new Set(allowedDashboardGroups(user));
+  const scoreItems = allowed.size ? data.scoreItems : [];
+  return {
+    designerStats: allowed.has('design') ? data.designerStats : [],
+    basicDesignerStats: allowed.has('cs') ? data.basicDesignerStats : [],
+    operatorAssistantStats: allowed.has('operator') ? data.operatorAssistantStats : [],
+    designerDailyStats: allowed.has('design') ? data.designerDailyStats : [],
+    basicDesignerDailyStats: allowed.has('cs') ? data.basicDesignerDailyStats : [],
+    operatorAssistantDailyStats: allowed.has('operator') ? data.operatorAssistantDailyStats : [],
+    operatorStats: allowed.has('design') ? data.operatorStats : [],
+    operatorPublishStats: allowed.has('operator') ? data.operatorPublishStats : [],
+    csAgentStats: allowed.has('cs') ? data.csAgentStats : [],
+    scoreItems
+  };
 }
 
 // ==================== 任务动作 ====================
@@ -1120,7 +1175,7 @@ function buildDailyScoreStats(users, tasks, refDate, taskGroup) {
   });
 }
 
-async function getDashboardStats() {
+async function getDashboardStats(user = null) {
   const now = new Date();
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
@@ -1175,7 +1230,7 @@ async function getDashboardStats() {
       .sort((a, b) => b[key] - a[key]).slice(0, limit);
   }
 
-  return {
+  const data = {
     designStats, csStats, operatorStats,
     designerLastMonthRank: buildRank(designerScores, 'last_month_score', lastMonthStr, thisMonthStr),
     designerCurrentMonthRank: buildRank(designerScores, 'current_month_score', thisMonthStr, nextMonthStr),
@@ -1185,9 +1240,10 @@ async function getDashboardStats() {
     operatorAssistantCurrentMonthRank: buildRank(operatorAssistantScores, 'current_month_score', thisMonthStr, nextMonthStr),
     designerRank, csAgentRank, operatorPublisherRank
   };
+  return user ? filterDashboardStatsByPermission(data, user) : data;
 }
 
-async function getAdminDetailStats() {
+async function getAdminDetailStats(user = null) {
   const now = new Date();
   const thisYear = now.getFullYear();
 
@@ -1203,7 +1259,7 @@ async function getAdminDetailStats() {
   const designTasks = allTasks.filter(t => t.task_group === 'design' || !t.task_group)
   const operatorTasks = allTasks.filter(t => t.task_group === 'operator')
   const csTasks = allTasks.filter(t => t.task_group === 'cs')
-  return {
+  const data = {
     designerStats: buildDesignerStats(designers, allTasks, scoreItems, now, 'design'),
     basicDesignerStats: buildDesignerStats(basicDesigners, allTasks, scoreItems, now, 'cs'),
     operatorAssistantStats: buildDesignerStats(operatorAssistants, allTasks, scoreItems, now, 'operator'),
@@ -1215,6 +1271,7 @@ async function getAdminDetailStats() {
     csAgentStats: buildPublisherMonthlyStats(csTasks, thisYear),
     scoreItems: scoreItems.map(si => si.name)
   };
+  return user ? filterAdminDetailStatsByPermission(data, user) : data;
 }
 
 module.exports = {

@@ -147,3 +147,68 @@ describe('角色权限校验', () => {
     }
   });
 });
+
+describe('最终权限校验', () => {
+  let req, res, nextCalled;
+
+  beforeEach(() => {
+    res = {
+      status(code) { this._status = code; return this; },
+      json(data) { this._json = data; return this; },
+    };
+    nextCalled = false;
+  });
+
+  function next() { nextCalled = true; }
+
+  it('新 token 有权限声明时，不再用角色兜底绕过禁用权限', () => {
+    const { requireAnyPermission } = require('../../middleware/auth');
+    req = {
+      user: {
+        id: 8,
+        username: 'operator_without_dashboard',
+        role: 'operator',
+        permissions: [],
+        hasPermissionClaim: true
+      },
+      originalUrl: '/api/task/stats/dashboard'
+    };
+    const mw = requireAnyPermission(['dashboard.design'], 'operator');
+    mw(req, res, next);
+    expect(nextCalled).toBe(false);
+    expect(res._status).toBe(403);
+  });
+
+  it('旧 token 没有权限声明时，仍兼容角色兜底', () => {
+    const { requireAnyPermission } = require('../../middleware/auth');
+    req = {
+      user: {
+        id: 9,
+        username: 'legacy_operator',
+        role: 'operator',
+        permissions: []
+      },
+      originalUrl: '/api/task/stats/dashboard'
+    };
+    const mw = requireAnyPermission(['dashboard.design'], 'operator');
+    mw(req, res, next);
+    expect(nextCalled).toBe(true);
+  });
+
+  it('拥有显式权限时放行，不依赖角色', () => {
+    const { requireAnyPermission } = require('../../middleware/auth');
+    req = {
+      user: {
+        id: 10,
+        username: 'designer_with_admin_tasks',
+        role: 'designer',
+        permissions: ['admin.tasks.design'],
+        hasPermissionClaim: true
+      },
+      originalUrl: '/api/task/all'
+    };
+    const mw = requireAnyPermission(['admin.tasks.design'], 'admin', 'sub_admin');
+    mw(req, res, next);
+    expect(nextCalled).toBe(true);
+  });
+});

@@ -39,6 +39,33 @@ function verifyToken(token) {
   }
 }
 
+function buildUserFromDecoded(decoded) {
+  const hasPermissionClaim = Object.prototype.hasOwnProperty.call(decoded, 'permissions');
+  return {
+    id: decoded.id,
+    username: decoded.username,
+    role: decoded.role,
+    realName: decoded.realName,
+    store: decoded.store || '',
+    isTeamLead: decoded.isTeamLead || 0,
+    permissions: Array.isArray(decoded.permissions) ? decoded.permissions : [],
+    hasPermissionClaim
+  };
+}
+
+function hasExplicitPermissions(user) {
+  return !!user?.hasPermissionClaim;
+}
+
+function ownsPermission(user, permission) {
+  const owned = user?.permissions || [];
+  return owned.includes('*') || owned.includes(permission);
+}
+
+function canUseLegacyRoleFallback(user, fallbackRoles) {
+  return !hasExplicitPermissions(user) && fallbackRoles.includes(user?.role);
+}
+
 /**
  * 必须登录 - 从请求头解析Token并挂载到req.user
  */
@@ -55,15 +82,7 @@ function requireAuth(req, res, next) {
   }
 
   // 挂载用户信息到请求
-  req.user = {
-    id: decoded.id,
-    username: decoded.username,
-    role: decoded.role,
-    realName: decoded.realName,
-    store: decoded.store || '',
-    isTeamLead: decoded.isTeamLead || 0,
-    permissions: decoded.permissions || []
-  };
+  req.user = buildUserFromDecoded(decoded);
 
   next();
 }
@@ -91,8 +110,8 @@ function requireRole(...roles) {
 function requirePermission(permission, ...fallbackRoles) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ code: 401, msg: '未登录' });
-    if (fallbackRoles.includes(req.user.role)) return next();
-    if ((req.user.permissions || []).includes(permission)) return next();
+    if (ownsPermission(req.user, permission)) return next();
+    if (canUseLegacyRoleFallback(req.user, fallbackRoles)) return next();
     console.warn(`[越权警告] 用户 ${req.user.username}(${req.user.role}) 缺少权限 ${permission} 访问 ${req.originalUrl}`);
     return res.status(403).json({ code: 403, msg: '权限不足，请联系管理员' });
   };
@@ -101,9 +120,8 @@ function requirePermission(permission, ...fallbackRoles) {
 function requireAnyPermission(permissions = [], ...fallbackRoles) {
   return (req, res, next) => {
     if (!req.user) return res.status(401).json({ code: 401, msg: '未登录' });
-    if (fallbackRoles.includes(req.user.role)) return next();
-    const owned = req.user.permissions || [];
-    if (permissions.some(p => owned.includes(p))) return next();
+    if (permissions.some(p => ownsPermission(req.user, p))) return next();
+    if (canUseLegacyRoleFallback(req.user, fallbackRoles)) return next();
     console.warn(`[越权警告] 用户 ${req.user.username}(${req.user.role}) 缺少任一权限 ${permissions.join(',')} 访问 ${req.originalUrl}`);
     return res.status(403).json({ code: 403, msg: '权限不足，请联系管理员' });
   };
@@ -143,15 +161,7 @@ function optionalAuth(req, res, next) {
   if (authHeader && authHeader.startsWith('Bearer ')) {
     const decoded = verifyToken(authHeader.split(' ')[1]);
     if (decoded) {
-      req.user = {
-        id: decoded.id,
-        username: decoded.username,
-        role: decoded.role,
-        realName: decoded.realName,
-        store: decoded.store || '',
-        isTeamLead: decoded.isTeamLead || 0,
-        permissions: decoded.permissions || []
-      };
+      req.user = buildUserFromDecoded(decoded);
       return next();
     }
   }
@@ -161,15 +171,7 @@ function optionalAuth(req, res, next) {
   if (token) {
     const decoded = verifyToken(token);
     if (decoded) {
-      req.user = {
-        id: decoded.id,
-        username: decoded.username,
-        role: decoded.role,
-        realName: decoded.realName,
-        store: decoded.store || '',
-        isTeamLead: decoded.isTeamLead || 0,
-        permissions: decoded.permissions || []
-      };
+      req.user = buildUserFromDecoded(decoded);
       return next();
     }
   }
@@ -182,6 +184,9 @@ module.exports = {
   generateAccessToken,
   generateRefreshToken,
   verifyToken,
+  buildUserFromDecoded,
+  hasExplicitPermissions,
+  ownsPermission,
   requireAuth,
   optionalAuth,
   requireRole,
