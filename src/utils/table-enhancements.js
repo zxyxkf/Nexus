@@ -100,15 +100,15 @@ function positionPanel(button, panel) {
   const rect = button.getBoundingClientRect()
   const width = Math.max(panel.offsetWidth || 220, 220)
   const margin = 8
-  const left = Math.min(
-    Math.max(margin, rect.right - width),
-    window.innerWidth - width - margin
-  )
+  const preferRight = button.closest('.nexus-column-control--header')
+  const rawLeft = preferRight ? rect.left : rect.right - width
+  const left = Math.min(Math.max(margin, rawLeft), window.innerWidth - width - margin)
   const top = Math.min(rect.bottom + margin, window.innerHeight - margin)
   panel.style.position = 'fixed'
   panel.style.left = `${left}px`
   panel.style.top = `${top}px`
   panel.style.right = 'auto'
+  panel.style.maxHeight = `${Math.max(180, window.innerHeight - top - margin)}px`
   panel.style.zIndex = '4000'
   panel.classList.add('is-teleported')
 }
