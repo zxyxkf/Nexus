@@ -251,7 +251,10 @@ request.interceptors.response.use(
     const now = Date.now()
     let msg = '网络异常，请检查连接'
 
-    if (error.response) {
+    const serverMsg = error.response?.data?.msg
+    if (serverMsg) {
+      msg = serverMsg
+    } else if (error.response) {
       const s = error.response.status
       if (s === 400) msg = '请求参数错误'
       else if (s === 401) msg = '未登录或Token已过期'
