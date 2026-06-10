@@ -110,9 +110,9 @@
               <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
                 <template #default="{ row }">
                   <div class="daily-score-cell">
-                    <el-button link type="primary" @click="openDailyTasks('design', d.day, row, 'finished')">{{ row[`${d.key}_finished`] }}</el-button>
+                    <el-button link type="primary" @click="openDailyTasks('design', d, row, 'finished')">{{ row[`${d.key}_finished`] }}</el-button>
                     <span>/</span>
-                    <el-button link type="warning" @click="openDailyTasks('design', d.day, row, 'doing')">{{ row[`${d.key}_pending`] }}</el-button>
+                    <el-button link type="warning" @click="openDailyTasks('design', d, row, 'doing')">{{ row[`${d.key}_pending`] }}</el-button>
                   </div>
                 </template>
               </el-table-column>
@@ -247,9 +247,9 @@
               <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
                 <template #default="{ row }">
                   <div class="daily-score-cell">
-                    <el-button link type="primary" @click="openDailyTasks('operator', d.day, row, 'finished')">{{ row[`${d.key}_finished`] }}</el-button>
+                    <el-button link type="primary" @click="openDailyTasks('operator', d, row, 'finished')">{{ row[`${d.key}_finished`] }}</el-button>
                     <span>/</span>
-                    <el-button link type="warning" @click="openDailyTasks('operator', d.day, row, 'doing')">{{ row[`${d.key}_pending`] }}</el-button>
+                    <el-button link type="warning" @click="openDailyTasks('operator', d, row, 'doing')">{{ row[`${d.key}_pending`] }}</el-button>
                   </div>
                 </template>
               </el-table-column>
@@ -354,9 +354,9 @@
               <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
                 <template #default="{ row }">
                   <div class="daily-score-cell">
-                    <el-button link type="primary" @click="openDailyTasks('cs', d.day, row, 'finished')">{{ row[`${d.key}_finished`] }}</el-button>
+                    <el-button link type="primary" @click="openDailyTasks('cs', d, row, 'finished')">{{ row[`${d.key}_finished`] }}</el-button>
                     <span>/</span>
-                    <el-button link type="warning" @click="openDailyTasks('cs', d.day, row, 'doing')">{{ row[`${d.key}_pending`] }}</el-button>
+                    <el-button link type="warning" @click="openDailyTasks('cs', d, row, 'doing')">{{ row[`${d.key}_pending`] }}</el-button>
                   </div>
                 </template>
               </el-table-column>
@@ -647,10 +647,15 @@ function pickDailyTaskTarget(group) {
   return targets.find(target => hasPermission(target.permission, user))
 }
 
-function openDailyTasks(group, day, row, status = 'finished') {
+function openDailyTasks(group, dayInfo, row, status = 'finished') {
   const target = pickDailyTaskTarget(group)
   if (!target) {
     ElMessage.warning('当前账号没有该分区的任务列表权限')
+    return
+  }
+  const day = Number(dayInfo?.day || String(dayInfo?.key || dayInfo || '').replace(/^d/, ''))
+  if (!day) {
+    ElMessage.warning('日期参数异常，请刷新后重试')
     return
   }
   const date = `${nowForView.getFullYear()}-${String(nowForView.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`

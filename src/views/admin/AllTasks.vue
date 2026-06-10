@@ -45,7 +45,7 @@
           </template>
           <div class="column-settings">
             <el-checkbox-group v-model="visibleColumns">
-              <el-checkbox v-for="col in columnOptions" :key="col.key" :label="col.key">{{ col.label }}</el-checkbox>
+              <el-checkbox v-for="col in columnOptions" :key="col.key" :value="col.key">{{ col.label }}</el-checkbox>
             </el-checkbox-group>
           </div>
         </el-popover>
@@ -294,7 +294,7 @@ async function loadData() {
     })
     if (res.code === 0) {
       list.value = res.data.list
-      total.value = res.data.total
+      total.value = Number(res.data.total) || 0
       const openTaskId = route.query.openTask
       if (openTaskId) {
         const task = list.value.find(t => t.id == openTaskId)
