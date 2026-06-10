@@ -84,8 +84,29 @@ function applyVisibility(table, tableId, cells, visible) {
 
 function closeOtherPanels(activePanel) {
   document.querySelectorAll('.nexus-column-panel.is-open').forEach(panel => {
-    if (panel !== activePanel) panel.classList.remove('is-open')
+    if (panel !== activePanel) {
+      panel.classList.remove('is-open')
+      panel.classList.remove('is-teleported')
+      panel.removeAttribute('style')
+    }
   })
+}
+
+function positionPanel(button, panel) {
+  const rect = button.getBoundingClientRect()
+  const width = Math.max(panel.offsetWidth || 180, 180)
+  const margin = 8
+  const left = Math.min(
+    Math.max(margin, rect.right - width),
+    window.innerWidth - width - margin
+  )
+  const top = Math.min(rect.bottom + margin, window.innerHeight - margin)
+  panel.style.position = 'fixed'
+  panel.style.left = `${left}px`
+  panel.style.top = `${top}px`
+  panel.style.right = 'auto'
+  panel.style.zIndex = '4000'
+  panel.classList.add('is-teleported')
 }
 
 function removeEnhancement(table) {
@@ -169,8 +190,14 @@ function createControl(table, tableId, cells, storageKey, visible) {
 
   button.addEventListener('click', event => {
     event.stopPropagation()
-    closeOtherPanels(panel)
-    panel.classList.toggle('is-open')
+    const willOpen = !panel.classList.contains('is-open')
+    closeOtherPanels(willOpen ? panel : null)
+    panel.classList.toggle('is-open', willOpen)
+    if (willOpen) positionPanel(button, panel)
+    else {
+      panel.classList.remove('is-teleported')
+      panel.removeAttribute('style')
+    }
   })
   panel.addEventListener('click', event => event.stopPropagation())
 
@@ -221,6 +248,8 @@ export function installTableEnhancements() {
   }
   scheduleEnhance()
   window.addEventListener('hashchange', scheduleEnhance)
+  window.addEventListener('resize', () => closeOtherPanels(null))
+  window.addEventListener('scroll', () => closeOtherPanels(null), true)
   document.addEventListener('click', () => closeOtherPanels(null))
 
   observer = new MutationObserver(scheduleEnhance)

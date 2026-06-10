@@ -350,6 +350,11 @@ body,
   background: var(--dd-bg-card);
   box-shadow: var(--dd-shadow-lg);
   pointer-events: auto;
+  z-index: 4000;
+}
+
+.nexus-column-panel.is-teleported {
+  max-height: min(360px, calc(100vh - 24px));
 }
 
 .nexus-column-panel.is-open {
