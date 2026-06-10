@@ -143,7 +143,8 @@
           <div class="inline-detail-header">
             <div class="detail-header-left">
               <span class="detail-number">#{{ currentTask.task_no }}</span>
-              <span style="font-size:14px;font-weight:600;">{{ currentTask.designer_name }}</span>
+              <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
+              <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
             </div>
             <div class="detail-header-right">
               <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
@@ -151,17 +152,32 @@
           </div>
 
           <div class="inline-detail-body">
+            <TaskStatusTimeline :task="currentTask" task-group="cs" />
+            <div class="inline-detail-stat-card">
+              <label>发布人</label>
+              <span>{{ currentTask.publisher_name || '-' }}</span>
+            </div>
+            <div class="inline-detail-stat-card">
+              <label>基础美工</label>
+              <span>{{ currentTask.designer_name || '未接单' }}</span>
+            </div>
+            <div class="inline-detail-stat-card">
+              <label>工作项目</label>
+              <span>{{ currentTask.title || '-' }}</span>
+            </div>
+            <div class="inline-detail-stat-card">
+              <label>最终分值</label>
+              <span>{{ currentTask.score || '-' }}</span>
+            </div>
             <div class="inline-detail-stat-card">
               <label>申请分值</label>
               <span style="color:var(--dd-primary);font-weight:600;font-size:18px;">{{ currentTask.applied_score }}</span>
             </div>
             <div class="inline-detail-stat-card">
-              <label>最终分值</label>
-              <span>{{ currentTask.score }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
-              <label>上传提交时间</label>
-              <span>{{ formatDate(currentTask.submit_time) }}</span>
+              <label>分值审核状态</label>
+              <el-tag :type="currentTask.score_review_status === 'approved' ? 'success' : 'danger'" size="small">
+                {{ currentTask.score_review_status === 'approved' ? '已通过' : '已驳回' }}
+              </el-tag>
             </div>
             <div class="inline-detail-stat-card">
               <label>旺旺ID</label>
@@ -171,15 +187,13 @@
               <label>款号</label>
               <span>{{ currentTask.style_number || '无' }}</span>
             </div>
-            <div class="inline-detail-stat-card">
-              <label>审核状态</label>
-              <el-tag :type="currentTask.score_review_status === 'approved' ? 'success' : 'danger'" size="small">
-                {{ currentTask.score_review_status === 'approved' ? '已通过' : '已驳回' }}
-              </el-tag>
-            </div>
             <div v-if="currentTask.score_review_reason" class="inline-detail-stat-card full-width">
               <label>驳回原因</label>
               <div class="value" style="white-space:pre-wrap;">{{ currentTask.score_review_reason }}</div>
+            </div>
+            <div v-if="currentTask.reject_reason" class="inline-detail-stat-card full-width">
+              <label>任务驳回原因</label>
+              <div class="value" style="color:#e63946;white-space:pre-wrap;">{{ currentTask.reject_reason }}</div>
             </div>
             <div class="inline-detail-stat-card full-width">
               <label>任务描述</label>
@@ -239,8 +253,9 @@ import { Close, Document } from '@element-plus/icons-vue'
 import { getScoreReviewRecordsApi } from '@/api/score'
 import { getTaskDetailApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { getBasicDesignerListApi, getPublisherListApi } from '@/api'
-import { formatDate, formatFileSize } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import Pagination from '@/components/Pagination.vue'
+import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 
 const loading = ref(false)
@@ -263,6 +278,9 @@ const detailVisible = ref(false)
 const currentTask = ref(null)
 
 const { getRefImages, getRefAttachments, getRefImageSrcList, getWorkFiles, getFirstImage, getImageSrcList, downloadFile } = useFileHelpers()
+
+function statusLabel(status) { return STATUS_MAP[status] || status || '-' }
+function statusType(status) { return STATUS_TAG_TYPE[status] || 'info' }
 
 const detailRefImages = computed(() => {
   if (!currentTask.value?.files) return []
