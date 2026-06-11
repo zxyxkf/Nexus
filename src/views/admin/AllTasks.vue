@@ -88,7 +88,8 @@
       <div v-if="detailVisible" class="inline-detail-overlay">
         <div class="inline-detail-header">
           <div class="detail-header-left">
-            <span class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
+            <span v-if="taskGroup === 'cs'" class="detail-number">#{{ currentTask.task_no }}</span>
+            <span v-else class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
             <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
             <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
           </div>
@@ -99,6 +100,7 @@
 
         <div class="inline-detail-body">
           <TaskStatusTimeline :task="currentTask" :task-group="taskGroup" />
+          <TaskTransferTimeline v-if="taskGroup === 'cs'" :records="currentTask.transfer_records || []" />
           <div class="inline-detail-stat-card">
             <label>{{ publisherLabel }}</label>
             <span>{{ currentTask.publisher_name }}</span>
@@ -128,8 +130,26 @@
             <span>{{ currentTask.task_file_path || '-' }}</span>
           </div>
           <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
+            <label>旺旺ID</label>
+            <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
+          </div>
+          <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
+            <label>款号</label>
+            <span>{{ currentTask.style_number || '无' }}</span>
+          </div>
+          <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
             <label>申请分数</label>
-            <span>{{ currentTask.applied_score || '-' }}</span>
+            <span>{{ formatScoreValue(currentTask.applied_score) }}</span>
+          </div>
+          <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
+            <label>分数审核状态</label>
+            <el-tag :type="scoreReviewTagType(currentTask.score_review_status)" size="small">
+              {{ formatScoreReviewStatus(currentTask.score_review_status, currentTask) }}
+            </el-tag>
+          </div>
+          <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
+            <label>分数审核通过分数</label>
+            <span>{{ formatScoreReviewApprovedScore(currentTask) }}</span>
           </div>
           <div v-if="taskGroup === 'design' || taskGroup === 'operator'" class="inline-detail-stat-card full-width">
             <label>上传路径</label>
@@ -138,6 +158,10 @@
           <div v-if="currentTask.status==='rejected'" class="inline-detail-stat-card full-width">
             <label>驳回原因</label>
             <div class="value" style="color:#e63946;">{{ currentTask.reject_reason }}</div>
+          </div>
+          <div v-if="taskGroup === 'cs' && currentTask.score_review_reason" class="inline-detail-stat-card full-width">
+            <label>分数审核驳回原因</label>
+            <div class="value" style="color:#e63946;white-space:pre-wrap;">{{ currentTask.score_review_reason }}</div>
           </div>
           <div class="inline-detail-stat-card full-width">
             <label>任务描述</label>
@@ -207,8 +231,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Delete, Document } from '@element-plus/icons-vue'
 import { getAllTasksApi, getTaskDetailApi, getTaskPublisherListApi, getTaskDesignerListApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, deleteTaskApi, batchDeleteApi, batchDownloadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { exportTasksApi } from '@/api/export'
