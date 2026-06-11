@@ -104,7 +104,7 @@
           >
             <template #reference>
               <el-badge :value="unreadCount" :hidden="unreadCount === 0" class="notify-badge" :max="99">
-                <el-icon :size="34" class="header-icon-btn" :class="{ 'notify-pulse': hasNewNotify }">
+                <el-icon :size="16" class="header-icon-btn" :class="{ 'notify-pulse': hasNewNotify }">
                   <Bell />
                 </el-icon>
               </el-badge>
@@ -113,13 +113,13 @@
             <!-- 通知面板 -->
             <div class="notify-panel">
               <div class="notify-header">
-                <span class="notify-title">消息通知</span>
+                <span class="notify-title">最近通知</span>
                 <div class="notify-actions">
                   <el-button v-if="unreadCount > 0" type="primary" link size="small" @click="markAllRead">
-                    全部已读
+                    已读
                   </el-button>
-                  <el-button type="danger" link size="small" @click="clearAllNotifications">
-                    清空
+                  <el-button type="primary" link size="small" @click="openNotificationCenter">
+                    查看全部
                   </el-button>
                 </div>
               </div>
@@ -133,16 +133,25 @@
                   v-for="item in notifications"
                   :key="item.id"
                   class="notify-item"
-                  :class="{ 'notify-unread': !item.is_read }"
+                  :class="{ 'notify-unread': !item.is_read, 'notify-important': !item.is_read && Number(item.priority) >= 3 }"
                   @click="handleNotifyClick(item)"
                 >
                   <div class="notify-dot" v-if="!item.is_read"></div>
                   <div class="notify-content">
-                    <div class="notify-item-title">{{ item.title }}</div>
+                    <div class="notify-item-head">
+                      <span class="notify-item-title">{{ item.title }}</span>
+                      <span class="notify-priority" :class="'notify-priority-' + (item.priority || 1)">{{ priorityLabel(item.priority) }}</span>
+                    </div>
                     <div class="notify-item-desc">{{ item.content }}</div>
-                    <div class="notify-item-time">{{ item.create_time }}</div>
+                    <div class="notify-item-time">
+                      <span>{{ typeLabel(item.type) }}</span>
+                      <span>{{ item.create_time }}</span>
+                    </div>
                   </div>
                 </div>
+              </div>
+              <div class="notify-footer">
+                <el-button link type="primary" @click="openNotificationCenter">进入通知中心</el-button>
               </div>
             </div>
           </el-popover>
@@ -276,7 +285,7 @@ import { ref, computed, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store'
-import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, deleteNotification, onConnectionChange, getOnlineStatus, getTaskDetailApi } from '@/api'
+import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, onConnectionChange, getOnlineStatus, getTaskDetailApi } from '@/api'
 import { ROLE_LABEL, ROLE_TAG_TYPE } from '@/utils/format'
 import { useConfig } from '@/composables/useConfig'
 import { HomeFilled, Bell, Moon, Sunny, User, Connection, WarningFilled } from '@element-plus/icons-vue'
@@ -310,11 +319,36 @@ const unreadCount = ref(0)
 const hasNewNotify = ref(false)
 let pulseTimer = null
 
+const TYPE_LABELS = {
+  task_urge: '催促提醒',
+  task_accept: '任务接单',
+  task_submit: '任务提交',
+  task_review: '审核通过',
+  task_reject: '审核驳回',
+  task_assigned: '任务分配',
+  task_transfer: '任务转移',
+  task_comment: '任务评论',
+  score_review: '分值审核',
+  score_reject: '分值驳回',
+  system: '系统通知'
+}
+
+function typeLabel(type) {
+  return TYPE_LABELS[type] || type || '通知'
+}
+
+function priorityLabel(priority) {
+  const p = Number(priority) || 1
+  if (p >= 3) return '重要'
+  if (p === 2) return '一般'
+  return '普通'
+}
+
 // 获取通知列表
 async function loadNotifications() {
   try {
     notifyLoading.value = true
-    const res = await getNotificationList({ pageSize: 20 })
+    const res = await getNotificationList({ pageSize: 8 })
     if (res.code === 0) {
       notifications.value = res.data.list || []
     }
@@ -323,6 +357,11 @@ async function loadNotifications() {
   } finally {
     notifyLoading.value = false
   }
+}
+
+function openNotificationCenter() {
+  notifyPopoverVisible.value = false
+  router.push('/notifications')
 }
 
 // 获取未读数量
@@ -355,19 +394,6 @@ async function markAllRead() {
     const res = await readNotification({ all: true })
     if (res.code === 0) {
       notifications.value.forEach(n => { n.is_read = 1 })
-      unreadCount.value = 0
-      updateDocTitle()
-    }
-  } catch (e) {}
-}
-
-// 清空所有通知
-async function clearAllNotifications() {
-  try {
-    await ElMessageBox.confirm('确认清空所有通知？', '提示')
-    const res = await deleteNotification({ all: true })
-    if (res.code === 0) {
-      notifications.value = []
       unreadCount.value = 0
       updateDocTitle()
     }
@@ -852,16 +878,22 @@ async function changePassword() {
 
 /* 顶部图标按钮 */
 .header-icon-btn {
-  padding: 10px;
-  border-radius: 10px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
   cursor: pointer;
-  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--dd-bg-card);
   color: var(--dd-text-secondary);
+  box-shadow: 0 0 0 1.5px var(--dd-border);
+  transition: all 0.15s ease;
   position: relative;
 }
 .header-icon-btn:hover {
-  background: var(--dd-primary-lighter);
   color: var(--dd-primary);
+  box-shadow: 0 0 0 1.5px var(--dd-primary-light);
 }
 .header-icon-btn:active {
   opacity: 0.8;
@@ -869,7 +901,12 @@ async function changePassword() {
 
 /* 铃铛角标 */
 .notify-badge :deep(.el-badge__content) {
-  font-size: 10px; height: 18px; line-height: 18px; padding: 0 5px;
+  font-size: 10px;
+  height: 16px;
+  min-width: 16px;
+  line-height: 16px;
+  padding: 0 4px;
+  transform: translate(34%, -34%);
 }
 
 /* 时钟 */
@@ -1031,17 +1068,23 @@ async function changePassword() {
 .notify-title { font-size: 15px; font-weight: 600; color: var(--dd-text-primary); }
 .notify-actions { display: flex; gap: 8px; }
 .notify-list { max-height: 380px; overflow-y: auto; flex: 1; }
+.notify-footer { padding: 8px 16px; border-top: 1px solid var(--dd-border-light); text-align: center; flex-shrink: 0; }
 .notify-empty { display: flex; flex-direction: column; align-items: center; justify-content: center; padding: 32px 16px; color: var(--dd-text-muted); gap: 8px; }
 .notify-empty p { margin: 0; font-size: 13px; }
 .notify-item { display: flex; gap: 10px; padding: 12px 16px; cursor: pointer; transition: background var(--dd-transition-fast); border-bottom: 1px solid var(--dd-border-light); }
 .notify-item:last-child { border-bottom: none; }
 .notify-item:hover { background: var(--dd-primary-lighter); }
 .notify-unread { background: rgba(67, 97, 238, 0.03); }
+.notify-important { background: rgba(230, 57, 70, 0.08); }
 .notify-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--dd-primary); flex-shrink: 0; margin-top: 6px; }
 .notify-content { flex: 1; min-width: 0; }
-.notify-item-title { font-size: 13px; font-weight: 600; color: var(--dd-text-primary); margin-bottom: 2px; }
+.notify-item-head { display: flex; align-items: center; gap: 8px; margin-bottom: 2px; min-width: 0; }
+.notify-item-title { flex: 1; min-width: 0; font-size: 13px; font-weight: 600; color: var(--dd-text-primary); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.notify-priority { flex-shrink: 0; font-size: 11px; line-height: 18px; padding: 0 6px; border-radius: 999px; color: var(--dd-text-secondary); background: rgba(148, 163, 184, 0.15); }
+.notify-priority-2 { color: #b7791f; background: rgba(245, 158, 11, 0.16); }
+.notify-priority-3 { color: #c92a2a; background: rgba(230, 57, 70, 0.16); }
 .notify-item-desc { font-size: 12px; color: var(--dd-text-secondary); line-height: 1.4; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
-.notify-item-time { font-size: 11px; color: var(--dd-text-muted); margin-top: 4px; }
+.notify-item-time { display: flex; justify-content: space-between; gap: 8px; font-size: 11px; color: var(--dd-text-muted); margin-top: 4px; }
 
 /* ===== 无限网格背景上层内容 ===== */
 .main-content-wrap {

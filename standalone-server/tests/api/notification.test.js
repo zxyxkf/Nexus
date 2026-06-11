@@ -106,6 +106,26 @@ describe('GET /api/notification/list', () => {
       expect(res.body.data.list.every(n => n.is_read === 0)).toBe(true);
     }
   });
+
+  it('支持类型和优先级筛选', async () => {
+    const highRes = await request(app)
+      .get('/api/notification/list?priority=high&pageSize=20')
+      .set('Authorization', `Bearer ${designerToken}`);
+    expect(highRes.body.code).toBe(0);
+    expect(Array.isArray(highRes.body.data.list)).toBe(true);
+    highRes.body.data.list.forEach(n => {
+      expect(n.priority).toBe(3);
+      expect(n.priority_label).toBe('重要');
+    });
+
+    const typeRes = await request(app)
+      .get('/api/notification/list?type=task_urge&pageSize=20')
+      .set('Authorization', `Bearer ${designerToken}`);
+    expect(typeRes.body.code).toBe(0);
+    typeRes.body.data.list.forEach(n => {
+      expect(n.type).toBe('task_urge');
+    });
+  });
 });
 
 describe('POST /api/notification/read', () => {

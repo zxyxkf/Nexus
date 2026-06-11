@@ -3,7 +3,7 @@
     <el-input
       v-model="keyword"
       class="global-search-input"
-      placeholder="搜索任务编号/标题"
+      placeholder="搜索编号/旺旺/款号/人员/文件"
       clearable
       @focus="openPanel"
       @keyup.enter="searchNow"
@@ -19,7 +19,7 @@
       </div>
       <div class="search-body" v-loading="loading">
         <el-empty v-if="!loading && hasSearched && results.length === 0" description="没有匹配任务" :image-size="72" />
-        <div v-if="!hasSearched && !loading" class="search-hint">输入任务编号、标题、款号或旺旺ID后回车</div>
+        <div v-if="!hasSearched && !loading" class="search-hint">输入任务编号、旺旺ID、款号、发布人、接单人或文件名</div>
         <div
           v-for="item in results"
           :key="item.id"
@@ -35,6 +35,12 @@
             <el-tag size="small" :type="statusType(item.status)" effect="plain">{{ statusLabel(item.status) }}</el-tag>
             <span>{{ item.publisher_name || '-' }} → {{ item.designer_name || '未接单' }}</span>
           </div>
+          <div class="result-extra">
+            <span v-if="item.wangwang_id">旺旺: {{ item.wangwang_id }}</span>
+            <span v-if="item.style_number">款号: {{ item.style_number }}</span>
+            <span v-if="item.shop_name">店铺: {{ item.shop_name }}</span>
+            <span>{{ formatTime(item.update_time || item.create_time) }}</span>
+          </div>
         </div>
       </div>
     </div>
@@ -42,7 +48,7 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { onBeforeUnmount, ref, watch } from 'vue'
 import { Search } from '@element-plus/icons-vue'
 import { searchTasksApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE } from '@/utils/format'
@@ -53,6 +59,7 @@ const visible = ref(false)
 const loading = ref(false)
 const results = ref([])
 const hasSearched = ref(false)
+let searchTimer = null
 
 function statusLabel(status) {
   return STATUS_MAP[status] || status
@@ -75,6 +82,11 @@ function openPanel() {
 function clearResults() {
   results.value = []
   hasSearched.value = false
+  loading.value = false
+  if (searchTimer) {
+    clearTimeout(searchTimer)
+    searchTimer = null
+  }
 }
 
 async function searchNow() {
@@ -96,16 +108,36 @@ async function searchNow() {
   }
 }
 
+function formatTime(value) {
+  if (!value) return '-'
+  return String(value).replace('T', ' ').slice(0, 16)
+}
+
 function selectTask(item) {
   visible.value = false
   openTask(item)
 }
+
+watch(keyword, (value) => {
+  if (searchTimer) clearTimeout(searchTimer)
+  const text = value.trim()
+  if (!text) {
+    clearResults()
+    return
+  }
+  if (text.length < 2) return
+  searchTimer = setTimeout(searchNow, 300)
+})
+
+onBeforeUnmount(() => {
+  if (searchTimer) clearTimeout(searchTimer)
+})
 </script>
 
 <style scoped>
 .global-task-search {
   position: relative;
-  width: 240px;
+  width: 280px;
 }
 .global-search-input :deep(.el-input__wrapper) {
   border-radius: 8px;
@@ -114,7 +146,7 @@ function selectTask(item) {
   position: absolute;
   top: 42px;
   right: 0;
-  width: 420px;
+  width: 520px;
   max-width: calc(100vw - 32px);
   background: var(--dd-bg-card, #fff);
   border: 1px solid var(--dd-border, #e5e7eb);
@@ -177,6 +209,20 @@ function selectTask(item) {
   display: flex;
   align-items: center;
   gap: 6px;
+  min-width: 0;
+  color: var(--dd-text-muted, #909399);
+  font-size: 12px;
+}
+.result-meta span,
+.result-extra span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.result-extra {
+  margin-top: 6px;
+  display: flex;
+  gap: 10px;
   min-width: 0;
   color: var(--dd-text-muted, #909399);
   font-size: 12px;

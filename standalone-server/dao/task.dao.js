@@ -482,9 +482,10 @@ async function searchTasks({ userId, role, store, permissions = [], keyword, pag
     const like = `%${keyword}%`;
     where += ` AND (
       t.task_no LIKE ? OR t.title LIKE ? OR t.style_number LIKE ? OR
-      t.wangwang_id LIKE ? OR t.shop_name LIKE ? OR t.publisher_name LIKE ? OR t.designer_name LIKE ?
+      t.wangwang_id LIKE ? OR t.shop_name LIKE ? OR t.publisher_name LIKE ? OR t.designer_name LIKE ? OR
+      EXISTS (SELECT 1 FROM task_file tf WHERE tf.task_id = t.id AND tf.file_name LIKE ?)
     )`;
-    params.push(like, like, like, like, like, like, like);
+    params.push(like, like, like, like, like, like, like, like);
   }
 
   const pool = getPool();

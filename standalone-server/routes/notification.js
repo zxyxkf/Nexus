@@ -8,6 +8,28 @@ const { execute } = require('../config/database');
 const { requireAuth } = require('../middleware/auth');
 const { createLogMiddleware } = require('../utils/operLog');
 
+const HIGH_PRIORITY_TYPES = ['task_urge', 'task_reject', 'task_transfer', 'score_review', 'score_reject'];
+const MEDIUM_PRIORITY_TYPES = ['task_submit', 'task_review', 'task_assigned'];
+const LOW_PRIORITY_TYPES = ['task_accept', 'task_comment', 'system'];
+const KNOWN_TYPES = new Set([...HIGH_PRIORITY_TYPES, ...MEDIUM_PRIORITY_TYPES, ...LOW_PRIORITY_TYPES]);
+
+function priorityCaseSql(alias = '') {
+  const col = alias ? `${alias}.type` : 'type';
+  const high = HIGH_PRIORITY_TYPES.map(() => '?').join(',');
+  const medium = MEDIUM_PRIORITY_TYPES.map(() => '?').join(',');
+  return `CASE WHEN ${col} IN (${high}) THEN 3 WHEN ${col} IN (${medium}) THEN 2 ELSE 1 END`;
+}
+
+function enrichNotification(row) {
+  const type = row.type || 'system';
+  const priority = HIGH_PRIORITY_TYPES.includes(type) ? 3 : MEDIUM_PRIORITY_TYPES.includes(type) ? 2 : 1;
+  return {
+    ...row,
+    priority,
+    priority_label: priority === 3 ? '重要' : priority === 2 ? '一般' : '普通'
+  };
+}
+
 /**
  * GET /api/notification/list - 获取用户通知列表
  */
@@ -18,11 +40,27 @@ router.get('/list', requireAuth, async (req, res) => {
     const pageSize = parseInt(req.query.pageSize) || 20;
     const offset = (page - 1) * pageSize;
     const unreadOnly = req.query.unreadOnly === 'true';
+    const type = String(req.query.type || '').trim();
+    const priority = String(req.query.priority || '').trim();
 
     let whereSql = 'WHERE user_id = ?';
     const params = [userId];
     if (unreadOnly) {
       whereSql += ' AND is_read = 0';
+    }
+    if (type && KNOWN_TYPES.has(type)) {
+      whereSql += ' AND type = ?';
+      params.push(type);
+    }
+    if (priority === 'high') {
+      whereSql += ` AND type IN (${HIGH_PRIORITY_TYPES.map(() => '?').join(',')})`;
+      params.push(...HIGH_PRIORITY_TYPES);
+    } else if (priority === 'medium') {
+      whereSql += ` AND type IN (${MEDIUM_PRIORITY_TYPES.map(() => '?').join(',')})`;
+      params.push(...MEDIUM_PRIORITY_TYPES);
+    } else if (priority === 'low') {
+      whereSql += ` AND (type IN (${LOW_PRIORITY_TYPES.map(() => '?').join(',')}) OR type IS NULL OR type = '')`;
+      params.push(...LOW_PRIORITY_TYPES);
     }
 
     const [countResult] = await execute(
@@ -30,12 +68,16 @@ router.get('/list', requireAuth, async (req, res) => {
     );
     const total = countResult?.total || 0;
 
+    const prioritySql = priorityCaseSql();
+    const priorityParams = [...HIGH_PRIORITY_TYPES, ...MEDIUM_PRIORITY_TYPES];
     const [rows] = await execute(
-      `SELECT * FROM sys_notification ${whereSql} ORDER BY create_time DESC LIMIT ? OFFSET ?`,
-      [...params, pageSize, offset]
+      `SELECT * FROM sys_notification ${whereSql}
+       ORDER BY is_read ASC, ${prioritySql} DESC, create_time DESC
+       LIMIT ? OFFSET ?`,
+      [...params, ...priorityParams, pageSize, offset]
     );
 
-    res.json({ code: 0, data: { list: rows || [], total } });
+    res.json({ code: 0, data: { list: (rows || []).map(enrichNotification), total } });
   } catch (err) {
     console.error('[Notification] 列表查询失败:', err);
     res.status(500).json({ code: 500, msg: '查询通知失败' });
