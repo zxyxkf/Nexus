@@ -6,6 +6,7 @@ const AppError = require('../utils/AppError');
 const userDao = require('../dao/user.dao');
 const permissionService = require('./permission.service');
 const { attachOnlineStatus } = require('../utils/online');
+const { canViewAllTaskGroup } = require('../utils/task-permissions');
 
 const VALID_ROLES = ['admin', 'sub_admin', 'operator', 'designer', 'cs_agent', 'basic_designer', 'operator_assistant'];
 const DEFAULT_PASSWORD = '123456';
@@ -72,20 +73,6 @@ async function getPublisherList(userRole, userStore) {
     return userDao.getPublishersByRole('cs_agent');
   }
   return userDao.getPublishersByRole('cs_agent');
-}
-
-function canViewAllTaskGroup(user, taskGroup) {
-  const permissionMap = {
-    design: 'admin.tasks.design',
-    operator: 'admin.tasks.operator',
-    cs: 'admin.tasks.cs'
-  };
-  const permission = permissionMap[taskGroup];
-  return !!permission && (
-    user?.role === 'admin' ||
-    user?.role === 'sub_admin' ||
-    (user?.permissions || []).includes(permission)
-  );
 }
 
 async function getTaskPublisherList(taskGroup, user) {

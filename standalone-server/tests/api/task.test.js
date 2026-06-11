@@ -429,6 +429,107 @@ describe('任务查询', () => {
       expect(res.body.data.list.every(t => Number(t.publisher_id) === Number(operatorId))).toBe(true);
     }
   });
+
+  it('普通角色拥有对应全量任务权限时可以查看该分区详情且不能跨分区越权', async () => {
+    const suffix = Date.now();
+    const createdUserIds = [];
+    const createdTaskIds = [];
+
+    async function createUserAndGetId(username, role, realName) {
+      const createRes = await request(app)
+        .post('/api/user/create')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ username, password: 'test123456', realName, role });
+      expect(createRes.body.code).toBe(0);
+
+      const listRes = await request(app)
+        .get(`/api/user/list?role=${role}`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      const user = listRes.body.data.list.find(u => u.username === username);
+      expect(user).toBeDefined();
+      createdUserIds.push(user.id);
+      return user;
+    }
+
+    async function grantAndLogin(user, permission) {
+      const saveRes = await request(app)
+        .post('/api/user/permissions/save')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ userId: user.id, permissions: [permission], deniedPermissions: [] });
+      expect(saveRes.body.code).toBe(0);
+
+      const loginRes = await request(app)
+        .post('/api/auth/login')
+        .send({ username: user.username, password: 'test123456' });
+      expect(loginRes.body.code).toBe(0);
+      return loginRes.body.data.token;
+    }
+
+    async function createAssignedTask(taskGroup, title, assigneeId) {
+      const createRes = await request(app)
+        .post('/api/task/create')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ title, shopName: '权限店铺', taskGroup, priority: 1, designerId: assigneeId });
+      expect(createRes.body.code).toBe(0);
+      createdTaskIds.push(createRes.body.data.id);
+      return createRes.body.data.id;
+    }
+
+    try {
+      const viewer = await createUserAndGetId(`all_detail_viewer_${suffix}`, 'designer', '全量详情权限测试用户');
+      const otherAssistant = await createUserAndGetId(`all_detail_assistant_${suffix}`, 'operator_assistant', '全量详情权限运营助理');
+      const otherBasic = await createUserAndGetId(`all_detail_basic_${suffix}`, 'basic_designer', '全量详情权限基础美工');
+
+      const designTaskId = await createAssignedTask('design', '全量详情权限设计任务', designerId);
+      const operatorTaskId = await createAssignedTask('operator', '全量详情权限运营助理任务', otherAssistant.id);
+      const csTaskId = await createAssignedTask('cs', '全量详情权限客服基础美工任务', otherBasic.id);
+
+      const designToken = await grantAndLogin(viewer, 'admin.tasks.design');
+      const designList = await request(app)
+        .get('/api/task/all?taskGroup=design&pageSize=20')
+        .set('Authorization', `Bearer ${designToken}`);
+      expect(designList.body.code).toBe(0);
+      expect(designList.body.data.list.some(t => Number(t.id) === Number(designTaskId))).toBe(true);
+
+      const designDetail = await request(app)
+        .get(`/api/task/detail?taskId=${designTaskId}`)
+        .set('Authorization', `Bearer ${designToken}`);
+      expect(designDetail.body.code).toBe(0);
+      expect(designDetail.body.data.title).toBe('全量详情权限设计任务');
+
+      const deniedOperatorDetail = await request(app)
+        .get(`/api/task/detail?taskId=${operatorTaskId}`)
+        .set('Authorization', `Bearer ${designToken}`);
+      expect(deniedOperatorDetail.body.code).toBe(403);
+
+      const operatorToken = await grantAndLogin(viewer, 'admin.tasks.operator');
+      const operatorDetail = await request(app)
+        .get(`/api/task/detail?taskId=${operatorTaskId}`)
+        .set('Authorization', `Bearer ${operatorToken}`);
+      expect(operatorDetail.body.code).toBe(0);
+      expect(operatorDetail.body.data.title).toBe('全量详情权限运营助理任务');
+
+      const csToken = await grantAndLogin(viewer, 'admin.tasks.cs');
+      const csDetail = await request(app)
+        .get(`/api/task/detail?taskId=${csTaskId}`)
+        .set('Authorization', `Bearer ${csToken}`);
+      expect(csDetail.body.code).toBe(0);
+      expect(csDetail.body.data.title).toBe('全量详情权限客服基础美工任务');
+    } finally {
+      for (const taskId of createdTaskIds) {
+        await request(app)
+          .post('/api/task/delete')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ taskId });
+      }
+      for (const id of createdUserIds) {
+        await request(app)
+          .post('/api/user/delete')
+          .set('Authorization', `Bearer ${adminToken}`)
+          .send({ id });
+      }
+    }
+  });
 });
 
 // ==================== 清理 ====================

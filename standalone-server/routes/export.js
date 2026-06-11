@@ -9,6 +9,7 @@ const { execute } = require('../config/database');
 const { requireAuth, requireAnyPermission } = require('../middleware/auth');
 const taskService = require('../services/task.service');
 const { defaultPermissionsFor } = require('../config/permissions');
+const { hasPermission, allowedAllTaskGroups, taskGroupSqlExpr } = require('../utils/task-permissions');
 
 router.use(requireAuth);
 
@@ -154,8 +155,10 @@ function addPublisherMonthlySheet(workbook, sheetName, rows) {
 router.get('/tasks', async (req, res) => {
   try {
     const { keyword, status, taskGroup, publisherId, designerId, startDate, endDate, taskIds } = req.query;
-    let sql = `SELECT * FROM task_info WHERE 1=1`;
+    let sql = `SELECT * FROM task_info t WHERE 1=1`;
     const params = [];
+    const canViewAll = hasPermission(req.user, 'task.view.all');
+    const allTaskGroups = allowedAllTaskGroups(req.user);
 
     if (taskIds) {
       const ids = String(taskIds).split(',').map(v => Number(v)).filter(Boolean);
@@ -163,6 +166,15 @@ router.get('/tasks', async (req, res) => {
         sql += ` AND id IN (${ids.map(() => '?').join(',')})`;
         params.push(...ids);
       }
+    }
+    if (req.user.role !== 'admin' && !canViewAll) {
+      const accessParts = ['(publisher_id = ? OR designer_id = ?)'];
+      params.push(req.user.id, req.user.id);
+      if (allTaskGroups.length) {
+        accessParts.push(`${taskGroupSqlExpr('t')} IN (${allTaskGroups.map(() => '?').join(',')})`);
+        params.push(...allTaskGroups);
+      }
+      sql += ` AND (${accessParts.join(' OR ')})`;
     }
     if (keyword) { sql += ` AND (title LIKE ? OR task_no LIKE ?)`; params.push(`%${keyword}%`, `%${keyword}%`); }
     if (status) { sql += ` AND status = ?`; params.push(status); }

@@ -99,9 +99,9 @@ const PERMISSION_IMPLICATIONS = {
   'basic.tasks.cs': ['task.upload.work', 'task.view.own', 'task.download.file'],
   'assistant.hall.operator': ['task.view.own', 'task.download.file'],
   'assistant.tasks.operator': ['task.upload.work', 'task.view.own', 'task.download.file'],
-  'admin.tasks.design': ['task.view.all', 'task.download.file', 'task.export'],
-  'admin.tasks.operator': ['task.view.all', 'task.download.file', 'task.export'],
-  'admin.tasks.cs': ['task.view.all', 'task.download.file', 'task.export'],
+  'admin.tasks.design': ['task.download.file', 'task.export'],
+  'admin.tasks.operator': ['task.download.file', 'task.export'],
+  'admin.tasks.cs': ['task.download.file', 'task.export'],
   'dashboard.design': ['dashboard.export'],
   'dashboard.operator': ['dashboard.export'],
   'dashboard.cs': ['dashboard.export']

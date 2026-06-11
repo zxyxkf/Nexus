@@ -457,13 +457,17 @@ async function searchTasks({ userId, role, store, permissions = [], keyword, pag
   const limit = Math.min(parseInt(pageSize) || 12, 30);
   const params = [];
   let where = 'WHERE 1=1';
-  const hasPerm = (code) => role === 'admin' || permissions.includes(code);
+  const hasPerm = (code) => role === 'admin' || permissions.includes('*') || permissions.includes(code);
+  const adminTaskGroups = [];
+  if (hasPerm('admin.tasks.design')) adminTaskGroups.push('design');
+  if (hasPerm('admin.tasks.operator')) adminTaskGroups.push('operator');
+  if (hasPerm('admin.tasks.cs')) adminTaskGroups.push('cs');
 
   if (role === 'admin' || role === 'sub_admin') {
-    const groups = [];
-    if (hasPerm('admin.tasks.design') || hasPerm('dashboard.design')) groups.push('design');
-    if (hasPerm('admin.tasks.operator') || hasPerm('dashboard.operator')) groups.push('operator');
-    if (hasPerm('admin.tasks.cs') || hasPerm('dashboard.cs')) groups.push('cs');
+    const groups = [...adminTaskGroups];
+    if (!groups.includes('design') && hasPerm('dashboard.design')) groups.push('design');
+    if (!groups.includes('operator') && hasPerm('dashboard.operator')) groups.push('operator');
+    if (!groups.includes('cs') && hasPerm('dashboard.cs')) groups.push('cs');
     if (groups.length) {
       where += ` AND COALESCE(t.task_group, 'design') IN (${groups.map(() => '?').join(',')})`;
       params.push(...groups);
@@ -471,6 +475,10 @@ async function searchTasks({ userId, role, store, permissions = [], keyword, pag
   } else {
     const accessParts = ['(t.publisher_id = ? OR t.designer_id = ?)'];
     params.push(userId, userId);
+    if (adminTaskGroups.length) {
+      accessParts.push(`COALESCE(NULLIF(t.task_group, ''), 'design') IN (${adminTaskGroups.map(() => '?').join(',')})`);
+      params.push(...adminTaskGroups);
+    }
     if (role === 'operator') {
       accessParts.push(`(COALESCE(t.task_group, 'design') IN ('design','operator') AND t.publisher_id IN (SELECT id FROM sys_user WHERE role = 'operator' AND store = ?))`);
       params.push(store || '');

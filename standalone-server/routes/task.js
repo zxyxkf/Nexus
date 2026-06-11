@@ -13,6 +13,7 @@ const { getPool } = require('../config/database');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { readImage, resolvePath } = require('../utils/share');
 const { MIME_MAP } = require('../dao/task.dao');
+const { hasPermission, canViewByAllTasksPermission } = require('../utils/task-permissions');
 
 // ==================== 文件预览/下载接口（URL token 认证） ====================
 
@@ -109,8 +110,12 @@ router.get('/batch-download', requireAuth, async (req, res, next) => {
       ids
     );
 
-    if (req.user.role !== 'admin' && req.user.role !== 'sub_admin') {
-      const invalid = tasks.some(t => Number(t.publisher_id) !== Number(req.user.id) && Number(t.designer_id) !== Number(req.user.id));
+    if (req.user.role !== 'admin' && !hasPermission(req.user, 'task.view.all')) {
+      const invalid = tasks.some(t =>
+        Number(t.publisher_id) !== Number(req.user.id) &&
+        Number(t.designer_id) !== Number(req.user.id) &&
+        !canViewByAllTasksPermission(t, req.user)
+      );
       if (invalid) return res.status(403).json({ code: 403, msg: '无权下载所选任务文件' });
     }
 

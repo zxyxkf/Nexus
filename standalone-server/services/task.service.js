@@ -14,6 +14,11 @@ const logger = require('../utils/business-logger');
 const { sendNotification } = require('../utils/notification');
 const { isUserOnline } = require('../utils/online');
 const { defaultPermissionsFor } = require('../config/permissions');
+const {
+  hasPermission,
+  canViewByAllTasksPermission,
+  allowedAllTaskGroups
+} = require('../utils/task-permissions');
 
 // ==================== 辅助 ====================
 
@@ -115,7 +120,8 @@ async function getTaskDetail(taskId, user) {
   if (!task) throw new AppError(400, '任务不存在');
 
   // 权限校验
-  if (user.role !== 'admin' && user.role !== 'sub_admin') {
+  const canViewAllTaskDetail = hasPermission(user, 'task.view.all') || canViewByAllTasksPermission(task, user);
+  if (user.role !== 'admin' && !canViewAllTaskDetail) {
     if (user.role === 'operator' || user.role === 'cs_agent') {
       if (Number(task.publisher_id) !== Number(user.id)) {
         // operator: 允许查看同店铺其他运营的任务
@@ -386,15 +392,7 @@ async function getAllTasks(query) {
 }
 
 function allowedAdminTaskGroups(user) {
-  const permissionMap = {
-    design: 'admin.tasks.design',
-    operator: 'admin.tasks.operator',
-    cs: 'admin.tasks.cs'
-  };
-  const permissions = new Set(user?.permissions || []);
-  return Object.entries(permissionMap)
-    .filter(([, permission]) => user?.role === 'admin' || permissions.has(permission))
-    .map(([group]) => group);
+  return allowedAllTaskGroups(user);
 }
 
 async function getAllTasksForUser(query, user) {
