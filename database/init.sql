@@ -53,7 +53,6 @@ CREATE TABLE `task_info` (
   `create_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP COMMENT '创建时间',
   `update_time` DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP COMMENT '更新时间',
   PRIMARY KEY (`id`) USING BTREE,
-  UNIQUE KEY `uk_task_no` (`task_no`) USING BTREE,
   KEY `idx_status` (`status`) USING BTREE,
   KEY `idx_publisher_id` (`publisher_id`) USING BTREE,
   KEY `idx_designer_id` (`designer_id`) USING BTREE,

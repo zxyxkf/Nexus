@@ -149,6 +149,75 @@ describe('基础美工申请分以客服通过为最终入账基准', () => {
   });
 });
 
+describe('客服已完成基础美工任务编号修改', () => {
+  const taskIds = [];
+
+  async function createFinishedCsTask(title) {
+    const create = await request(app)
+      .post('/api/task/create')
+      .set('Authorization', `Bearer ${csToken}`)
+      .send({
+        title,
+        taskGroup: 'cs',
+        score: 1,
+        designerId: basicId
+      });
+    expect(create.body.code).toBe(0);
+    const taskId = create.body.data.id;
+    taskIds.push(taskId);
+
+    await request(app)
+      .post('/api/task/upload-files')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(taskId))
+      .field('fileCategory', 'work')
+      .field('actualQuantity', '1')
+      .attach('files', Buffer.from(`${title} work`), `${title}.txt`)
+      .expect(200);
+
+    const pass = await request(app)
+      .post('/api/task/review')
+      .set('Authorization', `Bearer ${csToken}`)
+      .send({ taskId, action: 'pass' });
+    expect(pass.body.code).toBe(0);
+
+    const detail = await request(app)
+      .get(`/api/task/detail?taskId=${taskId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(detail.body.data.status).toBe('finished');
+    return detail.body.data;
+  }
+
+  it('客服可以把自己的已完成基础美工任务改成已有编号', async () => {
+    const first = await createFinishedCsTask('允许重复编号A');
+    const second = await createFinishedCsTask('允许重复编号B');
+
+    expect(first.task_no).toBeTruthy();
+    expect(second.task_no).toBeTruthy();
+    expect(second.task_no).not.toBe(first.task_no);
+
+    const update = await request(app)
+      .put('/api/task/cs-task-no')
+      .set('Authorization', `Bearer ${csToken}`)
+      .send({ taskId: second.id, taskNo: first.task_no });
+    expect(update.body.code).toBe(0);
+
+    const updated = await request(app)
+      .get(`/api/task/detail?taskId=${second.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(updated.body.data.task_no).toBe(first.task_no);
+  });
+
+  afterAll(async () => {
+    for (const taskId of taskIds) {
+      await request(app)
+        .post('/api/task/delete')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ taskId });
+    }
+  });
+});
+
 afterAll(async () => {
   for (const id of [csId, basicId, leadId]) {
     if (id) {

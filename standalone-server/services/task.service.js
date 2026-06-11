@@ -37,6 +37,7 @@ async function createTask(body, user) {
   const taskGroup = body.taskGroup || (user.role === 'cs_agent' ? 'cs' : 'design');
   const targetRole = getTargetRole(taskGroup);
 
+  return withLock(`task-no:${taskGroup}`, async () => {
   for (let retry = 0; retry < 3; retry++) {
     try {
       const result = await executeTransaction(async (conn) => {
@@ -104,6 +105,7 @@ async function createTask(body, user) {
     }
   }
   throw new AppError(500, '任务编号生成冲突，请重试');
+  });
 }
 
 async function getTaskDetail(taskId, user) {
@@ -285,11 +287,6 @@ async function updateCsTaskNo(taskId, taskNo, user) {
     if (task.status !== 'finished') throw new AppError(400, '仅已完成任务可修改编号');
     if (Number(task.publisher_id) !== Number(user.id)) throw new AppError(403, '无权修改他人发布的任务');
 
-    const [exists] = await conn.execute(
-      `SELECT id FROM task_info WHERE task_no = ? AND id <> ? LIMIT 1`,
-      [normalizedTaskNo, taskId]
-    );
-    if (exists.length) throw new AppError(400, '该任务编号已存在');
     await taskDao.updateTaskFields(conn, taskId, { task_no: normalizedTaskNo });
   });
 

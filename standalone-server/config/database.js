@@ -86,7 +86,7 @@ const CREATE_TABLES_SQL = {
     // 兼容旧路由使用的 task_info 表
     `CREATE TABLE IF NOT EXISTS task_info (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
-      task_no TEXT NOT NULL UNIQUE,
+      task_no TEXT NOT NULL,
       title TEXT NOT NULL,
       description TEXT DEFAULT '',
       priority INTEGER DEFAULT 2,
@@ -301,7 +301,7 @@ const CREATE_TABLES_SQL = {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     `CREATE TABLE IF NOT EXISTS task_info (
       id INT AUTO_INCREMENT PRIMARY KEY,
-      task_no VARCHAR(50) NOT NULL UNIQUE,
+      task_no VARCHAR(50) NOT NULL,
       title VARCHAR(500) NOT NULL,
       description TEXT,
       priority TINYINT DEFAULT 2,
@@ -457,6 +457,88 @@ const SEED_DATA = {
   ]
 };
 
+function mysqlQuoteIdent(name) {
+  return `\`${String(name).replace(/`/g, '``')}\``;
+}
+
+function sqliteQuoteIdent(name) {
+  return `"${String(name).replace(/"/g, '""')}"`;
+}
+
+async function dropMysqlTaskNoUniqueIndexes() {
+  const [indexes] = await dbEngine.execute(`SHOW INDEX FROM task_info WHERE Column_name = 'task_no' AND Non_unique = 0`);
+  const uniqueNames = [...new Set((indexes || []).map(row => row.Key_name).filter(name => name && name !== 'PRIMARY'))];
+  for (const indexName of uniqueNames) {
+    await dbEngine.execute(`ALTER TABLE task_info DROP INDEX ${mysqlQuoteIdent(indexName)}`);
+  }
+}
+
+function sqliteColumnDefinition(col) {
+  const name = String(col.name || '');
+  const type = String(col.type || '').trim() || (name === 'id' ? 'INTEGER' : 'TEXT');
+  const parts = [sqliteQuoteIdent(name), type];
+
+  if (Number(col.pk)) {
+    if (name === 'id' && /INT/i.test(type)) {
+      return `${sqliteQuoteIdent(name)} INTEGER PRIMARY KEY AUTOINCREMENT`;
+    }
+    parts.push('PRIMARY KEY');
+    return parts.join(' ');
+  }
+
+  if (Number(col.notnull)) parts.push('NOT NULL');
+  if (col.dflt_value !== null && col.dflt_value !== undefined) parts.push(`DEFAULT ${col.dflt_value}`);
+  return parts.join(' ');
+}
+
+async function sqliteTaskNoHasUniqueIndex() {
+  const [indexes] = await dbEngine.execute('PRAGMA index_list(task_info)');
+  for (const idx of indexes || []) {
+    if (!Number(idx.unique)) continue;
+    const indexName = sqliteQuoteIdent(idx.name);
+    const [cols] = await dbEngine.execute(`PRAGMA index_info(${indexName})`);
+    if ((cols || []).some(col => col.name === 'task_no')) return true;
+  }
+  return false;
+}
+
+async function rebuildSqliteTaskInfoWithoutTaskNoUnique() {
+  const [columns] = await dbEngine.execute('PRAGMA table_info(task_info)');
+  if (!columns || columns.length === 0) return;
+  if (!(await sqliteTaskNoHasUniqueIndex())) return;
+
+  const snapshot = dbEngine.sqliteDb.export();
+  const rebuildTable = 'task_info_taskno_rebuild';
+  const backupTable = 'task_info_taskno_old';
+  const columnNames = columns.map(col => sqliteQuoteIdent(col.name)).join(', ');
+  const columnDefs = columns.map(sqliteColumnDefinition).join(', ');
+
+  try {
+    await dbEngine.execute(`DROP TABLE IF EXISTS ${sqliteQuoteIdent(rebuildTable)}`);
+    await dbEngine.execute(`DROP TABLE IF EXISTS ${sqliteQuoteIdent(backupTable)}`);
+    await dbEngine.execute(`CREATE TABLE ${sqliteQuoteIdent(rebuildTable)} (${columnDefs})`);
+    await dbEngine.execute(`INSERT INTO ${sqliteQuoteIdent(rebuildTable)} (${columnNames}) SELECT ${columnNames} FROM task_info`);
+    await dbEngine.execute(`ALTER TABLE task_info RENAME TO ${sqliteQuoteIdent(backupTable)}`);
+    await dbEngine.execute(`ALTER TABLE ${sqliteQuoteIdent(rebuildTable)} RENAME TO task_info`);
+    await dbEngine.execute(`DROP TABLE ${sqliteQuoteIdent(backupTable)}`);
+    try {
+      await dbEngine.execute(`DELETE FROM sqlite_sequence WHERE name = 'task_info'`);
+      await dbEngine.execute(`INSERT INTO sqlite_sequence(name, seq) SELECT 'task_info', COALESCE(MAX(id), 0) FROM task_info`);
+    } catch (_) {}
+  } catch (err) {
+    dbEngine.restoreFromSnapshot(snapshot);
+    throw err;
+  }
+}
+
+async function ensureTaskNoAllowsDuplicates(mode) {
+  if (mode === 'mysql') {
+    await dropMysqlTaskNoUniqueIndexes();
+  } else {
+    await rebuildSqliteTaskInfoWithoutTaskNoUnique();
+  }
+}
+
 /**
  * 初始化数据库
  */
@@ -602,6 +684,10 @@ async function initDatabase() {
     ];
     for (const sql of alterSqls) {
       try { await dbEngine.execute(sql); } catch (err) {}
+    }
+
+    try { await ensureTaskNoAllowsDuplicates(mode); } catch (err) {
+      console.warn('[DB] 放开任务编号重复约束失败:', err.message);
     }
 
     // 插入种子数据（密码已用真实 bcrypt hash 固化，无需额外更新）
