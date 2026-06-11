@@ -18,7 +18,7 @@ const ROLE_PERMISSION_FALLBACK = {
   cs_agent: [
     'cs.publish.basic', 'cs.tasks.basic', 'cs.review.basic',
     'stats.personal', 'dashboard.cs',
-    'task.create.cs', 'task.review.own', 'task.view.own', 'task.download.file', 'notification.center'
+    'task.create.cs', 'cs.task_no.update', 'task.review.own', 'task.view.own', 'task.download.file', 'notification.center'
   ],
   designer: [
     'designer.hall.design', 'designer.tasks.design', 'stats.personal', 'dashboard.design',

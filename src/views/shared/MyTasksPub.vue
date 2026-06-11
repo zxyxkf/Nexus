@@ -183,7 +183,7 @@
             <el-button v-if="(row.status === 'wait' || row.status === 'accepted')" type="warning" link size="small" @click="handleWithdraw(row)">撤回</el-button>
             <el-button v-if="row.status === 'draft'" type="success" link size="small" @click="openEditDialog(row)">编辑</el-button>
             <el-button v-if="isCsAgent && row.status === 'finished'" type="danger" link size="small" @click="openReopenDialog(row)">重开</el-button>
-            <el-button v-if="isCsAgent && row.status === 'finished'" type="primary" link size="small" @click="openTaskNoDialog(row)">改编号</el-button>
+            <el-button v-if="canUpdateCsTaskNo && row.status === 'finished'" type="primary" link size="small" @click="openTaskNoDialog(row)">改编号</el-button>
             <el-button v-if="row.designer_id && row.status === 'accepted'" type="warning" link size="small" @click="urgeTask(row)">催促</el-button>
           </template>
         </el-table-column>
@@ -215,7 +215,7 @@
               <el-button v-if="(currentTask.status === 'wait' || currentTask.status === 'accepted')" type="warning" size="small" @click="handleWithdraw(currentTask)">撤回</el-button>
               <el-button v-if="currentTask.status === 'draft'" type="success" size="small" @click="openEditDialog(currentTask)">编辑</el-button>
               <el-button v-if="isCsAgent && currentTask.status === 'finished'" type="danger" size="small" @click="openReopenDialog(currentTask)">重开</el-button>
-              <el-button v-if="isCsAgent && currentTask.status === 'finished'" type="primary" size="small" @click="openTaskNoDialog(currentTask)">改编号</el-button>
+              <el-button v-if="canUpdateCsTaskNo && currentTask.status === 'finished'" type="primary" size="small" @click="openTaskNoDialog(currentTask)">改编号</el-button>
               <el-button v-if="currentTask.designer_id && currentTask.status === 'accepted'" type="warning" size="small" @click="urgeTask(currentTask)">催促</el-button>
               <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
             </div>
@@ -448,6 +448,7 @@ import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreRev
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
+import { hasPermission } from '@/utils/permissions'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
@@ -457,6 +458,7 @@ const router = useRouter()
 const taskGroup = computed(() => route.meta.taskGroup || (route.meta.role === 'cs_agent' ? 'cs' : 'design'))
 const isCsAgent = computed(() => taskGroup.value === 'cs')
 const isOperatorTask = computed(() => taskGroup.value === 'operator')
+const canUpdateCsTaskNo = computed(() => isCsAgent.value && hasPermission('cs.task_no.update'))
 const designerLabel = computed(() => isCsAgent.value ? '基础美工' : isOperatorTask.value ? '运营助理' : '美工')
 
 const searchKeyword = computed({

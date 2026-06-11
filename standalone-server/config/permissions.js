@@ -31,6 +31,7 @@ const PERMISSIONS = [
   { code: 'task.create.design', name: '创建美工任务', type: 'action', group: '任务操作' },
   { code: 'task.create.operator', name: '创建运营助理任务', type: 'action', group: '任务操作' },
   { code: 'task.create.cs', name: '创建客服任务', type: 'action', group: '任务操作' },
+  { code: 'cs.task_no.update', name: '修改基础美工任务编号', type: 'action', group: '客服基础美工' },
   { code: 'task.review.own', name: '审核自己发布的任务', type: 'action', group: '任务操作' },
   { code: 'task.review.store', name: '审核同店铺任务', type: 'action', group: '任务操作' },
   { code: 'task.review.all', name: '审核全部任务', type: 'action', group: '任务操作' },
@@ -61,7 +62,7 @@ const ROLE_DEFAULTS = {
   cs_agent: [
     'cs.publish.basic', 'cs.tasks.basic', 'cs.review.basic',
     'stats.personal', 'dashboard.cs',
-    'task.create.cs', 'task.review.own', 'task.view.own', 'task.download.file', 'notification.center'
+    'task.create.cs', 'cs.task_no.update', 'task.review.own', 'task.view.own', 'task.download.file', 'notification.center'
   ],
   designer: [
     'designer.hall.design', 'designer.tasks.design', 'stats.personal', 'dashboard.design',

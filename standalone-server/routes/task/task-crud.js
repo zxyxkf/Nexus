@@ -47,7 +47,7 @@ router.post('/reopen-finished-cs', requireAnyPermission(['task.create.cs'], 'cs_
 });
 
 // 客服修改已完成基础美工任务编号
-router.put('/cs-task-no', requireAnyPermission(['task.create.cs'], 'cs_agent'), async (req, res, next) => {
+router.put('/cs-task-no', requireAnyPermission(['cs.task_no.update'], 'cs_agent'), async (req, res, next) => {
   try {
     const result = await taskService.updateCsTaskNo(req.body.taskId, req.body.taskNo, req.user);
     res.json({ code: 0, ...result });

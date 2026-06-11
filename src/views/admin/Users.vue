@@ -260,7 +260,8 @@ const ALLOW_PERMISSION_GROUPS = [
       'cs.publish.basic',
       'cs.tasks.basic',
       'cs.review.basic',
-      'task.create.cs'
+      'task.create.cs',
+      'cs.task_no.update'
     ]
   },
   {

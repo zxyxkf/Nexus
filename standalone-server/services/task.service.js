@@ -278,7 +278,10 @@ async function reopenFinishedCsTask(body, user) {
 async function updateCsTaskNo(taskId, taskNo, user) {
   const normalizedTaskNo = String(taskNo || '').trim();
   if (!taskId || !normalizedTaskNo) throw new AppError(400, '任务ID和任务编号不能为空');
-  if (user.role !== 'cs_agent') throw new AppError(403, '仅客服可修改基础美工任务编号');
+  const permissions = new Set(user?.permissions || []);
+  const canUseLegacyCsRole = !user?.hasPermissionClaim && user?.role === 'cs_agent';
+  const canUpdateTaskNo = user?.role === 'admin' || permissions.has('*') || permissions.has('cs.task_no.update') || canUseLegacyCsRole;
+  if (!canUpdateTaskNo) throw new AppError(403, '缺少修改基础美工任务编号权限');
 
   let changedTask = null;
   await executeTransaction(async (conn) => {
