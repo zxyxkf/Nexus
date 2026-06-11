@@ -1278,6 +1278,51 @@ html.dark .inline-detail-overlay {
   grid-column: 1 / -1;
 }
 
+.inline-detail-section {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid var(--dd-border-light);
+  border-radius: var(--dd-radius-md);
+  background: rgba(255, 255, 255, 0.48);
+}
+
+html.dark .inline-detail-section {
+  background: rgba(255, 255, 255, 0.03);
+}
+
+.inline-detail-section-title {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin: 0 0 2px;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--dd-text-secondary);
+}
+
+.inline-detail-section-title::before {
+  content: '';
+  width: 3px;
+  height: 14px;
+  border-radius: 2px;
+  background: var(--dd-primary);
+}
+
+.inline-detail-people {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 10px;
+}
+
+.inline-detail-people .inline-detail-stat-card {
+  border-color: rgba(67, 97, 238, 0.22);
+}
+
 /* 详情文件区域 */
 .inline-detail-files {
   grid-column: 1 / -1;

@@ -121,7 +121,7 @@
 </template>
 
 <script setup>
-import { ref, reactive, computed, onMounted, onUnmounted, watch } from 'vue'
+import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Delete, Document } from '@element-plus/icons-vue'
@@ -146,6 +146,7 @@ const formRef = ref(null)
 const uploadRef = ref(null)
 const publishing = ref(false)
 const hasUnsavedData = ref(false)
+const suppressDirty = ref(false)
 const refImages = ref([])
 const refRawFiles = ref([])
 
@@ -190,14 +191,18 @@ function handleRemoveFile(file) {
   }
 }
 
-watch(() => form.scoreItemId, () => { hasUnsavedData.value = true })
-watch(() => form.description, () => { hasUnsavedData.value = true })
-watch(() => form.deadline, () => { hasUnsavedData.value = true })
-watch(() => refImages.value, () => { hasUnsavedData.value = true }, { deep: true })
+function markUnsaved() {
+  if (!suppressDirty.value) hasUnsavedData.value = true
+}
+
+watch(() => form.scoreItemId, markUnsaved)
+watch(() => form.description, markUnsaved)
+watch(() => form.deadline, markUnsaved)
+watch(() => refImages.value, markUnsaved, { deep: true })
 watch(taskGroup, async () => {
-  resetForm()
   scoreItems.value = []
   designers.value = []
+  resetForm()
   await Promise.all([loadScoreItems(), loadDesigners()])
 })
 
@@ -225,10 +230,27 @@ async function loadScoreItems() {
   try {
     const params = taskGroup.value ? { taskGroup: taskGroup.value } : {}
     const res = await getScoreItemsApi(params)
-    if (res.code === 0) scoreItems.value = res.data || []
+    if (res.code === 0) {
+      scoreItems.value = res.data || []
+      applyDefaultCsScoreItem()
+    }
   } catch (e) {
     console.error('[Publish] 加载积分项目失败:', e)
   }
+}
+
+function applyDefaultCsScoreItem() {
+  if (!isCsAgent.value || form.scoreItemId || !scoreItems.value.length) return
+  const defaultItem = scoreItems.value.find(item => item.name === '默认1分') || scoreItems.value.find(item => Number(item.score) === 1) || scoreItems.value[0]
+  if (!defaultItem) return
+  const wasDirty = hasUnsavedData.value
+  suppressDirty.value = true
+  form.scoreItemId = defaultItem.id
+  onScoreItemChange(defaultItem.id)
+  nextTick(() => {
+    suppressDirty.value = false
+    hasUnsavedData.value = wasDirty
+  })
 }
 
 async function loadDesigners() {
@@ -359,6 +381,7 @@ async function handlePublish() {
 }
 
 function resetForm() {
+  suppressDirty.value = true
   form.title = ''
   form.description = ''
   form.deadline = null
@@ -369,6 +392,11 @@ function resetForm() {
   hasUnsavedData.value = false
   refImages.value = []
   formRef.value?.resetFields()
+  applyDefaultCsScoreItem()
+  nextTick(() => {
+    suppressDirty.value = false
+    hasUnsavedData.value = false
+  })
 }
 </script>
 

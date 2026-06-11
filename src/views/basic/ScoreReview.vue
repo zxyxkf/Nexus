@@ -135,25 +135,43 @@
 
           <div class="inline-detail-body">
             <TaskTransferTimeline :records="currentTask.transfer_records || []" />
-            <div class="inline-detail-stat-card">
-              <label>申请分值</label>
-              <span style="color:var(--dd-primary);font-weight:600;font-size:18px;">{{ currentTask.applied_score }}</span>
+            <div class="inline-detail-people">
+              <div class="inline-detail-stat-card">
+                <label>发布人</label>
+                <span>{{ currentTask.publisher_name || '-' }}</span>
+              </div>
+              <div class="inline-detail-stat-card">
+                <label>接单人</label>
+                <span>{{ currentTask.designer_name || '未接单' }}</span>
+              </div>
             </div>
-            <div class="inline-detail-stat-card">
-              <label>上传提交时间</label>
-              <span>{{ formatDate(currentTask.submit_time) }}</span>
+
+            <div class="inline-detail-section">
+              <div class="inline-detail-section-title">任务信息</div>
+              <div class="inline-detail-stat-card">
+                <label>旺旺ID</label>
+                <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
+              </div>
+              <div class="inline-detail-stat-card">
+                <label>款号</label>
+                <span>{{ currentTask.style_number || '无' }}</span>
+              </div>
+              <div class="inline-detail-stat-card full-width">
+                <label>任务描述</label>
+                <div class="value" style="white-space:pre-wrap;">{{ currentTask.description || '暂无' }}</div>
+              </div>
             </div>
-            <div class="inline-detail-stat-card">
-              <label>旺旺ID</label>
-              <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
-              <label>款号</label>
-              <span>{{ currentTask.style_number || '无' }}</span>
-            </div>
-            <div class="inline-detail-stat-card full-width">
-              <label>任务描述</label>
-              <div class="value" style="white-space:pre-wrap;">{{ currentTask.description || '暂无' }}</div>
+
+            <div class="inline-detail-section">
+              <div class="inline-detail-section-title">提交与审核</div>
+              <div class="inline-detail-stat-card">
+                <label>申请分值</label>
+                <span style="color:var(--dd-primary);font-weight:600;font-size:18px;">{{ currentTask.applied_score }}</span>
+              </div>
+              <div class="inline-detail-stat-card">
+                <label>上传提交时间</label>
+                <span>{{ formatDate(currentTask.submit_time) }}</span>
+              </div>
             </div>
 
             <template v-if="currentTask.files && currentTask.files.length > 0">

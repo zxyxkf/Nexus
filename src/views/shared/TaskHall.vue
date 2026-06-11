@@ -127,64 +127,78 @@
           </div>
 
           <div class="inline-detail-body">
-            <div class="inline-detail-stat-card">
-              <label>工作项目</label>
-              <span>{{ currentTask.score_item_name || '-' }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
-              <label>分值</label>
-              <span>{{ currentTask.score || '-' }}</span>
-            </div>
-            <template v-if="isOperatorAssistant">
+            <div class="inline-detail-people">
               <div class="inline-detail-stat-card">
-                <label>店铺</label>
-                <span>{{ currentTask.shop_name || '-' }}</span>
+                <label>发布人</label>
+                <span>{{ currentTask.publisher_name || '-' }}</span>
               </div>
               <div class="inline-detail-stat-card">
-                <label>任务数量</label>
-                <span>{{ currentTask.quantity || 1 }}</span>
+                <label>接单人</label>
+                <span>未接单</span>
+              </div>
+            </div>
+
+            <div class="inline-detail-section">
+              <div class="inline-detail-section-title">任务信息</div>
+              <div class="inline-detail-stat-card">
+                <label>工作项目</label>
+                <span>{{ currentTask.score_item_name || '-' }}</span>
+              </div>
+              <div class="inline-detail-stat-card">
+                <label>分值</label>
+                <span>{{ currentTask.score || '-' }}</span>
+              </div>
+              <template v-if="isOperatorAssistant">
+                <div class="inline-detail-stat-card">
+                  <label>店铺</label>
+                  <span>{{ currentTask.shop_name || '-' }}</span>
+                </div>
+                <div class="inline-detail-stat-card">
+                  <label>任务数量</label>
+                  <span>{{ currentTask.quantity || 1 }}</span>
+                </div>
+                <div class="inline-detail-stat-card full-width">
+                  <label>任务文件地址</label>
+                  <span>{{ currentTask.task_file_path || '-' }}</span>
+                </div>
+              </template>
+              <template v-if="isBasicDesigner">
+                <div class="inline-detail-stat-card">
+                  <label>旺旺ID</label>
+                  <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
+                </div>
+                <div class="inline-detail-stat-card">
+                  <label>款号</label>
+                  <span>{{ currentTask.style_number || '无' }}</span>
+                </div>
+              </template>
+              <template v-else-if="!isOperatorAssistant">
+                <div class="inline-detail-stat-card">
+                  <label>款号</label>
+                  <span>{{ currentTask.style_number || '无' }}</span>
+                </div>
+                <div class="inline-detail-stat-card">
+                  <label>指定颜色</label>
+                  <span>{{ currentTask.specified_color || '无' }}</span>
+                </div>
+                <div class="inline-detail-stat-card">
+                  <label>参考路径</label>
+                  <span class="multiline-value">{{ currentTask.ref_path || '无' }}</span>
+                </div>
+                <div class="inline-detail-stat-card">
+                  <label>截止时间</label>
+                  <span>{{ currentTask.deadline || '无' }}</span>
+                </div>
+              </template>
+
+              <div class="inline-detail-stat-card full-width">
+                <label>任务标题</label>
+                <span>{{ currentTask.title }}</span>
               </div>
               <div class="inline-detail-stat-card full-width">
-                <label>任务文件地址</label>
-                <span>{{ currentTask.task_file_path || '-' }}</span>
+                <label>任务描述</label>
+                <div class="value" style="white-space:pre-wrap;">{{ currentTask.description || '暂无描述' }}</div>
               </div>
-            </template>
-            <template v-if="isBasicDesigner">
-              <div class="inline-detail-stat-card">
-                <label>旺旺ID</label>
-                <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>款号</label>
-                <span>{{ currentTask.style_number || '无' }}</span>
-              </div>
-            </template>
-            <template v-else-if="!isOperatorAssistant">
-              <div class="inline-detail-stat-card">
-                <label>款号</label>
-                <span>{{ currentTask.style_number || '无' }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>指定颜色</label>
-                <span>{{ currentTask.specified_color || '无' }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>参考路径</label>
-                <span class="multiline-value">{{ currentTask.ref_path || '无' }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>截止时间</label>
-                <span>{{ currentTask.deadline || '无' }}</span>
-              </div>
-            </template>
-
-            <div class="inline-detail-stat-card full-width">
-              <label>任务标题</label>
-              <span>{{ currentTask.title }}</span>
-            </div>
-            <div class="inline-detail-stat-card full-width">
-              <label>任务描述</label>
-              <div class="value" style="white-space:pre-wrap;">{{ currentTask.description || '暂无描述' }}</div>
             </div>
 
             <template v-if="currentTask.files && currentTask.files.length">

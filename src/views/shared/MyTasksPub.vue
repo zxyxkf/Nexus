@@ -224,72 +224,87 @@
           <div class="inline-detail-body">
             <TaskStatusTimeline :task="currentTask" :task-group="taskGroup" />
             <TaskTransferTimeline v-if="isCsAgent" :records="currentTask.transfer_records || []" />
-            <div class="inline-detail-stat-card">
-              <label>{{ designerLabel }}</label>
-              <span>{{ currentTask.designer_name || '未接单' }}</span>
+            <div class="inline-detail-people">
+              <div class="inline-detail-stat-card">
+                <label>发布人</label>
+                <span>{{ currentTask.publisher_name || '我' }}</span>
+              </div>
+              <div class="inline-detail-stat-card">
+                <label>{{ designerLabel }}</label>
+                <span>{{ currentTask.designer_name || '未接单' }}</span>
+              </div>
             </div>
-            <div class="inline-detail-stat-card">
-              <label>工作项目</label>
-              <span>{{ currentTask.title }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
-              <label>分值</label>
-              <span>{{ currentTask.score || '-' }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
-              <label>款号</label>
-              <span>{{ currentTask.style_number || '无' }}</span>
-            </div>
-            <template v-if="isCsAgent">
-              <div class="inline-detail-stat-card">
-                <label>旺旺ID</label>
-                <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>申请分数</label>
-                <span>{{ formatScoreValue(currentTask.applied_score) }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>分数审核状态</label>
-                <el-tag :type="scoreReviewTagType(currentTask.score_review_status)" size="small">
-                  {{ formatScoreReviewStatus(currentTask.score_review_status, currentTask) }}
-                </el-tag>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>分数审核通过分数</label>
-                <span>{{ formatScoreReviewApprovedScore(currentTask) }}</span>
-              </div>
-            </template>
-            <template v-else>
-              <div class="inline-detail-stat-card">
-                <label>指定颜色</label>
-                <span>{{ currentTask.specified_color || '无' }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>参考路径</label>
-                <span class="multiline-value">{{ currentTask.ref_path || '无' }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>截止时间</label>
-                <span>{{ currentTask.deadline || '无' }}</span>
-              </div>
-            </template>
 
-            <div class="inline-detail-stat-card full-width">
-              <label>任务描述</label>
-              <div class="value" style="white-space:pre-wrap;">{{ currentTask.description || '暂无' }}</div>
+            <div class="inline-detail-section">
+              <div class="inline-detail-section-title">任务信息</div>
+              <div class="inline-detail-stat-card">
+                <label>工作项目</label>
+                <span>{{ currentTask.title }}</span>
+              </div>
+              <div class="inline-detail-stat-card">
+                <label>分值</label>
+                <span>{{ currentTask.score || '-' }}</span>
+              </div>
+              <div class="inline-detail-stat-card">
+                <label>款号</label>
+                <span>{{ currentTask.style_number || '无' }}</span>
+              </div>
+              <template v-if="isCsAgent">
+                <div class="inline-detail-stat-card">
+                  <label>旺旺ID</label>
+                  <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
+                </div>
+              </template>
+              <template v-else>
+                <div class="inline-detail-stat-card">
+                  <label>指定颜色</label>
+                  <span>{{ currentTask.specified_color || '无' }}</span>
+                </div>
+                <div class="inline-detail-stat-card">
+                  <label>参考路径</label>
+                  <span class="multiline-value">{{ currentTask.ref_path || '无' }}</span>
+                </div>
+                <div class="inline-detail-stat-card">
+                  <label>截止时间</label>
+                  <span>{{ currentTask.deadline || '无' }}</span>
+                </div>
+              </template>
+              <div class="inline-detail-stat-card full-width">
+                <label>任务描述</label>
+                <div class="value" style="white-space:pre-wrap;">{{ currentTask.description || '暂无' }}</div>
+              </div>
             </div>
-            <div class="inline-detail-stat-card full-width">
-              <label>上传路径</label>
-              <span>{{ currentTask.work_path || '无' }}</span>
-            </div>
-            <div v-if="currentTask.status === 'rejected'" class="inline-detail-stat-card full-width">
-              <label>驳回原因</label>
-              <div class="value" style="color:#e63946;">{{ currentTask.reject_reason }}</div>
-            </div>
-            <div v-if="isCsAgent && currentTask.score_review_reason" class="inline-detail-stat-card full-width">
-              <label>分数审核驳回原因</label>
-              <div class="value" style="color:#e63946;white-space:pre-wrap;">{{ currentTask.score_review_reason }}</div>
+
+            <div class="inline-detail-section">
+              <div class="inline-detail-section-title">提交与审核</div>
+              <template v-if="isCsAgent">
+                <div class="inline-detail-stat-card">
+                  <label>申请分数</label>
+                  <span>{{ formatScoreValue(currentTask.applied_score) }}</span>
+                </div>
+                <div class="inline-detail-stat-card">
+                  <label>分数审核状态</label>
+                  <el-tag :type="scoreReviewTagType(currentTask.score_review_status)" size="small">
+                    {{ formatScoreReviewStatus(currentTask.score_review_status, currentTask) }}
+                  </el-tag>
+                </div>
+                <div class="inline-detail-stat-card">
+                  <label>分数审核通过分数</label>
+                  <span>{{ formatScoreReviewApprovedScore(currentTask) }}</span>
+                </div>
+              </template>
+              <div v-else class="inline-detail-stat-card full-width">
+                <label>上传路径</label>
+                <span>{{ currentTask.work_path || '无' }}</span>
+              </div>
+              <div v-if="currentTask.status === 'rejected'" class="inline-detail-stat-card full-width">
+                <label>驳回原因</label>
+                <div class="value" style="color:#e63946;">{{ currentTask.reject_reason }}</div>
+              </div>
+              <div v-if="isCsAgent && currentTask.score_review_reason" class="inline-detail-stat-card full-width">
+                <label>分数审核驳回原因</label>
+                <div class="value" style="color:#e63946;white-space:pre-wrap;">{{ currentTask.score_review_reason }}</div>
+              </div>
             </div>
 
             <template v-if="detailRefImages.length">
