@@ -206,6 +206,14 @@ describe('客服已完成基础美工任务编号修改', () => {
       .get(`/api/task/detail?taskId=${second.id}`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(updated.body.data.task_no).toBe(first.task_no);
+
+    const accepted = await request(app)
+      .get('/api/task/my-accepted?taskGroup=cs&pageSize=50')
+      .set('Authorization', `Bearer ${basicToken}`);
+    expect(accepted.body.code).toBe(0);
+    const synced = accepted.body.data.list.find(t => Number(t.id) === Number(second.id));
+    expect(synced).toBeDefined();
+    expect(synced.task_no).toBe(first.task_no);
   });
 
   afterAll(async () => {

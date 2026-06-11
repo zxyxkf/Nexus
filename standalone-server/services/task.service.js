@@ -280,6 +280,7 @@ async function updateCsTaskNo(taskId, taskNo, user) {
   if (!taskId || !normalizedTaskNo) throw new AppError(400, '任务ID和任务编号不能为空');
   if (user.role !== 'cs_agent') throw new AppError(403, '仅客服可修改基础美工任务编号');
 
+  let changedTask = null;
   await executeTransaction(async (conn) => {
     const task = await taskDao.getTaskForUpdate(conn, taskId);
     if (!task) throw new AppError(400, '任务不存在');
@@ -288,8 +289,12 @@ async function updateCsTaskNo(taskId, taskNo, user) {
     if (Number(task.publisher_id) !== Number(user.id)) throw new AppError(403, '无权修改他人发布的任务');
 
     await taskDao.updateTaskFields(conn, taskId, { task_no: normalizedTaskNo });
+    changedTask = task;
   });
 
+  if (changedTask?.publisher_id) socketEmit(`user:${changedTask.publisher_id}`);
+  if (changedTask?.designer_id) socketEmit(`user:${changedTask.designer_id}`);
+  socketEmit('group:cs');
   logger.info('客服修改基础美工任务编号', { userId: user.id, taskId, taskNo: normalizedTaskNo });
   return { msg: '任务编号已更新' };
 }
