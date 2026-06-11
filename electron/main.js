@@ -60,6 +60,10 @@ let isUpdating = false;
 let isQuitting = false;
 let lastToastSoundAt = 0;
 const isDev = process.env.NODE_ENV === 'development' || !app.isPackaged;
+const TOAST_WINDOW_WIDTH = 400;
+const TOAST_WINDOW_MIN_HEIGHT = 140;
+const TOAST_WINDOW_MAX_HEIGHT = 430;
+const TOAST_MARGIN = 20;
 
 // ===== 服务器配置管理 =====
 const CONFIG_FILE = path.join(app.getPath('userData'), 'server-config.json');
@@ -127,12 +131,12 @@ function createWindow() {
 }
 
 function createToastWindow() {
-  const { width: sw, height: sh } = screen.getPrimaryDisplay().workAreaSize
+  const initialBounds = getToastWindowBounds(TOAST_WINDOW_MIN_HEIGHT)
   toastWindow = new BrowserWindow({
-    width: 400,
-    height: 140,
-    x: sw - 420,
-    y: sh - 160,
+    width: TOAST_WINDOW_WIDTH,
+    height: TOAST_WINDOW_MIN_HEIGHT,
+    x: initialBounds.x,
+    y: initialBounds.y,
     frame: false,
     transparent: true,
     alwaysOnTop: true,
@@ -151,6 +155,30 @@ function createToastWindow() {
       toastWindow.hide()
     }
   })
+}
+
+function getToastDisplay() {
+  if (mainWindow && !mainWindow.isDestroyed()) {
+    return screen.getDisplayMatching(mainWindow.getBounds())
+  }
+  return screen.getDisplayNearestPoint(screen.getCursorScreenPoint())
+}
+
+function getToastWindowBounds(height = TOAST_WINDOW_MIN_HEIGHT) {
+  const display = getToastDisplay()
+  const workArea = display.workArea || display.bounds
+  const safeHeight = Math.max(TOAST_WINDOW_MIN_HEIGHT, Math.min(TOAST_WINDOW_MAX_HEIGHT, Number(height) || TOAST_WINDOW_MIN_HEIGHT))
+  return {
+    width: TOAST_WINDOW_WIDTH,
+    height: safeHeight,
+    x: workArea.x + workArea.width - TOAST_WINDOW_WIDTH - TOAST_MARGIN,
+    y: workArea.y + workArea.height - safeHeight - TOAST_MARGIN
+  }
+}
+
+function positionToastWindow(height) {
+  if (!toastWindow || toastWindow.isDestroyed()) return
+  toastWindow.setBounds(getToastWindowBounds(height), false)
 }
 
 function sendToastToWindow(data) {
@@ -205,10 +233,15 @@ ipcMain.on('show-toast', (event, data) => {
   playToastSound()
 })
 
-ipcMain.on('toast:show-window', () => {
+ipcMain.on('toast:show-window', (event, data = {}) => {
   if (toastWindow && !toastWindow.isDestroyed()) {
+    positionToastWindow(data.height || toastWindow.getBounds().height)
     toastWindow.showInactive()
   }
+})
+
+ipcMain.on('toast:resize-window', (event, data = {}) => {
+  positionToastWindow(data.height)
 })
 
 ipcMain.on('toast:hide-window', () => {

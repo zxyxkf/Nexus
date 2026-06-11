@@ -6,12 +6,12 @@
 import { onMounted, onUnmounted } from 'vue'
 import { useUserStore } from '@/store'
 import { ElMessage } from 'element-plus'
+import { DEFAULT_SERVER, shouldForceLocalApi } from '@/utils/server-base'
 
 const userStore = useUserStore()
 
 // 立即设置默认服务器地址（同步执行，确保任何 API 调用前已有值）
-const DEFAULT_SERVER = 'http://192.168.101.78:18632'
-if (!localStorage.getItem('design_server_url')) {
+if (!shouldForceLocalApi() && !localStorage.getItem('design_server_url')) {
   localStorage.setItem('design_server_url', DEFAULT_SERVER)
 }
 
@@ -43,7 +43,7 @@ onMounted(async () => {
   if (window.electronAPI?.getServerConfig) {
     try {
       const config = await window.electronAPI.getServerConfig()
-      if (config?.serverUrl) {
+      if (!shouldForceLocalApi() && config?.serverUrl) {
         localStorage.setItem('design_server_url', config.serverUrl)
       }
     } catch (e) {

@@ -5,7 +5,7 @@
         <div class="card-header">
           <span class="card-title">我的运营任务</span>
           <div class="header-right">
-            <el-select v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
+            <el-select v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="handleFilterChange">
               <el-option label="全部" value="" />
               <el-option label="待接单" value="wait" />
               <el-option label="已接单" value="accepted" />
@@ -19,7 +19,7 @@
               placeholder="筛选助理"
               clearable
               style="width:150px;"
-              @change="loadData"
+              @change="handleFilterChange"
             >
               <el-option label="全部" value="" />
               <el-option v-for="a in assistantList" :key="a.id" :label="a.real_name || a.username" :value="String(a.id)" />
@@ -29,7 +29,7 @@
               placeholder="筛选发布人"
               clearable
               style="width:150px;"
-              @change="loadData"
+              @change="handleFilterChange"
             >
               <el-option label="全部" value="" />
               <el-option v-for="p in publisherList" :key="p.id" :label="p.real_name || p.username" :value="String(p.id)" />
@@ -44,7 +44,7 @@
               value-format="YYYY-MM-DD"
               clearable
               style="width:240px;"
-              @change="loadData"
+              @change="handleFilterChange"
             />
           </div>
         </div>
@@ -244,8 +244,8 @@
               <div class="inline-detail-files">
                 <h4>参考图 ({{ detailRefImages.length }})</h4>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                  <div v-for="file in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
-                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="detailRefPreviewList" preview-teleported style="width:120px;height:120px;border-radius:8px;border:1px solid #e4e7ed;" />
+                  <div v-for="(file, index) in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
+                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="detailRefPreviewList" :initial-index="index" preview-teleported style="width:120px;height:120px;border-radius:8px;border:1px solid #e4e7ed;" />
                     <el-button class="file-download-btn" type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
                   </div>
                 </div>
@@ -269,7 +269,7 @@
               <div class="file-grid">
                 <div v-for="file in workFiles" :key="file.id" class="file-item" draggable="true" @dragstart="setupFileDrag($event, file)">
                   <template v-if="file.file_type === 'image'">
-                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="cover" :preview-src-list="imagePreviewList" preview-teleported style="width:120px;height:120px;border-radius:8px;" />
+                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="cover" :preview-src-list="imagePreviewList" :initial-index="getImagePreviewIndex(workFiles, file)" preview-teleported style="width:120px;height:120px;border-radius:8px;" />
                     <el-button type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
                   </template>
                   <div v-else class="attachment-item">
@@ -378,7 +378,7 @@ function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
 const progressSteps = { wait: '20%', accepted: '40%', doing: '60%', finished: '100%', rejected: '60%', draft: '0%' }
 function progressWidth(s) { return progressSteps[s] || '0%' }
 
-const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList } = useFileHelpers()
+const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList, getImagePreviewIndex } = useFileHelpers()
 const detailRefImages = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type === 'image')
@@ -395,8 +395,18 @@ const detailRefAttachments = computed(() => {
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type !== 'image')
 })
 
+function normalizeLoadOptions(options) {
+  return options && typeof options === 'object' && !Array.isArray(options) ? options : {}
+}
+
+function handleFilterChange() {
+  page.value = 1
+  loadData()
+}
+
 async function loadData(options = {}) {
-  if (!options.silent) loading.value = true
+  const runOptions = normalizeLoadOptions(options)
+  if (!runOptions.silent) loading.value = true
   try {
     const res = await getMyPublishedApi({
       page: page.value,
@@ -421,7 +431,7 @@ async function loadData(options = {}) {
   } catch (e) {
     console.error('[OpMyTasks] 加载失败:', e)
   } finally {
-    if (!options.silent) loading.value = false
+    if (!runOptions.silent) loading.value = false
   }
 }
 

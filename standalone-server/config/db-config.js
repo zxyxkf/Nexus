@@ -12,10 +12,10 @@ const { DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME } = require('./env');
 const DB_MODE_KEY = 'design_db_mode';
 
 function getDbConfig() {
-  const userDataPath = process.env.APPDATA
-    ? path.join(process.env.APPDATA, 'design-art-manager')
-    : process.env.DATA_DIR
-      ? process.env.DATA_DIR
+  const userDataPath = process.env.DATA_DIR
+    ? process.env.DATA_DIR
+    : process.env.APPDATA
+      ? path.join(process.env.APPDATA, 'design-art-manager')
       : path.join(__dirname, '..', '..', 'data');
   
   // 确保数据目录存在

@@ -5,6 +5,7 @@
 import { ref, onMounted, onUnmounted } from 'vue'
 import { io } from 'socket.io-client'
 import { getToken } from '@/utils/auth'
+import { getServerBase } from '@/utils/server-base'
 
 let socket = null
 let socketRefs = 0
@@ -15,7 +16,7 @@ function getSocket() {
   const token = getToken()
   if (!token) return null
 
-  const serverBase = localStorage.getItem('design_server_url') || location.origin || 'http://192.168.101.78:18632'
+  const serverBase = getServerBase(location.origin)
 
   socket = io(serverBase, {
     auth: { token },

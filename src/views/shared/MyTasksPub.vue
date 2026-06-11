@@ -10,8 +10,8 @@
               :placeholder="isCsAgent ? '搜索旺旺ID/款号' : '搜索款号'"
               clearable
               style="width:180px;"
-              @clear="loadData"
-              @keyup.enter="loadData"
+              @clear="handleFilterChange"
+              @keyup.enter="handleFilterChange"
             >
               <template #prefix><el-icon><Search /></el-icon></template>
             </el-input>
@@ -21,8 +21,8 @@
               placeholder="任务编号筛选"
               clearable
               style="width:150px;"
-              @clear="loadData"
-              @keyup.enter="loadData"
+              @clear="handleFilterChange"
+              @keyup.enter="handleFilterChange"
             >
               <template #prefix><el-icon><Search /></el-icon></template>
             </el-input>
@@ -32,7 +32,7 @@
               placeholder="筛选基础美工"
               clearable
               style="width:150px;"
-              @change="loadData"
+              @change="handleFilterChange"
             >
               <el-option label="全部" value="" />
               <el-option v-for="d in basicDesignerList" :key="d.id" :label="d.real_name || d.username" :value="String(d.id)" />
@@ -43,7 +43,7 @@
               placeholder="筛选美工"
               clearable
               style="width:150px;"
-              @change="loadData"
+              @change="handleFilterChange"
             >
               <el-option label="全部" value="" />
               <el-option v-for="d in operatorDesignerList" :key="d.id" :label="d.real_name || d.username" :value="String(d.id)" />
@@ -54,12 +54,12 @@
               placeholder="筛选发布人"
               clearable
               style="width:150px;"
-              @change="loadData"
+              @change="handleFilterChange"
             >
               <el-option label="全部" value="" />
               <el-option v-for="p in publisherList" :key="p.id" :label="p.real_name || p.username" :value="String(p.id)" />
             </el-select>
-            <el-select v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
+            <el-select v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="handleFilterChange">
               <el-option label="全部" value="" />
               <el-option label="待接单" value="wait" />
               <el-option label="已接单" value="accepted" />
@@ -78,7 +78,7 @@
               value-format="YYYY-MM-DD"
               clearable
               style="width:240px;"
-              @change="loadData"
+              @change="handleFilterChange"
             />
           </div>
         </div>
@@ -311,11 +311,12 @@
               <div class="inline-detail-files">
                 <h4>参考图 ({{ detailRefImages.length }})</h4>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                  <div v-for="file in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
+                  <div v-for="(file, index) in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
                     <el-image
                       :src="file._previewSrc || getFileUrl(file)"
                       fit="contain"
                       :preview-src-list="detailRefPreviewList"
+                      :initial-index="index"
                       preview-teleported
                       style="width:120px;height:120px;border-radius:8px;border:1px solid #e4e7ed;"
                     />
@@ -346,6 +347,7 @@
                       :src="file._previewSrc || getFileUrl(file)"
                       fit="cover"
                       :preview-src-list="imagePreviewList"
+                      :initial-index="getImagePreviewIndex(workFiles, file)"
                       preview-teleported
                       style="width:120px;height:120px;border-radius:8px;"
                     />
@@ -362,6 +364,7 @@
                 </div>
               </div>
             </div>
+            <RejectHistory v-if="isCsAgent" :records="currentTask.reject_records || []" />
           </div>
         </div>
       </transition>
@@ -452,6 +455,7 @@ import { hasPermission } from '@/utils/permissions'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
+import RejectHistory from '@/components/RejectHistory.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -497,7 +501,7 @@ function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
 const progressSteps = { wait: '20%', accepted: '40%', doing: '60%', finished: '100%', rejected: '60%', draft: '0%' }
 function progressWidth(s) { return progressSteps[s] || '0%' }
 
-const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList } = useFileHelpers()
+const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList, getImagePreviewIndex } = useFileHelpers()
 const detailRefImages = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type === 'image')
@@ -507,14 +511,24 @@ const detailRefPreviewList = computed(() => {
 })
 const workFiles = computed(() => {
   if (!currentTask.value?.files) return []
-  return currentTask.value.files.filter(f => f.file_category !== 'reference')
+  return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject')
 })
 const detailRefAttachments = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type !== 'image')
 })
+function normalizeLoadOptions(options) {
+  return options && typeof options === 'object' && !Array.isArray(options) ? options : {}
+}
+
+function handleFilterChange() {
+  page.value = 1
+  loadData()
+}
+
 async function loadData(options = {}) {
-  if (!options.silent) loading.value = true
+  const runOptions = normalizeLoadOptions(options)
+  if (!runOptions.silent) loading.value = true
   try {
     const res = await getMyPublishedApi({
       page: page.value,
@@ -542,7 +556,7 @@ async function loadData(options = {}) {
   } catch (e) {
     console.error('[MyTasks] 加载任务列表失败:', e)
   } finally {
-    if (!options.silent) loading.value = false
+    if (!runOptions.silent) loading.value = false
   }
 }
 
@@ -604,13 +618,16 @@ async function viewDetail(row) {
     const res = await getTaskDetailApi({ taskId: row.id })
     if (res.code === 0) {
       const files = res.data.files || []
-      const allImageFiles = files.filter(f => f.file_type === 'image')
+      const rejectRecords = res.data.reject_records || []
+      const rejectFiles = rejectRecords.flatMap(record => record.files || [])
+      const allFiles = [...files, ...rejectFiles]
+      const allImageFiles = allFiles.filter(f => f.file_type === 'image')
       await Promise.all(allImageFiles.map(async (f) => {
         f._previewSrc = await fetchImageDataUrl(f)
       }))
-      preloadFilesForDrag(files)
-      currentTask.value = { ...res.data, files }
-      const workImageFiles = files.filter(f => f.file_category !== 'reference' && f.file_type === 'image')
+      preloadFilesForDrag(allFiles)
+      currentTask.value = { ...res.data, files, reject_records: rejectRecords }
+      const workImageFiles = files.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject' && f.file_type === 'image')
       imagePreviewList.value = workImageFiles.map(f => f._previewSrc || getFileUrl(f))
       detailVisible.value = true
     }

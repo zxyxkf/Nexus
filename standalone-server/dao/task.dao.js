@@ -139,6 +139,43 @@ async function getTaskTransferRecords(taskId) {
   return rows || [];
 }
 
+async function getTaskRejectRecords(taskId) {
+  const pool = getPool();
+  const [records] = await pool.execute(
+    `SELECT *
+     FROM task_reject_record
+     WHERE task_id = ?
+     ORDER BY reject_index ASC, create_time ASC, id ASC`,
+    [taskId]
+  );
+  const rows = records || [];
+  if (!rows.length) return [];
+
+  const ids = rows.map(r => r.id);
+  const placeholders = ids.map(() => '?').join(',');
+  const [files] = await pool.execute(
+    `SELECT *
+     FROM task_file
+     WHERE reject_record_id IN (${placeholders})
+     ORDER BY create_time ASC, id ASC`,
+    ids
+  );
+  const filesByReject = {};
+  for (const f of files || []) {
+    if (!filesByReject[f.reject_record_id]) filesByReject[f.reject_record_id] = [];
+    filesByReject[f.reject_record_id].push({
+      ...f,
+      fileUrl: `/api/task/preview/${f.id}`,
+      downloadUrl: `/api/task/download/${f.id}`
+    });
+  }
+
+  return rows.map(row => ({
+    ...row,
+    files: filesByReject[row.id] || []
+  }));
+}
+
 async function getTaskForUpdate(conn, taskId) {
   const [rows] = await conn.execute(
     `SELECT id, title, task_no, status, publisher_id, publisher_name,
@@ -185,7 +222,31 @@ async function insertTransferRecord(conn, data) {
   );
 }
 
+async function insertRejectRecord(conn, data) {
+  const [rows] = await conn.execute(
+    `SELECT COALESCE(MAX(reject_index), 0) + 1 AS next_index
+     FROM task_reject_record
+     WHERE task_id = ?`,
+    [data.taskId]
+  );
+  const rejectIndex = Number(rows?.[0]?.next_index) || 1;
+  const [result] = await conn.execute(
+    `INSERT INTO task_reject_record
+       (task_id, reject_index, reviewer_id, reviewer_name, reject_reason)
+     VALUES (?,?,?,?,?)`,
+    [
+      data.taskId,
+      rejectIndex,
+      data.reviewerId || null,
+      data.reviewerName || '',
+      data.reason || ''
+    ]
+  );
+  return { id: result.insertId || result.lastID, rejectIndex };
+}
+
 async function deleteTaskData(taskId) {
+  await execute(`DELETE FROM task_reject_record WHERE task_id = ?`, [taskId]);
   await execute(`DELETE FROM task_transfer_record WHERE task_id = ?`, [taskId]);
   await execute(`DELETE FROM task_file WHERE task_id = ?`, [taskId]);
   await execute(`DELETE FROM sys_comment WHERE task_id = ?`, [taskId]);
@@ -196,6 +257,7 @@ async function deleteTaskData(taskId) {
 /** 批量删除 */
 async function batchDeleteTasks(taskIds) {
   const placeholders = taskIds.map(() => '?').join(',');
+  await execute(`DELETE FROM task_reject_record WHERE task_id IN (${placeholders})`, taskIds);
   await execute(`DELETE FROM task_transfer_record WHERE task_id IN (${placeholders})`, taskIds);
   await execute(`DELETE FROM task_file WHERE task_id IN (${placeholders})`, taskIds);
   await execute(`DELETE FROM task_info WHERE id IN (${placeholders})`, taskIds);
@@ -217,9 +279,13 @@ async function batchReassignTasks(taskIds, designerId, designerName) {
 /** 插入文件记录（事务内） */
 async function insertFileRecord(conn, data) {
   await conn.execute(
-    `INSERT INTO task_file (task_id, file_name, file_path, file_size, file_type, mime_type, uploader_id, file_category)
-     VALUES (?,?,?,?,?,?,?,?)`,
-    [data.taskId, data.fileName, data.filePath, data.fileSize, data.fileType, data.mimeType, data.uploaderId, data.fileCategory]
+    `INSERT INTO task_file (task_id, file_name, file_path, file_size, file_type, mime_type, uploader_id, file_category, reject_record_id)
+     VALUES (?,?,?,?,?,?,?,?,?)`,
+    [
+      data.taskId, data.fileName, data.filePath, data.fileSize,
+      data.fileType, data.mimeType, data.uploaderId, data.fileCategory,
+      data.rejectRecordId || null
+    ]
   );
 }
 
@@ -278,6 +344,21 @@ function taskDateColumn(dateField) {
   return 't.create_time';
 }
 
+function appendStatusFilter(where, params, status) {
+  if (!status) return where;
+  const statuses = String(status)
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean);
+  if (statuses.length === 0) return where;
+  if (statuses.length === 1) {
+    params.push(statuses[0]);
+    return `${where} AND t.status = ?`;
+  }
+  params.push(...statuses);
+  return `${where} AND t.status IN (${statuses.map(() => '?').join(',')})`;
+}
+
 /** 我发布的任务 */
 async function queryMyPublished({ userId, role, permissions = [], filterGroup, selfOnly, status, styleNumber, keyword, taskNo, designerId, publisherId, dateStart, dateEnd, dateField, page, pageSize }) {
   const offset = (page - 1) * pageSize;
@@ -306,7 +387,7 @@ async function queryMyPublished({ userId, role, permissions = [], filterGroup, s
     where += ' AND 1=0';
   }
 
-  if (status) { where += ' AND t.status = ?'; params.push(status); }
+  where = appendStatusFilter(where, params, status);
   if (styleNumber) { where += ' AND t.style_number LIKE ?'; params.push(`%${styleNumber}%`); }
   if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`); }
   if (taskNo) { where += ' AND t.task_no LIKE ?'; params.push(`%${taskNo}%`); }
@@ -348,7 +429,7 @@ async function queryMyAccepted({ userId, role, permissions = [], taskGroup, stat
     params.push(group);
   }
 
-  if (status) { where += ' AND t.status = ?'; params.push(status); }
+  where = appendStatusFilter(where, params, status);
   if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`); }
   if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
   if (scoreItemId) { where += ' AND t.score_item_id = ?'; params.push(scoreItemId); }
@@ -428,7 +509,7 @@ async function queryAllTasks({ status, keyword, publisherId, designerId, startDa
   const params = [];
   const dateColumn = taskDateColumn(dateField);
 
-  if (status) { where += ' AND t.status = ?'; params.push(status); }
+  where = appendStatusFilter(where, params, status);
   if (keyword) { where += ' AND (t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`); }
   if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
   if (designerId) { where += ' AND t.designer_id = ?'; params.push(designerId); }
@@ -726,9 +807,11 @@ module.exports = {
   getTaskDetail,
   getTaskFiles,
   getTaskTransferRecords,
+  getTaskRejectRecords,
   getTaskForUpdate,
   updateTaskFields,
   insertTransferRecord,
+  insertRejectRecord,
   deleteTaskData,
   batchDeleteTasks,
   batchReassignTasks,

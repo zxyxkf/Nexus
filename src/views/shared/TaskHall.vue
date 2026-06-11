@@ -205,11 +205,12 @@
               <div v-if="detailRefImages.length" class="inline-detail-files">
                 <h4>参考图 ({{ detailRefImages.length }})</h4>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                  <div v-for="file in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
+                  <div v-for="(file, index) in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
                     <el-image
                       :src="file._previewSrc || getFileUrl(file)"
                       fit="contain"
                       :preview-src-list="detailRefPreviewList"
+                      :initial-index="index"
                       preview-teleported
                       style="width:120px;height:120px;border-radius:8px;border:1px solid #e4e7ed;"
                     />

@@ -124,7 +124,7 @@
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
             <el-button
-              v-if="row.status === 'accepted'"
+              v-if="row.status === 'accepted' || row.status === 'rejected'"
               type="success"
               link size="small"
               :loading="inlineSubmitId === row.id"
@@ -240,8 +240,8 @@
               <div class="inline-detail-files">
                 <h4>参考图 ({{ detailRefImages.length }})</h4>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                  <div v-for="file in detailRefImages" :key="file.id" draggable="true" @dragstart="setupFileDrag($event, file)">
-                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="detailRefPreviewList" preview-teleported style="width:120px;height:120px;border-radius:8px;border:1px solid #e4e7ed;" />
+                  <div v-for="(file, index) in detailRefImages" :key="file.id" draggable="true" @dragstart="setupFileDrag($event, file)">
+                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="detailRefPreviewList" :initial-index="index" preview-teleported style="width:120px;height:120px;border-radius:8px;border:1px solid #e4e7ed;" />
                   </div>
                 </div>
               </div>
@@ -263,7 +263,7 @@
               <h4>完成凭证</h4>
               <div class="file-grid">
                 <div v-for="file in workFiles" :key="file.id" class="file-item" draggable="true" @dragstart="setupFileDrag($event, file)">
-                  <el-image v-if="file.file_type === 'image'" :src="file._previewSrc || getFileUrl(file)" fit="cover" :preview-src-list="imagePreviewList" preview-teleported style="width:120px;height:120px;border-radius:8px;" />
+                  <el-image v-if="file.file_type === 'image'" :src="file._previewSrc || getFileUrl(file)" fit="cover" :preview-src-list="imagePreviewList" :initial-index="getImagePreviewIndex(workFiles, file)" preview-teleported style="width:120px;height:120px;border-radius:8px;" />
                   <div v-else class="attachment-item">
                     <el-icon :size="28" color="#909399"><Document /></el-icon>
                     <div class="file-card-info">
@@ -281,7 +281,7 @@
     </el-card>
 
     <!-- 上传对话框 -->
-    <el-dialog v-model="uploadVisible" title="上传完成凭证" width="500px" top="10vh">
+    <el-dialog v-model="uploadVisible" title="上传完成凭证" width="500px" top="10vh" @keydown.enter.exact.prevent="handleUpload">
       <div style="margin-bottom:16px;display:flex;align-items:center;gap:12px;">
         <span style="font-size:14px;color:var(--dd-text-primary);white-space:nowrap;">完成次数</span>
         <el-input-number
@@ -384,7 +384,7 @@ function tableRowClassName({ row }) {
   return row?.status === 'accepted' && row?.urge_time ? 'row-urged' : ''
 }
 
-const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList } = useFileHelpers()
+const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList, getImagePreviewIndex } = useFileHelpers()
 const detailRefImages = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type === 'image')
@@ -402,7 +402,7 @@ const detailRefAttachments = computed(() => {
 })
 
 function canInlineSubmit(row) {
-  return fixedStatus.value === 'accepted' && row?.status === 'accepted'
+  return fixedStatus.value === 'accepted' && (row?.status === 'accepted' || row?.status === 'rejected')
 }
 
 function getInlineQuantityValue(row) {
@@ -450,7 +450,7 @@ async function submitInlineProof(row) {
       ElMessage.error(detailRes.msg || '获取任务详情失败')
       return
     }
-    const workFiles = (detailRes.data.files || []).filter(file => file.file_category !== 'reference')
+    const workFiles = (detailRes.data.files || []).filter(file => file.file_category !== 'reference' && file.file_category !== 'reject')
     const quantityValue = getInlineQuantityValue(row)
     if (!workFiles.length && !quantityValue) {
       ElMessage.warning('请上传完成凭证或填写完成次数')
@@ -492,7 +492,7 @@ async function loadData(options = {}) {
     const res = await getMyAcceptedApi({
       page: page.value,
       pageSize: pageSize.value,
-      status: fixedStatus.value || statusFilter.value || undefined,
+      status: fixedStatus.value === 'accepted' ? 'accepted,rejected' : (fixedStatus.value || statusFilter.value || undefined),
       taskGroup: 'operator',
       dateStart: dateRange.value?.[0] || undefined,
       dateEnd: dateRange.value?.[1] || undefined,
@@ -586,6 +586,7 @@ function openUploadDialog(row) {
 }
 
 async function handleUpload() {
+  if (uploading.value) return
   if (!rawUploadFiles.value.length && !uploadQuantity.value) {
     ElMessage.warning('请上传完成凭证或填写完成次数')
     return

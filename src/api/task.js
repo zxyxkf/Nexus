@@ -17,6 +17,9 @@ export const uploadFilesApi = (taskId, files, fileCategory = 'work', extraData =
   }
   if (extraData.saveOnly !== undefined) formData.append('saveOnly', extraData.saveOnly ? '1' : '0')
   if (extraData.replaceExisting !== undefined) formData.append('replaceExisting', extraData.replaceExisting ? '1' : '0')
+  if (extraData.rejectRecordId !== undefined && extraData.rejectRecordId !== null) {
+    formData.append('rejectRecordId', extraData.rejectRecordId)
+  }
   files.forEach(file => formData.append('files', file))
   return request.post('/api/task/upload-files', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },

@@ -5,6 +5,7 @@ import axios from 'axios'
 import { getToken, getRefreshToken, setToken, setRefreshToken, setUser, clearAuth, setAuth } from '@/utils/auth'
 import { ElMessage } from 'element-plus'
 import router from '@/router'
+import { getServerBase, getStoredServerBase, shouldForceLocalApi } from '@/utils/server-base'
 
 // ==================== 连接状态管理 ====================
 
@@ -87,8 +88,8 @@ function setOnline(val) {
 
 async function checkHealth() {
   try {
-    const stored = localStorage.getItem('design_server_url') || 'http://127.0.0.1:18632'
-    await axios.get(stored + '/api/health', { timeout: 5000 })
+    const base = shouldForceLocalApi() ? '' : getServerBase('http://127.0.0.1:18632')
+    await axios.get(base ? base + '/api/health' : '/api/health', { timeout: 5000 })
     setOnline(true)
     if (reconnectTimer) {
       clearTimeout(reconnectTimer)
@@ -132,7 +133,7 @@ const request = axios.create({
 
 request.interceptors.request.use(
   config => {
-    const stored = localStorage.getItem('design_server_url')
+    const stored = getStoredServerBase()
     if (stored) {
       config.baseURL = stored
     } else if (!import.meta.env.DEV) {

@@ -224,11 +224,12 @@
             <div class="inline-detail-files">
               <h4>参考图 ({{ detailRefImages.length }})</h4>
               <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                <div v-for="file in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
+                <div v-for="(file, index) in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
                   <el-image
                     :src="file._previewSrc || getFileUrl(file)"
                     fit="contain"
                     :preview-src-list="detailRefPreviewList"
+                    :initial-index="index"
                     preview-teleported
                     style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;"
                   />
@@ -259,6 +260,7 @@
                     :src="file._previewSrc || getFileUrl(file)"
                     fit="cover"
                     :preview-src-list="imagePreviewList"
+                    :initial-index="getImagePreviewIndex(reviewWorkFiles, file)"
                     style="width:180px;height:160px;border-radius:8px;border:1px solid #e4e7ed;cursor:pointer;"
                   >
                     <template #error>
@@ -275,24 +277,73 @@
               </div>
             </div>
           </div>
+          <RejectHistory v-if="isCsAgent" :records="currentTask.reject_records || []" />
         </div>
       </div>
     </transition>
     </el-card>
+
+    <el-dialog
+      v-model="rejectDialogVisible"
+      title="驳回原因"
+      width="520px"
+      :close-on-click-modal="false"
+    >
+      <el-upload
+        ref="rejectUploadRef"
+        v-model:file-list="rejectUploadFiles"
+        drag
+        multiple
+        :auto-upload="false"
+        :limit="maxFileCount"
+        @change="onRejectUploadChange"
+        @paste="handleRejectUploadPaste"
+      >
+        <el-icon :size="40"><Plus /></el-icon>
+        <div style="margin-top:8px;">拖拽图片或文件到此处，或点击上传</div>
+        <template #tip>
+          <div style="margin-top:8px;font-size:12px;color:#909399;">
+            可选，支持截图粘贴；单文件最大{{ maxFileSizeMB }}MB，最多{{ maxFileCount }}个
+          </div>
+        </template>
+      </el-upload>
+
+      <el-input
+        ref="rejectReasonInputRef"
+        v-model="rejectDialogReason"
+        type="textarea"
+        :rows="4"
+        maxlength="500"
+        show-word-limit
+        placeholder="请填写驳回原因"
+        style="margin-top:14px;"
+        @keydown.enter.ctrl.prevent="confirmRejectDialog"
+      />
+
+      <template #footer>
+        <el-button @click="cancelRejectDialog">取消</el-button>
+        <el-button type="danger" :loading="reviewLoading || rejectUploading" @click="confirmRejectDialog">
+          确认驳回
+        </el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { nextTick, ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, PictureFilled, Document } from '@element-plus/icons-vue'
-import { getMyPublishedApi, getTaskDetailApi, reviewTaskApi, batchReviewApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { Close, PictureFilled, Document, Plus } from '@element-plus/icons-vue'
+import { getMyPublishedApi, getTaskDetailApi, reviewTaskApi, batchReviewApi, uploadFilesApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
+import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
+import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
+import RejectHistory from '@/components/RejectHistory.vue'
 
 const route = useRoute()
 const taskGroup = computed(() => route.meta.taskGroup || (route.meta.role === 'cs_agent' ? 'cs' : 'design'))
@@ -336,10 +387,21 @@ const currentTask = ref(null)
 const imagePreviewList = ref([])
 const reviewLoading = ref(false)
 const selectedRows = ref([])
+const rejectDialogVisible = ref(false)
+const rejectDialogReason = ref('')
+const rejectDialogResolve = ref(null)
+const rejectUploadFiles = ref([])
+const rejectRawFiles = ref([])
+const rejectUploadRef = ref(null)
+const rejectReasonInputRef = ref(null)
+const rejectUploading = ref(false)
+const { getInt } = useConfig()
+const maxFileCount = computed(() => getInt('upload.max_file_count', 10))
+const maxFileSizeMB = computed(() => getInt('upload.max_file_size_mb', 50))
 
 function onSelectChange(rows) { selectedRows.value = rows }
 
-const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList } = useFileHelpers()
+const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList, getImagePreviewIndex } = useFileHelpers()
 const detailRefImages = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type === 'image')
@@ -349,7 +411,7 @@ const detailRefPreviewList = computed(() => {
 })
 const reviewWorkFiles = computed(() => {
   if (!currentTask.value?.files) return []
-  return currentTask.value.files.filter(f => f.file_category !== 'reference')
+  return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject')
 })
 const detailRefAttachments = computed(() => {
   if (!currentTask.value?.files) return []
@@ -395,13 +457,16 @@ async function viewDetail(row) {
     const res = await getTaskDetailApi({ taskId: row.id })
     if (res.code === 0) {
       const files = res.data.files || []
-      const allImageFiles = files.filter(f => f.file_type === 'image')
+      const rejectRecords = res.data.reject_records || []
+      const rejectFiles = rejectRecords.flatMap(record => record.files || [])
+      const allFiles = [...files, ...rejectFiles]
+      const allImageFiles = allFiles.filter(f => f.file_type === 'image')
       await Promise.all(allImageFiles.map(async (f) => {
         f._previewSrc = await fetchImageDataUrl(f)
       }))
-      preloadFilesForDrag(files)
-      currentTask.value = { ...res.data, files }
-      const workImageFiles = files.filter(f => f.file_category !== 'reference' && f.file_type === 'image')
+      preloadFilesForDrag(allFiles)
+      currentTask.value = { ...res.data, files, reject_records: rejectRecords }
+      const workImageFiles = files.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject' && f.file_type === 'image')
       imagePreviewList.value = workImageFiles.map(f => f._previewSrc || getFileUrl(f))
       detailVisible.value = true
     }
@@ -413,13 +478,14 @@ async function viewDetail(row) {
 async function handleReview(row, action) {
   const actionLabel = action === 'pass' ? '审核通过' : '驳回'
   try {
-    const rejectReason = await getRejectReason(action)
-    if (!rejectReason) {
+    const rejectPayload = await getRejectPayload(action)
+    if (!rejectPayload.reason) {
       await ElMessageBox.confirm(`确认${actionLabel}该任务？`, '提示')
     }
     reviewLoading.value = true
-    const res = await reviewTaskApi({ taskId: row.id, action, rejectReason })
+    const res = await reviewTaskApi({ taskId: row.id, action, rejectReason: rejectPayload.reason })
     if (res.code === 0) {
+      await uploadRejectFilesIfNeeded(row.id, res.data?.rejectRecordId, rejectPayload.files)
       ElMessage.success(actionLabel)
       list.value = list.value.filter(item => item.id !== row.id)
       await loadData()
@@ -435,10 +501,11 @@ async function handleReview(row, action) {
 
 async function doReview(action) {
   try {
-    const rejectReason = await getRejectReason(action)
+    const rejectPayload = await getRejectPayload(action)
     reviewLoading.value = true
-    const res = await reviewTaskApi({ taskId: currentTask.value.id, action, rejectReason })
+    const res = await reviewTaskApi({ taskId: currentTask.value.id, action, rejectReason: rejectPayload.reason })
     if (res.code === 0) {
+      await uploadRejectFilesIfNeeded(currentTask.value.id, res.data?.rejectRecordId, rejectPayload.files)
       ElMessage.success(action === 'pass' ? '审核通过' : '已驳回')
       list.value = list.value.filter(item => item.id !== currentTask.value.id)
       detailVisible.value = false
@@ -453,23 +520,68 @@ async function doReview(action) {
   }
 }
 
-async function getRejectReason(action) {
-  if (action !== 'reject' || !isCsAgent.value) return ''
-
-  const { value } = await ElMessageBox.prompt('请填写驳回原因', '驳回原因', {
-    confirmButtonText: '确认驳回',
-    cancelButtonText: '取消',
-    inputType: 'textarea',
-    inputPlaceholder: '请填写驳回原因',
-    inputValidator: (value) => {
-      const text = String(value || '').trim()
-      if (!text) return '请填写驳回原因'
-      if (text.length > 500) return '驳回原因不能超过500字'
-      return true
-    }
+async function getRejectPayload(action) {
+  if (action !== 'reject' || !isCsAgent.value) return { reason: '', files: [] }
+  rejectDialogReason.value = ''
+  rejectUploadFiles.value = []
+  rejectRawFiles.value = []
+  rejectDialogVisible.value = true
+  await nextTick()
+  rejectReasonInputRef.value?.focus?.()
+  return new Promise((resolve, reject) => {
+    rejectDialogResolve.value = { resolve, reject }
   })
+}
 
-  return value.trim()
+function onRejectUploadChange(uploadFile, uploadFiles) {
+  rejectRawFiles.value = syncRawFiles(uploadFiles)
+}
+
+function handleRejectUploadPaste(event) {
+  appendClipboardImages(event, rejectUploadFiles, rejectRawFiles, {
+    prefix: 'reject',
+    maxCount: maxFileCount.value,
+    maxSizeMB: maxFileSizeMB.value
+  })
+}
+
+function cancelRejectDialog() {
+  rejectDialogVisible.value = false
+  rejectDialogResolve.value?.reject?.()
+  rejectDialogResolve.value = null
+}
+
+function confirmRejectDialog() {
+  const text = String(rejectDialogReason.value || '').trim()
+  if (!text) {
+    ElMessage.warning('请填写驳回原因')
+    return
+  }
+  if (text.length > 500) {
+    ElMessage.warning('驳回原因不能超过500字')
+    return
+  }
+  const files = [...rejectRawFiles.value]
+  rejectDialogVisible.value = false
+  rejectDialogResolve.value?.resolve?.({ reason: text, files })
+  rejectDialogResolve.value = null
+}
+
+async function uploadRejectFilesIfNeeded(taskId, rejectRecordId, files) {
+  if (!files?.length) return
+  if (!rejectRecordId) {
+    ElMessage.warning('驳回已提交，但驳回附件缺少记录ID，未上传附件')
+    return
+  }
+  rejectUploading.value = true
+  try {
+    const res = await uploadFilesApi(taskId, files, 'reject', { rejectRecordId })
+    if (res.code !== 0) ElMessage.error(res.msg || '驳回附件上传失败')
+  } catch (err) {
+    ElMessage.error('驳回附件上传失败: ' + (err.response?.data?.msg || err.message || '未知错误'))
+  } finally {
+    rejectUploading.value = false
+  }
 }
 
 const formatSize = formatFileSize
@@ -482,7 +594,7 @@ watch(taskGroup, async () => {
   currentTask.value = null
   await loadData()
 })
-useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || reviewLoading.value })
+useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || reviewLoading.value || rejectDialogVisible.value })
 </script>
 
 <style scoped>

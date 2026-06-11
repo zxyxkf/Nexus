@@ -10,10 +10,13 @@ import { io } from 'socket.io-client'
 import { getToken, getUser } from '@/utils/auth'
 import { getUnreadCount, readNotification as readNotificationApi } from '@/api'
 import { openTask } from '@/utils/task-navigation'
+import { getServerBase as resolveServerBase } from '@/utils/server-base'
 
-const MAX_TOASTS = 2
+const MAX_TOASTS = 3
 const DEDUP_WINDOW = 30_000
 const AUTO_DISMISS_MS = 5_000
+const MEDIUM_DISMISS_MS = 7_000
+const HIGH_DISMISS_MS = 10_000
 const POLL_INTERVAL = 5_000
 
 // ---- 模块级状态 ----
@@ -31,7 +34,7 @@ let unreadPollCb = null // 外部注入的未读数刷新回调
 // ---- 内部工具 ----
 
 function getServerBase() {
-  return localStorage.getItem('design_server_url') || 'http://192.168.101.78:18632'
+  return resolveServerBase(location.origin)
 }
 
 function flashTaskbar(toast) {
@@ -61,6 +64,22 @@ function showNativeNotification(title, body, type) {
   }
 }
 
+function getToastPriority(type, payload = {}) {
+  const priority = Number(payload.priority || 0)
+  if (priority > 0) return priority
+  const eventType = payload.eventType || payload.rawType || payload.type || type
+  if (type === 'warning' || type === 'error' || ['task_urge', 'task_reject', 'score_review', 'score_reject'].includes(eventType)) return 3
+  if (['task_submit', 'task_review', 'task_assigned'].includes(eventType)) return 2
+  return 1
+}
+
+function getToastDuration(type, payload = {}) {
+  const priority = getToastPriority(type, payload)
+  if (priority >= 3) return HIGH_DISMISS_MS
+  if (priority === 2) return MEDIUM_DISMISS_MS
+  return AUTO_DISMISS_MS
+}
+
 function clearToastTimers(id) {
   const entry = timerEntries.get(id)
   if (!entry) return
@@ -70,13 +89,15 @@ function clearToastTimers(id) {
 
 function startToastTimer(toast) {
   clearToastTimers(toast.id)
+  const duration = toast.duration || AUTO_DISMISS_MS
   const entry = {
     startTime: Date.now(),
-    remaining: AUTO_DISMISS_MS,
+    remaining: duration,
+    duration,
     dismissTimer: null,
     paused: false
   }
-  entry.dismissTimer = setTimeout(() => remove(toast.id), AUTO_DISMISS_MS)
+  entry.dismissTimer = setTimeout(() => remove(toast.id), duration)
   timerEntries.set(toast.id, entry)
 }
 
@@ -85,9 +106,9 @@ function resetToastTimer(id) {
   if (!entry) return
   clearTimeout(entry.dismissTimer)
   entry.startTime = Date.now()
-  entry.remaining = AUTO_DISMISS_MS
+  entry.remaining = entry.duration || AUTO_DISMISS_MS
   entry.paused = false
-  entry.dismissTimer = setTimeout(() => remove(id), AUTO_DISMISS_MS)
+  entry.dismissTimer = setTimeout(() => remove(id), entry.remaining)
 }
 
 // ---- 公开 API ----
@@ -95,6 +116,9 @@ function resetToastTimer(id) {
 export function notify(type, title, content, payload = {}) {
   const key = `${payload.taskId || ''}_${type}`
   const now = Date.now()
+  const eventType = payload.eventType || payload.rawType || payload.type || type
+  const priority = getToastPriority(type, { ...payload, eventType })
+  const duration = getToastDuration(type, { ...payload, eventType, priority })
 
   // 1) 防抖：同 key 30s 内不重复弹
   const lastTime = dedupMap.get(key)
@@ -110,7 +134,16 @@ export function notify(type, title, content, payload = {}) {
   // === Electron: 通过 IPC 发送到独立透明 toast 窗口 ===
   if (window.electronAPI?.showToast) {
     console.log('[Notify] Electron toast:', JSON.stringify({ type, title, content, taskId: payload.taskId, taskTitle: payload.taskTitle }))
-    window.electronAPI.showToast({ type, title, content, taskId: payload.taskId, taskTitle: payload.taskTitle })
+    window.electronAPI.showToast({
+      ...payload,
+      type,
+      rawType: payload.rawType || payload.type,
+      eventType,
+      priority,
+      duration,
+      title,
+      content
+    })
     if (window.electronAPI?.flashFrame) window.electronAPI.flashFrame()
     return
   }
@@ -125,6 +158,15 @@ export function notify(type, title, content, payload = {}) {
     content,
     taskId: payload.taskId,
     taskTitle: payload.taskTitle,
+    task_group: payload.task_group,
+    taskGroup: payload.taskGroup,
+    publisher_id: payload.publisher_id,
+    publisherId: payload.publisherId,
+    designer_id: payload.designer_id,
+    designerId: payload.designerId,
+    eventType,
+    priority,
+    duration,
     createdAt: now
   }
 

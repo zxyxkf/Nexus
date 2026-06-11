@@ -94,7 +94,10 @@ async function createTask(body, user) {
           title: '新任务分配',
           content: `${actorName} ${user.realName || user.username} 分配给您一个新任务「${title}」`,
           taskId,
-          taskTitle: title
+          taskTitle: title,
+          taskGroup,
+          publisherId: user.id,
+          designerId: actualDesignerId
         }).catch(() => {});
       }
 
@@ -151,7 +154,10 @@ async function getTaskDetail(taskId, user) {
   const transferRecords = task.task_group === 'cs'
     ? await taskDao.getTaskTransferRecords(taskId)
     : [];
-  return { ...task, files, transfer_records: transferRecords };
+  const rejectRecords = task.task_group === 'cs'
+    ? await taskDao.getTaskRejectRecords(taskId)
+    : [];
+  return { ...task, files, transfer_records: transferRecords, reject_records: rejectRecords };
 }
 
 async function deleteTask(taskId, user) {
@@ -511,6 +517,8 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
 
   const isOpAssistant = user.role === 'operator_assistant';
   const canUpdateWorkPathOnly = user.role === 'designer' && fileCategory === 'work' && hasWorkPathField;
+  const isRejectAttachment = fileCategory === 'reject';
+  const rejectRecordId = options.rejectRecordId ? Number(options.rejectRecordId) : null;
 
   // 运营助理允许无文件仅提交完成次数；美工允许无文件仅保存上传路径。
   if ((!files || files.length === 0) && !isOpAssistant && !canUpdateWorkPathOnly) {
@@ -546,8 +554,15 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
     const task = await taskDao.getTaskForUpdate(conn, taskId);
     if (!task) throw new AppError(400, '任务不存在');
 
-    // 权限校验：发布者上传参考图 / 执行者上传作品
-    if (user.role === 'operator' || user.role === 'cs_agent') {
+    // 权限校验：发布者上传参考图/驳回附件，执行者上传作品
+    if (isRejectAttachment) {
+      if (task.task_group !== 'cs') {
+        throw new AppError(400, '仅客服基础美工任务支持驳回附件');
+      }
+      if (Number(task.publisher_id) !== Number(user.id)) {
+        throw new AppError(403, '无权上传驳回附件');
+      }
+    } else if (user.role === 'operator' || user.role === 'cs_agent') {
       if (Number(task.publisher_id) !== Number(user.id)) {
         throw new AppError(403, '无权为此任务上传参考图');
       }
@@ -573,11 +588,26 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
     }
 
     // 非参考图且非基础美工 → 覆盖旧文件
-    if (fileCategory !== 'reference' && !isBasicDesigner) {
+    if (fileCategory !== 'reference' && !isRejectAttachment && !isBasicDesigner) {
       await taskDao.deleteWorkFiles(conn, taskId);
     }
 
     const taskGroup = task.task_group || 'design';
+    let activeRejectRecordId = rejectRecordId;
+    if (isRejectAttachment) {
+      if (!activeRejectRecordId) throw new AppError(400, '缺少驳回记录ID');
+      const [records] = await conn.execute(
+        `SELECT id FROM task_reject_record WHERE id = ? AND task_id = ?`,
+        [activeRejectRecordId, taskId]
+      );
+      if (!records.length) throw new AppError(400, '驳回记录不存在');
+    } else if (user.role === 'basic_designer' && task.status === 'rejected') {
+      const [records] = await conn.execute(
+        `SELECT id FROM task_reject_record WHERE task_id = ? ORDER BY reject_index DESC, id DESC LIMIT 1`,
+        [taskId]
+      );
+      activeRejectRecordId = records[0]?.id || null;
+    }
 
     let submitted = false;
 
@@ -601,10 +631,13 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
       await taskDao.insertFileRecord(conn, {
         taskId, fileName: file.originalname, filePath,
         fileSize: file.size, fileType,
-        mimeType: file.mimetype || '', uploaderId: user.id, fileCategory
+        mimeType: file.mimetype || '', uploaderId: user.id, fileCategory,
+        rejectRecordId: activeRejectRecordId
       });
 
-      if (saveOnly && fileCategory !== 'reference' && (task.status === 'accepted' || task.status === 'rejected')) {
+      if (isRejectAttachment) {
+        // 驳回附件只作为客服驳回记录附件保存，不触发任务状态变化。
+      } else if (saveOnly && fileCategory !== 'reference' && (task.status === 'accepted' || task.status === 'rejected')) {
         const draftFields = {};
         if (hasWorkPathField) draftFields.work_path = workPath;
         if (actualQuantity > 0) draftFields.actual_quantity = actualQuantity;
@@ -628,7 +661,7 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
         await conn.execute(`UPDATE task_info SET work_path = ? WHERE id = ?`, [workPath, taskId]);
       }
 
-      if (fileCategory !== 'reference') {
+      if (fileCategory !== 'reference' && !isRejectAttachment) {
         socketEmit(`user:${task.publisher_id}`);
       }
     }
@@ -691,9 +724,9 @@ async function finishTask(taskId, actualQuantity, user) {
       throw new AppError(400, '当前状态无法提交');
     }
 
-    if (user.role === 'operator_assistant') {
+      if (user.role === 'operator_assistant') {
       const [workFiles] = await conn.execute(
-        `SELECT id FROM task_file WHERE task_id = ? AND file_category <> 'reference' LIMIT 1`,
+        `SELECT id FROM task_file WHERE task_id = ? AND file_category NOT IN ('reference', 'reject') LIMIT 1`,
         [taskId]
       );
       if (!workFiles.length && !qty) throw new AppError(400, '请上传完成凭证或填写完成次数');
@@ -722,6 +755,7 @@ async function reviewTask(taskId, action, rejectReason, user) {
   }
 
   return withLock(`review:${taskId}`, async () => {
+    let rejectRecord = null;
     await executeTransaction(async (conn) => {
       const task = await taskDao.getTaskForUpdate(conn, taskId);
       if (!task) throw new AppError(400, '任务不存在');
@@ -743,6 +777,12 @@ async function reviewTask(taskId, action, rejectReason, user) {
           extra.score = 1;
           extra.score_review_status = '';
           extra.score_review_reason = '';
+          rejectRecord = await taskDao.insertRejectRecord(conn, {
+            taskId,
+            reviewerId: user.id,
+            reviewerName: user.realName || user.username || '',
+            reason: normalizedRejectReason
+          });
         }
         await taskDao.updateTaskStatus(conn, taskId, 'rejected', extra);
       }
@@ -759,7 +799,10 @@ async function reviewTask(taskId, action, rejectReason, user) {
       userId: user.id, taskId, action, rejectReason: normalizedRejectReason || null
     });
 
-    return { msg: action === 'pass' ? '审核通过，任务已完成' : '已驳回' };
+    return {
+      msg: action === 'pass' ? '审核通过，任务已完成' : '已驳回',
+      data: rejectRecord ? { rejectRecordId: rejectRecord.id, rejectIndex: rejectRecord.rejectIndex } : undefined
+    };
   });
 }
 

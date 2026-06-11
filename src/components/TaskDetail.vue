@@ -109,6 +109,10 @@
           </div>
         </div>
       </div>
+      <RejectHistory
+        v-if="taskGroup === 'cs'"
+        :records="task.reject_records || []"
+      />
     </template>
 
     <template #footer>
@@ -131,6 +135,7 @@
 import { ref, computed } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import RejectHistory from '@/components/RejectHistory.vue'
 import { getFileUrl, downloadFile as downloadFileUtil, setupFileDrag } from '@/api/upload'
 import { useTaskStatus } from '@/composables/useTaskStatus'
 
@@ -157,10 +162,10 @@ const refAttachments = computed(() =>
   allFiles.value.filter(f => f.file_category === 'reference' && f.file_type !== 'image')
 )
 const workImageFiles = computed(() =>
-  allFiles.value.filter(f => f.file_category !== 'reference' && f.file_type === 'image')
+  allFiles.value.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject' && f.file_type === 'image')
 )
 const workAttachments = computed(() =>
-  allFiles.value.filter(f => f.file_category !== 'reference' && f.file_type !== 'image')
+  allFiles.value.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject' && f.file_type !== 'image')
 )
 
 function previewImage(file) {

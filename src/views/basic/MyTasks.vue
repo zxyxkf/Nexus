@@ -256,8 +256,8 @@
               <div v-if="detailRefImages.length" class="inline-detail-files">
                 <h4>参考图 ({{ detailRefImages.length }})</h4>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                  <div v-for="file in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
-                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="detailRefPreviewList" preview-teleported style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;" />
+                  <div v-for="(file, index) in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
+                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="detailRefPreviewList" :initial-index="index" preview-teleported style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;" />
                     <el-button type="primary" link size="small" @click="downloadFile(file)" style="position:absolute;bottom:4px;right:4px;background:rgba(255,255,255,0.85);border-radius:4px;">下载</el-button>
                   </div>
                 </div>
@@ -276,8 +276,8 @@
               <div v-if="workImageFiles.length" class="inline-detail-files">
                 <h4>作品图片 ({{ workImageFiles.length }})</h4>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                  <div v-for="file in workImageFiles" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
-                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="workImagePreviewList" preview-teleported style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;" />
+                  <div v-for="(file, index) in workImageFiles" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
+                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="workImagePreviewList" :initial-index="index" preview-teleported style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;" />
                     <el-button type="primary" link size="small" @click="downloadFile(file)" style="position:absolute;bottom:4px;right:4px;background:rgba(255,255,255,0.85);border-radius:4px;">下载</el-button>
                   </div>
                 </div>
@@ -294,13 +294,14 @@
                 </div>
               </div>
             </template>
+            <RejectHistory :records="currentTask.reject_records || []" />
           </div>
         </div>
       </transition>
     </el-card>
 
     <!-- 上传作品对话框 -->
-    <el-dialog v-model="uploadVisible" title="上传作品" width="500px" :close-on-click-modal="false">
+    <el-dialog v-model="uploadVisible" title="上传作品" width="500px" :close-on-click-modal="false" @keydown.enter.exact.prevent="handleUpload">
       <el-upload
         ref="uploadRef"
         drag
@@ -394,6 +395,7 @@ import { getUser } from '@/utils/auth'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
+import RejectHistory from '@/components/RejectHistory.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -474,14 +476,14 @@ const detailRefPreviewList = computed(() => {
 })
 const workImageFiles = computed(() => {
   if (!currentTask.value?.files) return []
-  return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_type === 'image')
+  return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject' && f.file_type === 'image')
 })
 const workImagePreviewList = computed(() => {
   return workImageFiles.value.map(f => f._previewSrc || getFileUrl(f))
 })
 const workAttachFiles = computed(() => {
   if (!currentTask.value?.files) return []
-  return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_type !== 'image')
+  return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject' && f.file_type !== 'image')
 })
 const detailRefAttachments = computed(() => {
   if (!currentTask.value?.files) return []
@@ -494,7 +496,7 @@ async function loadData(options = {}) {
     const res = await getMyAcceptedApi({
       page: page.value,
       pageSize: pageSize.value,
-      status: fixedStatus.value || statusFilter.value || undefined,
+      status: fixedStatus.value === 'accepted' ? 'accepted,rejected' : (fixedStatus.value || statusFilter.value || undefined),
       taskGroup: 'cs',
       keyword: keyword.value || undefined,
       publisherId: publisherFilter.value || undefined,
@@ -557,12 +559,15 @@ async function viewDetail(row) {
     const res = await getTaskDetailApi({ taskId: row.id })
     if (res.code === 0) {
       const files = res.data.files || []
-      const imageFiles = files.filter(f => f.file_type === 'image')
+      const rejectRecords = res.data.reject_records || []
+      const rejectFiles = rejectRecords.flatMap(record => record.files || [])
+      const allFiles = [...files, ...rejectFiles]
+      const imageFiles = allFiles.filter(f => f.file_type === 'image')
       await Promise.all(imageFiles.map(async (f) => {
         f._previewSrc = await fetchImageDataUrl(f)
       }))
-      preloadFilesForDrag(files)
-      currentTask.value = { ...res.data, files }
+      preloadFilesForDrag(allFiles)
+      currentTask.value = { ...res.data, files, reject_records: rejectRecords }
       detailVisible.value = true
     }
   } catch (e) {
@@ -592,6 +597,7 @@ function handleUploadPaste(event) {
 }
 
 async function handleUpload() {
+  if (uploadLoading.value) return
   if (!fileList.value.length) {
     ElMessage.warning('请先选择文件')
     return

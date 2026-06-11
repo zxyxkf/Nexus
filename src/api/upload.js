@@ -2,15 +2,12 @@
  * 文件工具 — URL 拼接 + Electron IPC 预览/下载 + 拖拽到桌面
  */
 import { getToken } from '@/utils/auth'
+import { getServerBase as resolveServerBase } from '@/utils/server-base'
 
 // ==================== URL 工具 ====================
 
 function getServerBase() {
-  const stored = localStorage.getItem('design_server_url')
-  if (stored) return stored
-  if (location.protocol === 'file:') return 'http://127.0.0.1:18632'
-  if (location.origin && location.origin !== 'null') return location.origin
-  return 'http://192.168.101.78:18632'
+  return resolveServerBase()
 }
 
 function appendToken(url) {

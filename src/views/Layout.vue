@@ -1,5 +1,5 @@
 <template>
-  <el-container class="layout-container">
+  <el-container class="layout-container" :style="{ '--layout-sidebar-width': sidebarWidth }">
     <!-- 全局公告气泡 -->
     <AnnouncementBanner />
 

@@ -76,7 +76,7 @@ const fileInput = ref(null)
 const dragOver = ref(false)
 const viewerVisible = ref(false)
 
-const workFiles = computed(() => (props.files || []).filter(file => file.file_category !== 'reference'))
+const workFiles = computed(() => (props.files || []).filter(file => file.file_category !== 'reference' && file.file_category !== 'reject'))
 const imageFile = computed(() => workFiles.value.find(file => file.file_type === 'image') || null)
 const imagePreviewList = computed(() => workFiles.value.filter(file => file.file_type === 'image').map(file => getFileUrl(file)))
 const viewerFile = computed(() => imageFile.value || null)

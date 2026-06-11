@@ -139,6 +139,10 @@ function transformSql(sql) {
   result = result.replace(/\bJSON_ARRAY\s*\(\s*\)/gi, 'json_array()');
   result = result.replace(/\bIFNULL\s*\(/gi, 'ifnull(');
 
+  // 9. MySQL 日期提取函数 → SQLite strftime
+  result = result.replace(/\bMONTH\s*\(\s*([^)]+?)\s*\)/gi, "CAST(strftime('%m', $1) AS INTEGER)");
+  result = result.replace(/\bYEAR\s*\(\s*([^)]+?)\s*\)/gi, "CAST(strftime('%Y', $1) AS INTEGER)");
+
   return result;
 }
 

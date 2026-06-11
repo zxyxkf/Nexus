@@ -140,7 +140,7 @@
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
             <el-button
-              v-if="row.status === 'accepted'"
+              v-if="row.status === 'accepted' || row.status === 'rejected'"
               type="success"
               link size="small"
               :loading="inlineSubmitId === row.id"
@@ -256,8 +256,8 @@
               <div v-if="detailRefImages.length" class="inline-detail-files">
                 <h4>参考图 ({{ detailRefImages.length }})</h4>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                  <div v-for="file in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
-                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="detailRefPreviewList" preview-teleported style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;" />
+                  <div v-for="(file, index) in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
+                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="detailRefPreviewList" :initial-index="index" preview-teleported style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;" />
                     <el-button type="primary" link size="small" @click="downloadFile(file)" style="position:absolute;bottom:4px;right:4px;background:rgba(255,255,255,0.85);border-radius:4px;">下载</el-button>
                   </div>
                 </div>
@@ -276,8 +276,8 @@
               <div v-if="workImageFiles.length" class="inline-detail-files">
                 <h4>作品图片 ({{ workImageFiles.length }})</h4>
                 <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                  <div v-for="file in workImageFiles" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
-                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="workImagePreviewList" preview-teleported style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;" />
+                  <div v-for="(file, index) in workImageFiles" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
+                    <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="workImagePreviewList" :initial-index="index" preview-teleported style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;" />
                     <el-button type="primary" link size="small" @click="downloadFile(file)" style="position:absolute;bottom:4px;right:4px;background:rgba(255,255,255,0.85);border-radius:4px;">下载</el-button>
                   </div>
                 </div>
@@ -300,7 +300,7 @@
     </el-card>
 
     <!-- 上传作品对话框 -->
-    <el-dialog v-model="uploadVisible" title="上传作品" width="500px" :close-on-click-modal="false">
+    <el-dialog v-model="uploadVisible" title="上传作品" width="500px" :close-on-click-modal="false" @keydown.enter.exact.prevent="handleUpload">
       <el-form-item label="上传路径">
         <el-input v-model="workPath" placeholder="作品文件路径或链接（可选）" />
       </el-form-item>
@@ -418,7 +418,7 @@ const detailRefAttachments = computed(() => {
 })
 
 function canInlineSubmit(row) {
-  return fixedStatus.value === 'accepted' && row?.status === 'accepted'
+  return fixedStatus.value === 'accepted' && (row?.status === 'accepted' || row?.status === 'rejected')
 }
 
 function getInlinePathValue(row) {
@@ -511,7 +511,7 @@ async function loadData(options = {}) {
     const res = await getMyAcceptedApi({
       page: page.value,
       pageSize: pageSize.value,
-      status: fixedStatus.value || statusFilter.value || undefined,
+      status: fixedStatus.value === 'accepted' ? 'accepted,rejected' : (fixedStatus.value || statusFilter.value || undefined),
       taskGroup: 'design',
       keyword: styleNumberFilter.value || undefined,
       dateStart: dateRange.value?.[0] || undefined,
@@ -618,6 +618,7 @@ function handleUploadPaste(event) {
 }
 
 async function handleUpload() {
+  if (uploadLoading.value) return
   if (!fileList.value.length) {
     ElMessage.warning('请先选择文件')
     return
@@ -688,7 +689,7 @@ async function submitInlineWork(row) {
       ElMessage.error(detailRes.msg || '获取任务详情失败')
       return
     }
-    const workFiles = (detailRes.data.files || []).filter(file => file.file_category !== 'reference')
+    const workFiles = (detailRes.data.files || []).filter(file => file.file_category !== 'reference' && file.file_category !== 'reject')
     if (!workFiles.length) {
       ElMessage.warning('请先上传作品文件')
       return

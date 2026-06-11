@@ -131,6 +131,16 @@ const CREATE_TABLES_SQL = {
       mime_type TEXT DEFAULT '',
       uploader_id INTEGER,
       file_category TEXT DEFAULT 'work',
+      reject_record_id INTEGER,
+      create_time TEXT DEFAULT (datetime('now', 'localtime'))
+    )`,
+    `CREATE TABLE IF NOT EXISTS task_reject_record (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      task_id INTEGER NOT NULL,
+      reject_index INTEGER DEFAULT 1,
+      reviewer_id INTEGER,
+      reviewer_name TEXT DEFAULT '',
+      reject_reason TEXT DEFAULT '',
       create_time TEXT DEFAULT (datetime('now', 'localtime'))
     )`,
     `CREATE TABLE IF NOT EXISTS task_transfer_record (
@@ -346,7 +356,18 @@ const CREATE_TABLES_SQL = {
       mime_type VARCHAR(100) DEFAULT '',
       uploader_id INT,
       file_category VARCHAR(20) DEFAULT 'work',
+      reject_record_id INT DEFAULT NULL,
       create_time DATETIME DEFAULT CURRENT_TIMESTAMP
+    ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+    `CREATE TABLE IF NOT EXISTS task_reject_record (
+      id INT AUTO_INCREMENT PRIMARY KEY,
+      task_id INT NOT NULL,
+      reject_index INT DEFAULT 1,
+      reviewer_id INT,
+      reviewer_name VARCHAR(100) DEFAULT '',
+      reject_reason TEXT,
+      create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+      KEY idx_task_id (task_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     `CREATE TABLE IF NOT EXISTS task_transfer_record (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -569,6 +590,17 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN finish_time DATETIME AFTER accept_time`,
       `ALTER TABLE sys_oper_log ADD COLUMN error_msg TEXT AFTER result_msg`,
       `ALTER TABLE task_file ADD COLUMN file_category VARCHAR(20) DEFAULT 'work' AFTER uploader_id`,
+      `ALTER TABLE task_file ADD COLUMN reject_record_id INT DEFAULT NULL`,
+      `CREATE TABLE IF NOT EXISTS task_reject_record (
+        id INT AUTO_INCREMENT PRIMARY KEY,
+        task_id INT NOT NULL,
+        reject_index INT DEFAULT 1,
+        reviewer_id INT,
+        reviewer_name VARCHAR(100) DEFAULT '',
+        reject_reason TEXT,
+        create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+        KEY idx_task_id (task_id)
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
       `ALTER TABLE task_info ADD COLUMN task_group VARCHAR(20) DEFAULT 'design'`,
       `ALTER TABLE task_info ADD COLUMN specified_color VARCHAR(100) DEFAULT ''`,
       `ALTER TABLE sys_score_item ADD COLUMN task_group VARCHAR(20) DEFAULT NULL`,
@@ -628,6 +660,16 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN accept_time TEXT`,
       `ALTER TABLE sys_oper_log ADD COLUMN error_msg TEXT DEFAULT ''`,
       `ALTER TABLE task_file ADD COLUMN file_category TEXT DEFAULT 'work'`,
+      `ALTER TABLE task_file ADD COLUMN reject_record_id INTEGER`,
+      `CREATE TABLE IF NOT EXISTS task_reject_record (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        task_id INTEGER NOT NULL,
+        reject_index INTEGER DEFAULT 1,
+        reviewer_id INTEGER,
+        reviewer_name TEXT DEFAULT '',
+        reject_reason TEXT DEFAULT '',
+        create_time TEXT DEFAULT (datetime('now', 'localtime'))
+      )`,
       `ALTER TABLE task_info ADD COLUMN task_group TEXT DEFAULT 'design'`,
       `ALTER TABLE task_info ADD COLUMN specified_color TEXT DEFAULT ''`,
       `ALTER TABLE sys_score_item ADD COLUMN task_group TEXT DEFAULT NULL`,

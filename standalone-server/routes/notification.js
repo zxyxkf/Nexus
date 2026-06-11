@@ -163,6 +163,11 @@ router.post('/urge', requireAuth, createLogMiddleware('催促任务', '通知中
     if (!updateResult || updateResult.affectedRows === 0) {
       return res.json({ code: 400, msg: '仅待做任务可以催促置顶' });
     }
+    const [taskRows] = await execute(
+      `SELECT task_group, publisher_id, designer_id, title FROM task_info WHERE id = ?`,
+      [taskId]
+    );
+    const taskInfo = taskRows && taskRows[0] ? taskRows[0] : {};
     await execute(
       `INSERT INTO sys_notification (user_id, type, title, content, task_id)
        VALUES (?, 'task_urge', '任务催促提醒', ?, ?)`,
@@ -173,8 +178,13 @@ router.post('/urge', requireAuth, createLogMiddleware('催促任务', '通知中
       console.log(`[Urge] 发送催促通知 → userId=${designerId}, taskId=${taskId}, taskTitle=${taskTitle}`)
       global.io.to(`user:${designerId}`).emit('notification:new', {
         type: 'urge',
+        eventType: 'task_urge',
+        priority: 3,
         taskId,
-        taskTitle,
+        taskTitle: taskTitle || taskInfo.title,
+        task_group: taskInfo.task_group || undefined,
+        publisher_id: taskInfo.publisher_id || undefined,
+        designer_id: taskInfo.designer_id || designerId,
         title: '任务催促提醒',
         content
       });

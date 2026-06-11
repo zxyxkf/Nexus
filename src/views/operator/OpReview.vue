@@ -200,8 +200,8 @@
             <div class="inline-detail-files">
               <h4>参考图 ({{ detailRefImages.length }})</h4>
               <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                <div v-for="file in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
-                  <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="detailRefPreviewList" preview-teleported style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;" />
+                <div v-for="(file, index) in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
+                  <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="detailRefPreviewList" :initial-index="index" preview-teleported style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;" />
                   <el-button class="file-download-btn" type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
                 </div>
               </div>
@@ -225,7 +225,7 @@
             <div class="review-file-grid">
               <div v-for="file in reviewWorkFiles" :key="file.id" class="review-file-item" draggable="true" @dragstart="setupFileDrag($event, file)">
                 <template v-if="file.file_type === 'image'">
-                  <el-image :src="file._previewSrc || getFileUrl(file)" fit="cover" :preview-src-list="imagePreviewList" style="width:180px;height:160px;border-radius:8px;border:1px solid #e4e7ed;cursor:pointer;">
+                  <el-image :src="file._previewSrc || getFileUrl(file)" fit="cover" :preview-src-list="imagePreviewList" :initial-index="getImagePreviewIndex(reviewWorkFiles, file)" style="width:180px;height:160px;border-radius:8px;border:1px solid #e4e7ed;cursor:pointer;">
                     <template #error>
                       <div class="img-error"><el-icon :size="24"><PictureFilled /></el-icon><span>加载失败</span></div>
                     </template>
@@ -296,7 +296,7 @@ const selectedRows = ref([])
 
 function onSelectChange(rows) { selectedRows.value = rows }
 
-const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList } = useFileHelpers()
+const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList, getImagePreviewIndex } = useFileHelpers()
 const detailRefImages = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type === 'image')

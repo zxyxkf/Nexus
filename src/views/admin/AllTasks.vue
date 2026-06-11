@@ -180,11 +180,12 @@
           <template v-if="currentTask.files && currentTask.files.length > 0">
             <div v-if="refImageFiles.length > 0" class="inline-detail-files">
               <h4>参考图 ({{ refImageFiles.length }})</h4>
-              <div v-for="file in refImageFiles" :key="file.id" style="position:relative;display:inline-block;" draggable="true" @dragstart="setupFileDrag($event, file)">
+              <div v-for="(file, index) in refImageFiles" :key="file.id" style="position:relative;display:inline-block;" draggable="true" @dragstart="setupFileDrag($event, file)">
                 <el-image
                   :src="file._previewSrc || getFileUrl(file)"
                   fit="contain"
                   :preview-src-list="refImagePreviewList"
+                  :initial-index="index"
                   preview-teleported
                   style="width:150px;height:150px;border-radius:8px;margin-right:8px;margin-bottom:8px;border:1px solid #e4e7ed;"
                 />
@@ -204,11 +205,12 @@
             </div>
             <div v-if="workImageFiles.length > 0" class="inline-detail-files">
               <h4>{{ taskGroup === 'operator' ? '完成凭证图片' : '作品图片' }} ({{ workImageFiles.length }})</h4>
-              <div v-for="file in workImageFiles" :key="file.id" style="position:relative;display:inline-block;" draggable="true" @dragstart="setupFileDrag($event, file)">
+              <div v-for="(file, index) in workImageFiles" :key="file.id" style="position:relative;display:inline-block;" draggable="true" @dragstart="setupFileDrag($event, file)">
                 <el-image
                   :src="file._previewSrc || getFileUrl(file)"
                   fit="contain"
                   :preview-src-list="workImagePreviewList"
+                  :initial-index="index"
                   preview-teleported
                   style="width:150px;height:150px;border-radius:8px;margin-right:8px;margin-bottom:8px;border:1px solid #e4e7ed;"
                 />
@@ -227,6 +229,7 @@
               </div>
             </div>
           </template>
+          <RejectHistory v-if="taskGroup === 'cs'" :records="currentTask.reject_records || []" />
         </div>
       </div>
     </transition>
@@ -244,6 +247,7 @@ import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreRev
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'
+import RejectHistory from '@/components/RejectHistory.vue'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { exportTasksApi } from '@/api/export'
 
@@ -283,11 +287,11 @@ const refAttachmentFiles = computed(() => {
 })
 const workImageFiles = computed(() => {
   if (!currentTask.value?.files) return []
-  return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_type === 'image')
+  return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject' && f.file_type === 'image')
 })
 const workAttachmentFiles = computed(() => {
   if (!currentTask.value?.files) return []
-  return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_type !== 'image')
+  return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject' && f.file_type !== 'image')
 })
 const refImagePreviewList = computed(() => refImageFiles.value.map(f => f._previewSrc || getFileUrl(f)))
 const workImagePreviewList = computed(() => workImageFiles.value.map(f => f._previewSrc || getFileUrl(f)))
@@ -483,12 +487,15 @@ async function viewDetail(row) {
     const res = await getTaskDetailApi({ taskId: row.id })
     if (res.code === 0) {
       const files = res.data.files || []
-      const imageFiles = files.filter(f => f.file_type === 'image')
+      const rejectRecords = res.data.reject_records || []
+      const rejectFiles = rejectRecords.flatMap(record => record.files || [])
+      const allFiles = [...files, ...rejectFiles]
+      const imageFiles = allFiles.filter(f => f.file_type === 'image')
       await Promise.all(imageFiles.map(async (f) => {
         f._previewSrc = await fetchImageDataUrl(f)
       }))
-      preloadFilesForDrag(files)
-      currentTask.value = { ...res.data, files }
+      preloadFilesForDrag(allFiles)
+      currentTask.value = { ...res.data, files, reject_records: rejectRecords }
       detailVisible.value = true
     }
   } catch (e) {

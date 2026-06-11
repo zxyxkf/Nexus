@@ -22,7 +22,13 @@ function roleLabel(role) {
  * @param {string} opts.content - 通知内容
  * @param {number} opts.taskId - 关联任务ID
  */
-async function sendNotification({ userId, type, title, content, taskId, taskTitle, taskGroup, publisherId, designerId }) {
+function notificationPriority(type) {
+  if (['task_urge', 'task_reject', 'task_transfer', 'score_review', 'score_reject'].includes(type)) return 3;
+  if (['task_submit', 'task_review', 'task_assigned'].includes(type)) return 2;
+  return 1;
+}
+
+async function sendNotification({ userId, type, title, content, taskId, taskTitle, taskGroup, publisherId, designerId, priority }) {
   try {
     await execute(
       `INSERT INTO sys_notification (user_id, type, title, content, task_id)
@@ -35,6 +41,7 @@ async function sendNotification({ userId, type, title, content, taskId, taskTitl
       const wsTypeMap = {
         task_urge: 'urge',
         task_accept: 'task_accepted',
+        task_submit: 'task_submitted',
         task_reject: 'task_rejected',
         task_review: 'task_accepted',
         task_transfer: 'task_transferred',
@@ -42,6 +49,8 @@ async function sendNotification({ userId, type, title, content, taskId, taskTitl
       };
       global.io.to(`user:${userId}`).emit('notification:new', {
         type: wsTypeMap[type] || 'info',
+        eventType: type || 'system',
+        priority: priority || notificationPriority(type),
         taskId: taskId || undefined,
         taskTitle: taskTitle || title,
         task_group: taskGroup || undefined,
