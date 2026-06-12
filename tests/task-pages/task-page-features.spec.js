@@ -512,6 +512,49 @@ test('preview image drag reuses shared drag bridge and preloads Electron cache',
   expect(prepareCalls.some(call => call.params.items.some(item => item.fileId === 101))).toBe(true)
 })
 
+test('table column visibility and resized widths survive reload', async ({ page }) => {
+  await loginAs(page, users.designer)
+  await page.goto('/#/designer/tasks')
+
+  await expect(page.locator('.el-table')).toBeVisible()
+  await expect(page.locator('.el-loading-mask')).toHaveCount(0)
+  const titleHeader = page.locator('.el-table__header-wrapper th').filter({ hasText: '工作项目' }).first()
+  await expect(titleHeader).toBeVisible()
+
+  const beforeWidth = await titleHeader.evaluate(el => Math.round(el.getBoundingClientRect().width))
+  const box = await titleHeader.boundingBox()
+  expect(box).toBeTruthy()
+
+  await page.mouse.move(box.x + box.width - 4, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width + 80, box.y + box.height / 2, { steps: 8 })
+  await page.mouse.up()
+
+  await expect.poll(async () => {
+    return page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('nexus_table_columns_v2') && key.endsWith('_widths')).length)
+  }).toBeGreaterThan(0)
+
+  const storedBeforeReload = await getColumnStorageState(page)
+  expect(storedBeforeReload.widths.length).toBeGreaterThan(0)
+
+  await page.getByRole('button', { name: '列设置' }).first().click()
+  const publisherOption = page.locator('.nexus-column-panel.is-open .nexus-column-option').filter({ hasText: '发布人' }).first()
+  await expect(publisherOption).toBeVisible()
+  await publisherOption.locator('input[type="checkbox"]').uncheck()
+  await expectColumnHidden(page, '发布人')
+
+  await page.reload()
+  await expect(page.locator('.el-table')).toBeVisible()
+  await expect(page.locator('.el-loading-mask')).toHaveCount(0)
+  await expectColumnHidden(page, '发布人')
+
+  const titleHeaderAfterReload = page.locator('.el-table__header-wrapper th').filter({ hasText: '工作项目' }).first()
+  await expect(titleHeaderAfterReload).toBeVisible()
+  const afterWidth = await titleHeaderAfterReload.evaluate(el => Math.round(el.getBoundingClientRect().width))
+
+  expect(afterWidth).toBeGreaterThan(beforeWidth + 30)
+})
+
 async function loginAs(page, user) {
   await page.addInitScript(({ token, userInfo }) => {
     localStorage.setItem('d_design_token', token)
@@ -519,6 +562,28 @@ async function loginAs(page, user) {
     localStorage.setItem('design_server_url', '')
     sessionStorage.setItem('d_design_login_time', 'feature-test')
   }, { token: TOKEN, userInfo: user })
+}
+
+async function getColumnStorageState(page) {
+  return page.evaluate(() => {
+    const entries = Object.entries(localStorage)
+      .filter(([key]) => key.startsWith('nexus_table_columns_v2'))
+      .map(([key, value]) => ({ key, value: JSON.parse(value) }))
+    return {
+      visible: entries.filter(entry => !entry.key.endsWith('_widths')),
+      widths: entries.filter(entry => entry.key.endsWith('_widths'))
+    }
+  })
+}
+
+async function expectColumnHidden(page, label) {
+  const header = page.locator('.el-table__header-wrapper th').filter({ hasText: label }).first()
+  await expect(header).toBeAttached()
+  await expect.poll(async () => header.evaluate(el => {
+    const style = getComputedStyle(el)
+    const rect = el.getBoundingClientRect()
+    return style.display === 'none' || rect.width <= 1
+  })).toBe(true)
 }
 
 async function mockElectronDrag(page, { cached }) {

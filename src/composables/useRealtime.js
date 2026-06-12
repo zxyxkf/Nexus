@@ -28,11 +28,11 @@ function getSocket() {
   })
 
   socket.on('connect', () => {
-    console.log('[WS] 已连接:', socket.id)
+    console.debug('[WS] 已连接:', socket.id)
   })
 
   socket.on('disconnect', (reason) => {
-    console.log('[WS] 断开:', reason)
+    console.debug('[WS] 断开:', reason)
   })
 
   socket.on('connect_error', (err) => {

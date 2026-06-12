@@ -15,6 +15,7 @@ let installed = false
 let resizeGuide = null
 let resizeFrame = null
 let resizeHoverHeader = null
+let headerMouseDownTable = null
 
 function hashText(value) {
   const text = String(value || '')
@@ -285,6 +286,18 @@ function loadColumnWidths(storageInfo, cells) {
   return widths
 }
 
+function storageInfoFromDataset(table) {
+  const storageKey = table?.dataset?.nexusColumnStorageKey
+  const widthKey = table?.dataset?.nexusColumnWidthKey
+  if (!storageKey || !widthKey) return null
+  return {
+    storageKey,
+    widthKey,
+    legacyKeys: (table.dataset.nexusLegacyColumnKeys || '').split('\n').filter(Boolean),
+    legacyWidthKeys: (table.dataset.nexusLegacyColumnWidthKeys || '').split('\n').filter(Boolean)
+  }
+}
+
 function removeStorageKeys(storageInfo) {
   for (const key of [
     storageInfo.storageKey,
@@ -312,6 +325,9 @@ function getTableScopeSelectors(tableId) {
 }
 
 function readColumnWidths(table, cells) {
+  const domWidths = readDomColumnWidths(table, cells)
+  if (Object.keys(domWidths).length) return domWidths
+
   const columns = getTableColumns(table)
   if (Array.isArray(columns) && columns.length) {
     const stateWidths = Object.fromEntries(
@@ -334,6 +350,56 @@ function readColumnWidths(table, cells) {
       .map(cell => [cell.key, Math.round(headers[cell.index - 1]?.getBoundingClientRect().width || 0)])
       .filter(([, width]) => Number.isFinite(width) && width >= MIN_COLUMN_WIDTH && width <= MAX_COLUMN_WIDTH)
   )
+}
+
+function readColumnWidthsFromState(table, cells) {
+  const columns = getTableColumns(table)
+  if (!Array.isArray(columns) || !columns.length) return {}
+
+  return Object.fromEntries(
+    cells
+      .map(cell => {
+        const column = columns[cell.index - 1]
+        return [cell.key, Math.round(Number(column?.realWidth || column?.width || 0))]
+      })
+      .filter(([, width]) => Number.isFinite(width) && width >= MIN_COLUMN_WIDTH && width <= MAX_COLUMN_WIDTH)
+  )
+}
+
+function readDomColumnWidths(table, cells) {
+  const rows = table.querySelectorAll('.el-table__header-wrapper thead tr')
+  const row = rows[rows.length - 1]
+  const headers = row ? Array.from(row.querySelectorAll('th')) : []
+
+  return Object.fromEntries(
+    cells
+      .map(cell => [cell.key, readDomColumnWidth(table, cell, headers)])
+      .filter(([, width]) => Number.isFinite(width) && width >= MIN_COLUMN_WIDTH && width <= MAX_COLUMN_WIDTH)
+  )
+}
+
+function readDomColumnWidth(table, cell, headers) {
+  const widths = []
+
+  if (cell.columnClass) {
+    const columnName = escapeAttributeValue(cell.columnClass)
+    table.querySelectorAll(`colgroup col[name="${columnName}"]`).forEach(col => {
+      const attrWidth = Math.round(Number(col.getAttribute('width') || 0))
+      const styleWidth = Math.round(Number(String(col.style.width || '').replace('px', '')) || 0)
+      const rectWidth = Math.round(col.getBoundingClientRect?.().width || 0)
+      widths.push(attrWidth, styleWidth, rectWidth)
+    })
+
+    const columnClass = escapeSelectorValue(cell.columnClass)
+    table.querySelectorAll(`.el-table__header-wrapper .${columnClass}`).forEach(header => {
+      widths.push(Math.round(header.getBoundingClientRect().width || 0))
+    })
+  }
+
+  const header = headers[cell.index - 1]
+  if (header) widths.push(Math.round(header.getBoundingClientRect().width || 0))
+
+  return widths.find(width => Number.isFinite(width) && width >= MIN_COLUMN_WIDTH && width <= MAX_COLUMN_WIDTH) || 0
 }
 
 function readDefaultColumnState(table, cells) {
@@ -386,27 +452,102 @@ function syncTableColumnState(table, cells, widths, persistAsColumnWidth = false
   return changed
 }
 
-function applyColumnWidths(table, tableId, cells, widths, persistAsColumnWidth = false) {
+function getColumnWidthSelectors(tableId, cell) {
+  const scopeSelectors = getTableScopeSelectors(tableId)
+  return scopeSelectors.flatMap(scope => {
+    const indexSelectors = [
+      `${scope} .el-table__header-wrapper th:nth-child(${cell.index})`,
+      `${scope} .el-table__body-wrapper td:nth-child(${cell.index})`,
+      `${scope} .el-table__footer-wrapper td:nth-child(${cell.index})`,
+      `${scope} colgroup col:nth-child(${cell.index})`,
+      `${scope} .el-table__fixed th:nth-child(${cell.index})`,
+      `${scope} .el-table__fixed td:nth-child(${cell.index})`,
+      `${scope} .el-table__fixed-right th:nth-child(${cell.index})`,
+      `${scope} .el-table__fixed-right td:nth-child(${cell.index})`
+    ]
+    if (!cell.columnClass) return indexSelectors
+    const columnClass = escapeSelectorValue(cell.columnClass)
+    const columnName = escapeAttributeValue(cell.columnClass)
+    return [
+      `${scope} .${columnClass}`,
+      `${scope} col[name="${columnName}"]`,
+      ...indexSelectors
+    ]
+  })
+}
+
+function applyColumnWidths(table, tableId, cells, widths, persistAsColumnWidth = false, visible = null) {
   let style = document.getElementById(`${WIDTH_STYLE_ID_PREFIX}${tableId}`)
   if (!style) {
     style = document.createElement('style')
     style.id = `${WIDTH_STYLE_ID_PREFIX}${tableId}`
     document.head.appendChild(style)
   }
-  style.textContent = ''
+
+  const visibleSet = visible ? new Set(visible) : null
+  const rules = cells.flatMap(cell => {
+    if (visibleSet && !visibleSet.has(cell.key)) return []
+    const width = Math.round(Number(widths[cell.key]))
+    if (!Number.isFinite(width) || width < MIN_COLUMN_WIDTH || width > MAX_COLUMN_WIDTH) return []
+    const selectors = getColumnWidthSelectors(tableId, cell)
+    return `${selectors.join(',')}{width:${width}px!important;min-width:${width}px!important;max-width:${width}px!important;}`
+  })
+  style.textContent = rules.join('\n')
+
   if (!document.body.classList.contains('nexus-table-resizing') && !table.__nexusResizePending) {
     syncTableColumnState(table, cells, widths, persistAsColumnWidth)
   }
 }
 
 function persistColumnWidths(table) {
-  const widthKey = table?.dataset?.nexusColumnWidthKey
-  if (!widthKey) return
+  const storageInfo = storageInfoFromDataset(table)
+  if (!storageInfo) return
   const cells = getHeaderCells(table)
   if (!cells.length) return
   const widths = readColumnWidths(table, cells)
   if (!Object.keys(widths).length) return
-  saveColumnWidths(widthKey, widths)
+  saveColumnWidths(storageInfo.widthKey, { ...loadColumnWidths(storageInfo, cells), ...widths })
+}
+
+function persistColumnWidthsFromState(table) {
+  const storageInfo = storageInfoFromDataset(table)
+  if (!storageInfo) return
+  const cells = getHeaderCells(table)
+  if (!cells.length) return
+  const widths = readColumnWidthsFromState(table, cells)
+  if (!Object.keys(widths).length) return
+  saveColumnWidths(storageInfo.widthKey, { ...loadColumnWidths(storageInfo, cells), ...widths })
+  reapplyTablePreferences(table, cells)
+}
+
+function bindTableEvents(table) {
+  const instance = table.__vueParentComponent
+  if (!instance || instance.__nexusColumnEmitWrapped) return
+
+  const originalEmit = instance.emit?.bind(instance)
+  if (typeof originalEmit !== 'function') return
+
+  instance.__nexusOriginalEmit = instance.emit
+  instance.emit = (eventName, ...args) => {
+    const result = originalEmit(eventName, ...args)
+    if (eventName === 'header-dragend') {
+      requestAnimationFrame(() => {
+        persistColumnWidthsFromState(table)
+      })
+    }
+    return result
+  }
+  instance.__nexusColumnEmitWrapped = true
+}
+
+function unbindTableEvents(table) {
+  const instance = table.__vueParentComponent
+  if (!instance?.__nexusColumnEmitWrapped) return
+  if (instance.__nexusOriginalEmit) {
+    instance.emit = instance.__nexusOriginalEmit
+  }
+  delete instance.__nexusOriginalEmit
+  delete instance.__nexusColumnEmitWrapped
 }
 
 function schedulePersistColumnWidths(table) {
@@ -499,11 +640,11 @@ function ensureResizeGuide() {
 }
 
 function getResizeHeader(event) {
-  const th = event.target?.closest?.('.el-table th.el-table__cell.is-leaf')
+  const th = event.target?.closest?.('.el-table__header-wrapper th.el-table__cell')
   if (!th) return null
   const rect = th.getBoundingClientRect()
   const distance = rect.right - event.clientX
-  return rect.width > 12 && distance >= 0 && distance < 8 ? th : null
+  return rect.width > 12 && distance >= 0 && distance < 16 ? th : null
 }
 
 function updateResizeGuide(x) {
@@ -531,11 +672,14 @@ function handleResizeHover(event) {
 }
 
 function startResizeFeedback(event) {
+  headerMouseDownTable = event.target?.closest?.('.el-table__header-wrapper')?.closest?.('.el-table') || null
   const th = getResizeHeader(event)
   if (!th) return
 
   const table = th.closest('.el-table')
+  if (!table?.dataset?.nexusColumnWidthKey) return
   const guide = ensureResizeGuide()
+  const startWidth = Math.round(th.getBoundingClientRect().width || 0)
   if (table) table.__nexusResizePending = true
   if (table?.dataset?.nexusTableId) {
     document.getElementById(`${WIDTH_STYLE_ID_PREFIX}${table.dataset.nexusTableId}`)?.remove()
@@ -546,7 +690,11 @@ function startResizeFeedback(event) {
   guide.classList.add('is-active')
   updateResizeGuide(event.clientX)
 
-  const onMove = moveEvent => updateResizeGuide(moveEvent.clientX)
+  const onMove = moveEvent => {
+    const delta = Math.round(moveEvent.clientX - event.clientX)
+    if (Math.abs(delta) >= 1) table.__nexusLastResizeDelta = delta
+    updateResizeGuide(moveEvent.clientX)
+  }
   const onUp = () => {
     document.removeEventListener('mousemove', onMove, true)
     if (resizeFrame) {
@@ -558,11 +706,42 @@ function startResizeFeedback(event) {
     th.classList.remove('nexus-resize-active')
     clearResizeHover()
     guide.classList.remove('is-active')
+    if (table.__nexusLastResizeDelta) {
+      const cells = getHeaderCells(table)
+      const cell = cells.find(item => item.columnClass && th.classList.contains(item.columnClass)) ||
+        cells[Array.from(th.parentElement?.children || []).indexOf(th)]
+      const widthKey = table.dataset.nexusColumnWidthKey
+      if (cell && widthKey) {
+        const currentWidths = loadColumnWidths({
+          storageKey: table.dataset.nexusColumnStorageKey,
+          widthKey,
+          legacyKeys: (table.dataset.nexusLegacyColumnKeys || '').split('\n').filter(Boolean),
+          legacyWidthKeys: (table.dataset.nexusLegacyColumnWidthKeys || '').split('\n').filter(Boolean)
+        }, cells)
+        const nextWidth = Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, Math.round(startWidth + table.__nexusLastResizeDelta)))
+        saveColumnWidths(widthKey, { ...currentWidths, [cell.key]: nextWidth })
+        applyColumnWidths(table, table.dataset.nexusTableId, cells, { ...currentWidths, [cell.key]: nextWidth }, true, loadVisible({
+          storageKey: table.dataset.nexusColumnStorageKey,
+          widthKey,
+          legacyKeys: (table.dataset.nexusLegacyColumnKeys || '').split('\n').filter(Boolean),
+          legacyWidthKeys: (table.dataset.nexusLegacyColumnWidthKeys || '').split('\n').filter(Boolean)
+        }, cells))
+      }
+    }
+    delete table.__nexusLastResizeDelta
     schedulePersistColumnWidths(table)
   }
 
   document.addEventListener('mousemove', onMove, true)
-  document.addEventListener('mouseup', onUp, { once: true })
+  document.addEventListener('mouseup', onUp, { once: true, capture: true })
+}
+
+function persistAfterHeaderMouseUp(event) {
+  if (!headerMouseDownTable) return
+  const table = headerMouseDownTable
+  headerMouseDownTable = null
+  if (event.target?.closest?.('.nexus-column-control')) return
+  schedulePersistColumnWidths(table)
 }
 
 function closeAllPanels() {
@@ -588,6 +767,7 @@ function removeControl(tableId, table) {
 }
 
 function removeEnhancement(table) {
+  unbindTableEvents(table)
   if (table.dataset.nexusTableId) {
     document.getElementById(`${STYLE_ID_PREFIX}${table.dataset.nexusTableId}`)?.remove()
     document.getElementById(`${WIDTH_STYLE_ID_PREFIX}${table.dataset.nexusTableId}`)?.remove()
@@ -665,6 +845,7 @@ function createControl(table, tableId, cells, storageInfo, visible, placement) {
         .map(item => item.key)
       const finalVisible = next.length ? next : [cell.key]
       saveVisible(storageInfo.storageKey, finalVisible)
+      applyColumnWidths(table, tableId, cells, loadColumnWidths(storageInfo, cells), true, finalVisible)
       applyVisibility(table, tableId, cells, finalVisible)
       panel.querySelectorAll('input[type="checkbox"]').forEach(input => {
         input.checked = finalVisible.includes(input.dataset.key)
@@ -680,6 +861,7 @@ function createControl(table, tableId, cells, storageInfo, visible, placement) {
     const all = cells.map(cell => cell.key)
     saveVisible(storageInfo.storageKey, all)
     panel.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = true })
+    applyColumnWidths(table, tableId, cells, loadColumnWidths(storageInfo, cells), true, all)
     applyVisibility(table, tableId, cells, all)
   })
 
@@ -744,8 +926,8 @@ function reapplyTablePreferences(table, cells) {
   }
   const visible = loadVisible(storageInfo, cells)
   const widths = loadColumnWidths(storageInfo, cells)
+  applyColumnWidths(table, tableId, cells, widths, true, visible)
   applyVisibility(table, tableId, cells, visible)
-  applyColumnWidths(table, tableId, cells, widths, true)
   ensureControlMounted(table, cells, storageInfo, visible)
 }
 
@@ -771,21 +953,22 @@ function enhanceTable(table, index) {
   const visible = loadVisible(storageInfo, cells)
   const widths = loadColumnWidths(storageInfo, cells)
   table.__nexusDefaultColumnState = readDefaultColumnState(table, cells)
+  bindTableEvents(table)
   table.dataset.nexusColumnStorageKey = storageInfo.storageKey
   table.dataset.nexusColumnWidthKey = storageInfo.widthKey
   table.dataset.nexusLegacyColumnKeys = storageInfo.legacyKeys.join('\n')
   table.dataset.nexusLegacyColumnWidthKeys = storageInfo.legacyWidthKeys.join('\n')
 
-  applyColumnWidths(table, tableId, cells, widths, true)
+  applyColumnWidths(table, tableId, cells, widths, true, visible)
   applyVisibility(table, tableId, cells, visible)
   const placementHost = getControlHost(table)
   const control = createControl(table, tableId, cells, storageInfo, visible, placementHost.placement)
   mountControl(table, control, placementHost)
   requestAnimationFrame(() => {
-    applyColumnWidths(table, tableId, cells, widths, true)
+    applyColumnWidths(table, tableId, cells, widths, true, visible)
     table.__vueParentComponent?.proxy?.doLayout?.()
     requestAnimationFrame(() => {
-      applyColumnWidths(table, tableId, cells, widths, true)
+      applyColumnWidths(table, tableId, cells, widths, true, visible)
       table.__vueParentComponent?.proxy?.doLayout?.()
     })
   })
@@ -820,7 +1003,8 @@ export function installTableEnhancements() {
   window.addEventListener('scroll', closeAllPanels, true)
   document.addEventListener('click', closeAllPanels)
   document.addEventListener('mousemove', handleResizeHover, true)
-  document.addEventListener('mousedown', startResizeFeedback)
+  document.addEventListener('mousedown', startResizeFeedback, true)
+  document.addEventListener('mouseup', persistAfterHeaderMouseUp, true)
 
   observer = new MutationObserver(scheduleEnhance)
   observer.observe(document.body, { childList: true, subtree: true })
@@ -835,7 +1019,8 @@ export function uninstallTableEnhancements() {
   window.removeEventListener('scroll', closeAllPanels, true)
   document.removeEventListener('click', closeAllPanels)
   document.removeEventListener('mousemove', handleResizeHover, true)
-  document.removeEventListener('mousedown', startResizeFeedback)
+  document.removeEventListener('mousedown', startResizeFeedback, true)
+  document.removeEventListener('mouseup', persistAfterHeaderMouseUp, true)
   observer?.disconnect()
   observer = null
   installed = false
