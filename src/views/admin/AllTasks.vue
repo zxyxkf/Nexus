@@ -242,13 +242,14 @@ import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Delete, Document } from '@element-plus/icons-vue'
-import { getAllTasksApi, getTaskDetailApi, getTaskPublisherListApi, getTaskDesignerListApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, deleteTaskApi, batchDeleteApi, batchDownloadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getAllTasksApi, getTaskPublisherListApi, getTaskDesignerListApi, getFileUrl, saveFileToDisk, deleteTaskApi, batchDeleteApi, batchDownloadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'
 import RejectHistory from '@/components/RejectHistory.vue'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
+import { useTaskDetail } from '@/composables/useTaskDetail'
 import { exportTasksApi } from '@/api/export'
 
 const route = useRoute()
@@ -265,8 +266,9 @@ const publisherList = ref([])
 const designerList = ref([])
 const selectedRows = ref([])
 
-const detailVisible = ref(false)
-const currentTask = ref(null)
+const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
+  onError: error => console.error('[AllTasks] 加载任务详情失败:', error)
+})
 
 const taskGroup = computed(() => route.meta.taskGroup || 'design')
 const pageTitle = computed(() => `${route.meta.title || '全量任务'}管理`)
@@ -481,27 +483,6 @@ watch(
     loadData()
   }
 )
-
-async function viewDetail(row) {
-  try {
-    const res = await getTaskDetailApi({ taskId: row.id })
-    if (res.code === 0) {
-      const files = res.data.files || []
-      const rejectRecords = res.data.reject_records || []
-      const rejectFiles = rejectRecords.flatMap(record => record.files || [])
-      const allFiles = [...files, ...rejectFiles]
-      const imageFiles = allFiles.filter(f => f.file_type === 'image')
-      await Promise.all(imageFiles.map(async (f) => {
-        f._previewSrc = await fetchImageDataUrl(f)
-      }))
-      preloadFilesForDrag(allFiles)
-      currentTask.value = { ...res.data, files, reject_records: rejectRecords }
-      detailVisible.value = true
-    }
-  } catch (e) {
-    console.error('[AllTasks] 加载任务详情失败:', e)
-  }
-}
 
 async function deleteRow(row) {
   try {

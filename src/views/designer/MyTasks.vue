@@ -340,13 +340,14 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document, Search } from '@element-plus/icons-vue'
-import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, undoSubmitApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag, getPublisherListApi, getScoreItemsApi } from '@/api'
+import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, undoSubmitApi, getFileUrl, setupFileDrag, preloadFilesForDrag, getPublisherListApi, getScoreItemsApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { useOverdueSort } from '@/composables/useOverdueSort'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
+import { useTaskDetail } from '@/composables/useTaskDetail'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import InlineWorkUpload from '@/components/InlineWorkUpload.vue'
@@ -385,8 +386,10 @@ const inlinePathValues = ref({})
 const savingInlinePathId = ref(null)
 const inlineSubmitId = ref(null)
 
-const detailVisible = ref(false)
-const currentTask = ref(null)
+const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
+  collectPreloadFiles: detail => detail.files || [],
+  onError: error => console.error('[MyTasks] 加载任务详情失败:', error)
+})
 
 // 逾期检测 + 置顶排序
 const { isOverdue, sortedList, tableRowClassName } = useOverdueSort(list)
@@ -577,24 +580,6 @@ watch(() => route.path, () => {
   detailVisible.value = false
   loadData()
 })
-
-async function viewDetail(row) {
-  try {
-    const res = await getTaskDetailApi({ taskId: row.id })
-    if (res.code === 0) {
-      const files = res.data.files || []
-      const imageFiles = files.filter(f => f.file_type === 'image')
-      await Promise.all(imageFiles.map(async (f) => {
-        f._previewSrc = await fetchImageDataUrl(f)
-      }))
-      preloadFilesForDrag(files)
-      currentTask.value = { ...res.data, files }
-      detailVisible.value = true
-    }
-  } catch (e) {
-    console.error('[MyTasks] 加载任务详情失败:', e)
-  }
-}
 
 function openUpload(row) {
   uploadTaskId.value = row.id

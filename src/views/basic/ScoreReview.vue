@@ -229,13 +229,14 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Close, Document } from '@element-plus/icons-vue'
 import { getScoreReviewListApi, approveScoreReviewApi, rejectScoreReviewApi } from '@/api/score'
-import { getTaskDetailApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { getBasicDesignerListApi, getPublisherListApi } from '@/api'
 import { formatDate, formatFileSize } from '@/utils/format'
 import Pagination from '@/components/Pagination.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import RejectHistory from '@/components/RejectHistory.vue'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import { useTaskDetail } from '@/composables/useTaskDetail'
 
 const loading = ref(false)
 const list = ref([])
@@ -254,8 +255,9 @@ const rejectReason = ref('')
 const rejectLoading = ref(false)
 const rejectTaskId = ref(null)
 
-const detailVisible = ref(false)
-const currentTask = ref(null)
+const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
+  onError: error => console.error('[ScoreReview] 加载详情失败:', error)
+})
 
 const { getRefImages, getRefAttachments, getRefImageSrcList, getWorkFiles, getFirstImage, getImageSrcList, downloadFile } = useFileHelpers()
 
@@ -306,27 +308,6 @@ async function loadData() {
   } catch (e) {
     console.error('[ScoreReview] 加载失败:', e)
   } finally { loading.value = false }
-}
-
-async function viewDetail(row) {
-  try {
-    const res = await getTaskDetailApi({ taskId: row.id })
-    if (res.code === 0) {
-      const files = res.data.files || []
-      const rejectRecords = res.data.reject_records || []
-      const rejectFiles = rejectRecords.flatMap(record => record.files || [])
-      const allFiles = [...files, ...rejectFiles]
-      const imageFiles = allFiles.filter(f => f.file_type === 'image')
-      await Promise.all(imageFiles.map(async (f) => {
-        f._previewSrc = await fetchImageDataUrl(f)
-      }))
-      preloadFilesForDrag(allFiles)
-      currentTask.value = { ...res.data, files, reject_records: rejectRecords }
-      detailVisible.value = true
-    }
-  } catch (e) {
-    console.error('[ScoreReview] 加载详情失败:', e)
-  }
 }
 
 async function handleApprove(row) {

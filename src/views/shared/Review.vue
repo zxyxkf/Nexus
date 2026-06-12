@@ -335,10 +335,11 @@ import { nextTick, ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, PictureFilled, Document, Plus } from '@element-plus/icons-vue'
-import { getMyPublishedApi, getTaskDetailApi, reviewTaskApi, batchReviewApi, uploadFilesApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getMyPublishedApi, reviewTaskApi, batchReviewApi, uploadFilesApi, getFileUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import { useTaskDetail } from '@/composables/useTaskDetail'
 import { formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
@@ -382,9 +383,14 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(15)
 
-const detailVisible = ref(false)
-const currentTask = ref(null)
 const imagePreviewList = ref([])
+const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
+  onLoaded: (detail) => {
+    const workImageFiles = (detail.files || []).filter(file => file.file_category !== 'reference' && file.file_category !== 'reject' && file.file_type === 'image')
+    imagePreviewList.value = workImageFiles.map(file => file._previewSrc || getFileUrl(file))
+  },
+  onError: error => console.error('[Review] 加载任务详情失败:', error)
+})
 const reviewLoading = ref(false)
 const selectedRows = ref([])
 const rejectDialogVisible = ref(false)
@@ -449,29 +455,6 @@ async function loadData(options = {}) {
     console.error('[Review] 加载审核列表失败:', e)
   } finally {
     if (!options.silent) loading.value = false
-  }
-}
-
-async function viewDetail(row) {
-  try {
-    const res = await getTaskDetailApi({ taskId: row.id })
-    if (res.code === 0) {
-      const files = res.data.files || []
-      const rejectRecords = res.data.reject_records || []
-      const rejectFiles = rejectRecords.flatMap(record => record.files || [])
-      const allFiles = [...files, ...rejectFiles]
-      const allImageFiles = allFiles.filter(f => f.file_type === 'image')
-      await Promise.all(allImageFiles.map(async (f) => {
-        f._previewSrc = await fetchImageDataUrl(f)
-      }))
-      preloadFilesForDrag(allFiles)
-      currentTask.value = { ...res.data, files, reject_records: rejectRecords }
-      const workImageFiles = files.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject' && f.file_type === 'image')
-      imagePreviewList.value = workImageFiles.map(f => f._previewSrc || getFileUrl(f))
-      detailVisible.value = true
-    }
-  } catch (e) {
-    console.error('[Review] 加载任务详情失败:', e)
   }
 }
 

@@ -1,12 +1,13 @@
 {
   "name": "nexus",
-  "version": "15.2.4",
+  "version": "15.2.5",
   "description": "Nexus",
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
     "dev:full": "concurrently \"cd standalone-server && npm start\" \"vite\"",
     "build": "vite build",
+    "test:task-pages": "playwright test --config=playwright.task-pages.config.js",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "vite build && electron-builder --win --x64",
     "electron:build:dir": "vite build && electron-builder --win --x64 --dir",

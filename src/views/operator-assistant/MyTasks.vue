@@ -326,12 +326,13 @@ import { ref, computed, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Plus, Document } from '@element-plus/icons-vue'
-import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, undoSubmitApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag, getPublisherListApi } from '@/api'
+import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, undoSubmitApi, getFileUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag, getPublisherListApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
+import { useTaskDetail } from '@/composables/useTaskDetail'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import InlineWorkUpload from '@/components/InlineWorkUpload.vue'
@@ -360,9 +361,15 @@ const pageTitle = computed(() => route.meta.title || '我的任务')
 
 const shopOptions = ['店铺A', '店铺B', '店铺C', '店铺D', '店铺E', '店铺F', '店铺G', '店铺H']
 
-const detailVisible = ref(false)
-const currentTask = ref(null)
 const imagePreviewList = ref([])
+const { detailVisible, currentTask, openDetail: openTaskDetail } = useTaskDetail({
+  collectPreloadFiles: detail => detail.files || [],
+  onLoaded: (detail) => {
+    const workImageFiles = (detail.files || []).filter(file => file.file_category !== 'reference' && file.file_type === 'image')
+    imagePreviewList.value = workImageFiles.map(file => file._previewSrc || getFileUrl(file))
+  },
+  onError: () => ElMessage.error('获取详情失败')
+})
 
 const uploadVisible = ref(false)
 const uploadRef = ref(null)
@@ -554,24 +561,9 @@ watch(() => route.path, () => {
 })
 
 async function viewDetail(row) {
-  try {
-    const res = await getTaskDetailApi({ taskId: row.id })
-    if (res.code === 0) {
-      const files = res.data.files || []
-      const allImageFiles = files.filter(f => f.file_type === 'image')
-      await Promise.all(allImageFiles.map(async (f) => {
-        f._previewSrc = await fetchImageDataUrl(f)
-      }))
-      preloadFilesForDrag(files)
-      currentTask.value = { ...res.data, files }
-      const workImageFiles = files.filter(f => f.file_category !== 'reference' && f.file_type === 'image')
-      imagePreviewList.value = workImageFiles.map(f => f._previewSrc || getFileUrl(f))
-      detailVisible.value = true
-    } else {
-      ElMessage.error(res.msg || '获取详情失败')
-    }
-  } catch (e) {
-    ElMessage.error('获取详情失败')
+  const res = await openTaskDetail(row)
+  if (res && res.code !== 0) {
+    ElMessage.error(res.msg || '获取详情失败')
   }
 }
 

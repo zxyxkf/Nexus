@@ -444,13 +444,14 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document, Search, Plus } from '@element-plus/icons-vue'
-import { getMyPublishedApi, getTaskDetailApi, urgeTaskApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, reopenFinishedCsTaskApi, updateCsTaskNoApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getMyPublishedApi, urgeTaskApi, getFileUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, reopenFinishedCsTaskApi, updateCsTaskNoApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { getScoreItemsApi } from '@/api'
 import { getBasicDesignerListApi, getDesignerListApi, getOperatorAssistantListApi, getPublisherListApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
+import { useTaskDetail } from '@/composables/useTaskDetail'
 import { hasPermission } from '@/utils/permissions'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
@@ -491,9 +492,14 @@ const basicDesignerList = ref([])
 const operatorDesignerList = ref([])
 const publisherList = ref([])
 
-const detailVisible = ref(false)
-const currentTask = ref(null)
 const imagePreviewList = ref([])
+const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
+  onLoaded: (detail) => {
+    const workImageFiles = (detail.files || []).filter(file => file.file_category !== 'reference' && file.file_category !== 'reject' && file.file_type === 'image')
+    imagePreviewList.value = workImageFiles.map(file => file._previewSrc || getFileUrl(file))
+  },
+  onError: error => console.error('[MyTasks] 加载任务详情失败:', error)
+})
 
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
@@ -612,29 +618,6 @@ watch(() => [route.query.dateStart, route.query.dateEnd, route.query.startDate, 
   page.value = 1
   loadData()
 })
-
-async function viewDetail(row) {
-  try {
-    const res = await getTaskDetailApi({ taskId: row.id })
-    if (res.code === 0) {
-      const files = res.data.files || []
-      const rejectRecords = res.data.reject_records || []
-      const rejectFiles = rejectRecords.flatMap(record => record.files || [])
-      const allFiles = [...files, ...rejectFiles]
-      const allImageFiles = allFiles.filter(f => f.file_type === 'image')
-      await Promise.all(allImageFiles.map(async (f) => {
-        f._previewSrc = await fetchImageDataUrl(f)
-      }))
-      preloadFilesForDrag(allFiles)
-      currentTask.value = { ...res.data, files, reject_records: rejectRecords }
-      const workImageFiles = files.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject' && f.file_type === 'image')
-      imagePreviewList.value = workImageFiles.map(f => f._previewSrc || getFileUrl(f))
-      detailVisible.value = true
-    }
-  } catch (e) {
-    console.error('[MyTasks] 加载任务详情失败:', e)
-  }
-}
 
 async function urgeTask(row) {
   try {

@@ -17,14 +17,28 @@
       <span class="inline-work-upload__text">上传中...</span>
     </template>
     <template v-else-if="fileCount > 0">
-      <div v-if="imageFile" class="inline-work-upload__preview">
+      <div
+        v-if="imageFile"
+        class="inline-work-upload__preview"
+        draggable="true"
+        @mousedown.left="preloadFilesForDrag([imageFile])"
+        @mouseenter="preloadFilesForDrag([imageFile])"
+        @dragstart.stop="setupFileDrag($event, imageFile)"
+      >
         <el-image
           :src="getFileUrl(imageFile)"
           fit="cover"
         />
         <span v-if="fileCount > 1" class="inline-work-upload__count">{{ fileCount }}</span>
       </div>
-      <span v-else class="inline-work-upload__text">{{ fileCount }}个附件</span>
+      <span
+        v-else
+        class="inline-work-upload__text"
+        draggable="true"
+        @mousedown.left="preloadFilesForDrag(workFiles)"
+        @mouseenter="preloadFilesForDrag(workFiles)"
+        @dragstart.stop="setupFileDrag($event, workFiles[0])"
+      >{{ fileCount }}个附件</span>
     </template>
     <template v-else>
       <span class="inline-work-upload__text">{{ placeholder }}</span>
@@ -48,6 +62,7 @@
         :alt="viewerFile?.file_name || '作品预览'"
         draggable="true"
         @click.stop
+        @mousedown.left="preloadFilesForDrag([viewerFile])"
         @dragstart="setupFileDrag($event, viewerFile)"
       />
     </div>
@@ -57,7 +72,7 @@
 <script setup>
 import { computed, nextTick, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { getFileUrl, setupFileDrag } from '@/api'
+import { getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 
 const props = defineProps({
   files: { type: Array, default: () => [] },

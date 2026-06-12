@@ -19,6 +19,7 @@ function appendToken(url) {
 }
 
 const dragFileByUrl = new Map()
+const preloadingDragFileIds = new Set()
 let imageDragBridgeReady = false
 
 function normalizeDragUrl(url) {
@@ -36,6 +37,7 @@ function registerDragFileUrl(url, file) {
   if (!url || !file?.id || !file.file_name) return
   dragFileByUrl.set(url, file)
   dragFileByUrl.set(normalizeDragUrl(url), file)
+  prepareFileDragCache(file)
   ensureImageDragBridge()
 }
 
@@ -44,21 +46,94 @@ function findDragFileByUrl(url) {
   return dragFileByUrl.get(url) || dragFileByUrl.get(normalizeDragUrl(url)) || null
 }
 
-function applyFileDragData(event, file) {
-  if (!file?.id || !file.file_name || !event?.dataTransfer) return
+function getFileDownloadUrl(file) {
+  if (!file?.id || !file.file_name) return ''
 
   const token = getToken()
-  if (!token) return
+  if (!token) return ''
 
   const serverBase = getServerBase()
-  const downloadUrl = `${serverBase}/api/task/download/${file.id}?token=${encodeURIComponent(token)}`
-  event.dataTransfer.setData('DownloadURL', `application/octet-stream:${file.file_name}:${downloadUrl}`)
+  const path = `/api/task/download/${file.id}?token=${encodeURIComponent(token)}`
+  try {
+    return new URL(`${serverBase}${path}`, window.location?.href || undefined).href
+  } catch (_) {
+    return `${serverBase}${path}`
+  }
+}
+
+function setDragData(dataTransfer, type, value) {
+  try {
+    dataTransfer.setData(type, value)
+  } catch (_) {}
+}
+
+function escapeHtml(value) {
+  return String(value || '')
+    .replace(/&/g, '&amp;')
+    .replace(/"/g, '&quot;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function applyFileDragData(event, file) {
+  if (!event?.dataTransfer) return ''
+
+  const downloadUrl = getFileDownloadUrl(file)
+  if (!downloadUrl) return ''
+
+  const fileName = String(file.file_name)
+  const safeFileName = fileName.replace(/[\r\n:]/g, '_')
+  setDragData(event.dataTransfer, 'DownloadURL', `application/octet-stream:${safeFileName}:${downloadUrl}`)
+  setDragData(event.dataTransfer, 'text/uri-list', downloadUrl)
+  setDragData(event.dataTransfer, 'text/plain', downloadUrl)
+  setDragData(event.dataTransfer, 'text/x-moz-url', `${downloadUrl}\n${fileName}`)
+  setDragData(event.dataTransfer, 'text/html', `<a href="${escapeHtml(downloadUrl)}" download="${escapeHtml(fileName)}">${escapeHtml(fileName)}</a>`)
   event.dataTransfer.effectAllowed = 'copy'
+  return downloadUrl
+}
+
+function prepareFileDragCache(file) {
+  if (!file?.id || !file.file_name) return
+  if (!window.electronAPI?.prepareFileDrags) return
+
+  const fileId = String(file.id)
+  if (preloadingDragFileIds.has(fileId)) return
+  preloadingDragFileIds.add(fileId)
+
+  Promise.resolve(preloadFilesForDrag([file])).then(success => {
+    if (!success) preloadingDragFileIds.delete(fileId)
+  }).catch(() => {
+    preloadingDragFileIds.delete(fileId)
+  })
+}
+
+function tryElectronFileDrag(file) {
+  if (!file?.id || !file.file_name || !window.electronAPI) return false
+
+  try {
+    if (window.electronAPI.isFileCached?.(file.id)) {
+      const dragged = window.electronAPI.doFileDrag?.(file.id)
+      if (dragged) return true
+    }
+  } catch (e) {
+    console.warn('[API] Electron 原生拖拽触发失败:', e.message)
+  }
+
+  prepareFileDragCache(file)
+  return false
 }
 
 function getImageDragFile(target) {
   if (!(target instanceof HTMLImageElement)) return null
   return findDragFileByUrl(target.currentSrc || target.src)
+}
+
+function primeImageDragTarget(target, file) {
+  if (!(target instanceof HTMLImageElement) || !file) return
+  target.draggable = true
+  target.style.cursor = 'grab'
+  target.style.webkitUserDrag = 'element'
+  prepareFileDragCache(file)
 }
 
 function isPreviewImage(target) {
@@ -72,16 +147,17 @@ function ensureImageDragBridge() {
   document.addEventListener('mousedown', event => {
     if (event.button !== 0) return
     const file = getImageDragFile(event.target)
-    if (!file || !isPreviewImage(event.target)) return
-    event.target.draggable = true
-    event.target.style.cursor = 'grab'
+    if (!file) return
+    if (!isPreviewImage(event.target) && !event.target.closest?.('[draggable="true"]')) return
+    primeImageDragTarget(event.target, file)
+    if (!isPreviewImage(event.target)) return
     event.stopImmediatePropagation()
   }, true)
 
   document.addEventListener('dragstart', event => {
     const file = getImageDragFile(event.target)
     if (!file) return
-    applyFileDragData(event, file)
+    setupFileDrag(event, file)
   }, true)
 }
 
@@ -164,25 +240,34 @@ export async function saveFileToDisk(file) {
 // ==================== 文件拖拽到桌面 ====================
 
 export function setupFileDrag(event, file) {
-  applyFileDragData(event, file)
+  if (event?.__nexusFileDragHandled) return ''
+  if (event) event.__nexusFileDragHandled = true
+
+  const downloadUrl = applyFileDragData(event, file)
+  if (tryElectronFileDrag(file)) {
+    event?.preventDefault?.()
+  }
+  return downloadUrl
 }
 
 export async function preloadFilesForDrag(files) {
-  if (!files || files.length === 0) return
-  if (!window.electronAPI?.prepareFileDrags) return
+  if (!files || files.length === 0) return false
+  if (!window.electronAPI?.prepareFileDrags) return false
 
   const token = getToken()
-  if (!token) return
+  if (!token) return false
 
   const items = files
     .filter(f => f.id && f.file_name)
     .map(f => ({ fileId: f.id, fileName: f.file_name }))
 
-  if (items.length === 0) return
+  if (items.length === 0) return false
 
   try {
     await window.electronAPI.prepareFileDrags({ items, token })
+    return true
   } catch (e) {
     console.warn('[API] 预加载拖拽文件失败:', e.message)
+    return false
   }
 }

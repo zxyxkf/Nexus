@@ -251,9 +251,10 @@
 import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, PictureFilled, Document } from '@element-plus/icons-vue'
-import { getMyPublishedApi, getTaskDetailApi, reviewTaskApi, batchReviewApi, getFileUrl, fetchImageDataUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getMyPublishedApi, reviewTaskApi, batchReviewApi, getFileUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import { useTaskDetail } from '@/composables/useTaskDetail'
 import { formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 
@@ -288,9 +289,15 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(15)
 
-const detailVisible = ref(false)
-const currentTask = ref(null)
 const imagePreviewList = ref([])
+const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
+  collectPreloadFiles: detail => detail.files || [],
+  onLoaded: (detail) => {
+    const workImageFiles = (detail.files || []).filter(file => file.file_category !== 'reference' && file.file_type === 'image')
+    imagePreviewList.value = workImageFiles.map(file => file._previewSrc || getFileUrl(file))
+  },
+  onError: error => console.error('[OpReview] 加载详情失败:', error)
+})
 const reviewLoading = ref(false)
 const selectedRows = ref([])
 
@@ -348,26 +355,6 @@ async function loadData(options = {}) {
     console.error('[OpReview] 加载失败:', e)
   } finally {
     if (!options.silent) loading.value = false
-  }
-}
-
-async function viewDetail(row) {
-  try {
-    const res = await getTaskDetailApi({ taskId: row.id })
-    if (res.code === 0) {
-      const files = res.data.files || []
-      const allImageFiles = files.filter(f => f.file_type === 'image')
-      await Promise.all(allImageFiles.map(async (f) => {
-        f._previewSrc = await fetchImageDataUrl(f)
-      }))
-      preloadFilesForDrag(files)
-      currentTask.value = { ...res.data, files }
-      const workImageFiles = files.filter(f => f.file_category !== 'reference' && f.file_type === 'image')
-      imagePreviewList.value = workImageFiles.map(f => f._previewSrc || getFileUrl(f))
-      detailVisible.value = true
-    }
-  } catch (e) {
-    console.error('[OpReview] 加载详情失败:', e)
   }
 }
 

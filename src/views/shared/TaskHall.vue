@@ -253,10 +253,11 @@ import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document } from '@element-plus/icons-vue'
-import { getTaskHallApi, acceptTaskApi, getTaskDetailApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getTaskHallApi, acceptTaskApi, getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import { useTaskDetail } from '@/composables/useTaskDetail'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'
 
 const route = useRoute()
@@ -275,8 +276,12 @@ const page = ref(1)
 const pageSize = ref(15)
 const keyword = ref('')
 const acceptingId = ref(null)
-const detailVisible = ref(false)
-const currentTask = ref(null)
+const { detailVisible, currentTask, openDetail: openTaskDetail } = useTaskDetail({
+  collectPreloadFiles: detail => detail.files || [],
+  collectPreviewFiles: detail => (detail.files || []).filter(file => file.file_category === 'reference' && file.file_type === 'image'),
+  normalizeDetail: data => ({ ...data, files: data.files || [] }),
+  onError: () => {}
+})
 
 const { getRefImages, getRefAttachments, getRefImageSrcList, downloadFile } = useFileHelpers()
 const formatSize = formatFileSize
@@ -298,19 +303,8 @@ const detailRefAttachments = computed(() => {
 })
 
 async function viewDetail(row) {
-  try {
-    const res = await getTaskDetailApi({ taskId: row.id })
-    if (res.code === 0) {
-      const files = res.data.files || []
-      const refImages = files.filter(f => f.file_category === 'reference' && f.file_type === 'image')
-      await Promise.all(refImages.map(async (f) => {
-        f._previewSrc = await fetchImageDataUrl(f)
-      }))
-      preloadFilesForDrag(files)
-      currentTask.value = { ...res.data, files }
-      detailVisible.value = true
-    }
-  } catch (e) {
+  const res = await openTaskDetail(row)
+  if (res === null) {
     currentTask.value = row
     detailVisible.value = true
   }

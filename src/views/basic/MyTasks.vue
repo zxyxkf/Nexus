@@ -384,13 +384,14 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, Document, Search } from '@element-plus/icons-vue'
-import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, transferTaskApi, undoSubmitApi, getBasicDesignerListApi, getPublisherListApi, getFileUrl, fetchImageDataUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getMyAcceptedApi, uploadFilesApi, finishTaskApi, transferTaskApi, undoSubmitApi, getBasicDesignerListApi, getPublisherListApi, getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { useOverdueSort } from '@/composables/useOverdueSort'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
+import { useTaskDetail } from '@/composables/useTaskDetail'
 import { getUser } from '@/utils/auth'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
@@ -435,8 +436,9 @@ const transferDesignerId = ref(null)
 const transferDesignerList = ref([])
 const transferReason = ref('')
 
-const detailVisible = ref(false)
-const currentTask = ref(null)
+const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
+  onError: error => console.error('[MyTasks] 加载任务详情失败:', error)
+})
 
 // 逾期检测 + 置顶排序
 const { isOverdue, sortedList, tableRowClassName } = useOverdueSort(list)
@@ -553,27 +555,6 @@ watch(() => route.path, () => {
   detailVisible.value = false
   loadData()
 })
-
-async function viewDetail(row) {
-  try {
-    const res = await getTaskDetailApi({ taskId: row.id })
-    if (res.code === 0) {
-      const files = res.data.files || []
-      const rejectRecords = res.data.reject_records || []
-      const rejectFiles = rejectRecords.flatMap(record => record.files || [])
-      const allFiles = [...files, ...rejectFiles]
-      const imageFiles = allFiles.filter(f => f.file_type === 'image')
-      await Promise.all(imageFiles.map(async (f) => {
-        f._previewSrc = await fetchImageDataUrl(f)
-      }))
-      preloadFilesForDrag(allFiles)
-      currentTask.value = { ...res.data, files, reject_records: rejectRecords }
-      detailVisible.value = true
-    }
-  } catch (e) {
-    console.error('[MyTasks] 加载任务详情失败:', e)
-  }
-}
 
 function openUpload(row) {
   uploadTaskId.value = row.id
