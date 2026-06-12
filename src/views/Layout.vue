@@ -54,7 +54,7 @@
           <span class="nav-text">{{ isCollapse ? '展开菜单' : '折叠菜单' }}</span>
         </div>
         <div class="sidebar-version">
-          <span class="version-text">v15.2.5</span>
+          <span class="version-text">v15.2.6</span>
           <span class="version-dot">·</span>
           <span class="version-text">企业版</span>
         </div>

@@ -15,7 +15,7 @@ let installed = false
 let resizeGuide = null
 let resizeFrame = null
 let resizeHoverHeader = null
-let headerMouseDownTable = null
+let headerMouseDownInfo = null
 
 function hashText(value) {
   const text = String(value || '')
@@ -203,10 +203,12 @@ function legacyStorageKeyCandidates(table, cells, legacyIndex) {
 function makeStorageInfo(table, cells, legacyIndex) {
   const storageKey = `${STORAGE_PREFIX}_${getUserKey()}_${getRouteKey()}_${getTableContextKey(table)}`
   const widthKey = `${storageKey}_widths`
+  const sortKey = `${storageKey}_sort`
   const legacyKeys = legacyStorageKeyCandidates(table, cells, legacyIndex)
   return {
     storageKey,
     widthKey,
+    sortKey,
     legacyKeys,
     legacyWidthKeys: legacyKeys.map(key => `${key}_widths`)
   }
@@ -286,13 +288,92 @@ function loadColumnWidths(storageInfo, cells) {
   return widths
 }
 
+function getColumnPropForCell(table, cell) {
+  const column = getTableColumns(table)[cell.index - 1]
+  return String(column?.property || column?.prop || '')
+}
+
+function getCellForColumnProp(table, prop, cells) {
+  if (!prop) return null
+  return cells.find(cell => getColumnPropForCell(table, cell) === prop) || null
+}
+
+function getCellForSortInfo(table, sortInfo, cells) {
+  if (!sortInfo || typeof sortInfo !== 'object') return null
+  if (sortInfo.columnKey) {
+    const direct = cells.find(cell => cell.key === sortInfo.columnKey)
+    if (direct) return direct
+  }
+  return getCellForColumnProp(table, sortInfo.prop, cells)
+}
+
+function normalizeSortInfo(table, value, cells) {
+  if (!value || typeof value !== 'object') return null
+  const order = value.order === 'ascending' || value.order === 'descending' ? value.order : ''
+  if (!order) return null
+  const cell = getCellForSortInfo(table, value, cells)
+  if (!cell) return null
+  const prop = getColumnPropForCell(table, cell)
+  if (!prop) return null
+  return { prop, order, columnKey: cell.key }
+}
+
+function loadSortInfo(storageInfo, table, cells) {
+  if (!storageInfo?.sortKey) return null
+  const stored = readStoredValue([storageInfo.sortKey])
+  if (!stored.key) return null
+  return normalizeSortInfo(table, stored.value, cells)
+}
+
+function saveSortInfo(storageInfo, sortInfo) {
+  if (!storageInfo?.sortKey) return
+  if (!sortInfo?.prop || !sortInfo?.order) {
+    localStorage.removeItem(storageInfo.sortKey)
+    return
+  }
+  localStorage.setItem(storageInfo.sortKey, JSON.stringify(sortInfo))
+}
+
+function persistSortInfo(table, eventPayload = null) {
+  const storageInfo = storageInfoFromDataset(table)
+  if (!storageInfo) return
+  const cells = getHeaderCells(table)
+  if (!cells.length) return
+
+  const prop = eventPayload?.prop || table.__vueParentComponent?.proxy?.store?.states?.sortProp?.value || ''
+  const order = eventPayload?.order || table.__vueParentComponent?.proxy?.store?.states?.sortOrder?.value || ''
+  if (!prop || !order) {
+    saveSortInfo(storageInfo, null)
+    table.__nexusAppliedSortSignature = ''
+    return
+  }
+
+  const cell = getCellForColumnProp(table, prop, cells)
+  const sortInfo = cell ? { prop, order, columnKey: cell.key } : { prop, order }
+  saveSortInfo(storageInfo, sortInfo)
+  table.__nexusAppliedSortSignature = `${sortInfo.prop}:${sortInfo.order}`
+}
+
+function applySortInfo(table, sortInfo) {
+  if (!sortInfo?.prop || !sortInfo?.order) return
+  const signature = `${sortInfo.prop}:${sortInfo.order}`
+  if (table.__nexusAppliedSortSignature === signature) return
+  table.__nexusAppliedSortSignature = signature
+  const tableProxy = table.__vueParentComponent?.proxy
+  requestAnimationFrame(() => {
+    tableProxy?.sort?.(sortInfo.prop, sortInfo.order)
+  })
+}
+
 function storageInfoFromDataset(table) {
   const storageKey = table?.dataset?.nexusColumnStorageKey
   const widthKey = table?.dataset?.nexusColumnWidthKey
+  const sortKey = table?.dataset?.nexusColumnSortKey
   if (!storageKey || !widthKey) return null
   return {
     storageKey,
     widthKey,
+    sortKey: sortKey || `${storageKey}_sort`,
     legacyKeys: (table.dataset.nexusLegacyColumnKeys || '').split('\n').filter(Boolean),
     legacyWidthKeys: (table.dataset.nexusLegacyColumnWidthKeys || '').split('\n').filter(Boolean)
   }
@@ -302,9 +383,10 @@ function removeStorageKeys(storageInfo) {
   for (const key of [
     storageInfo.storageKey,
     storageInfo.widthKey,
+    storageInfo.sortKey,
     ...storageInfo.legacyKeys,
     ...storageInfo.legacyWidthKeys
-  ]) {
+  ].filter(Boolean)) {
     localStorage.removeItem(key)
   }
 }
@@ -535,6 +617,9 @@ function bindTableEvents(table) {
         persistColumnWidthsFromState(table)
       })
     }
+    if (eventName === 'sort-change') {
+      persistSortInfo(table, args[0])
+    }
     return result
   }
   instance.__nexusColumnEmitWrapped = true
@@ -672,7 +757,16 @@ function handleResizeHover(event) {
 }
 
 function startResizeFeedback(event) {
-  headerMouseDownTable = event.target?.closest?.('.el-table__header-wrapper')?.closest?.('.el-table') || null
+  const headerTable = event.target?.closest?.('.el-table__header-wrapper')?.closest?.('.el-table') || null
+  if (headerTable) {
+    const cells = getHeaderCells(headerTable)
+    headerMouseDownInfo = {
+      table: headerTable,
+      widths: readDomColumnWidths(headerTable, cells)
+    }
+  } else {
+    headerMouseDownInfo = null
+  }
   const th = getResizeHeader(event)
   if (!th) return
 
@@ -737,15 +831,29 @@ function startResizeFeedback(event) {
 }
 
 function persistAfterHeaderMouseUp(event) {
-  if (!headerMouseDownTable) return
-  const table = headerMouseDownTable
-  headerMouseDownTable = null
+  if (!headerMouseDownInfo) return
+  const { table, widths: beforeWidths } = headerMouseDownInfo
+  headerMouseDownInfo = null
   if (event.target?.closest?.('.nexus-column-control')) return
+  const cells = getHeaderCells(table)
+  const afterWidths = readDomColumnWidths(table, cells)
+  const changed = cells.some(cell => {
+    const before = beforeWidths[cell.key]
+    const after = afterWidths[cell.key]
+    return Number.isFinite(before) && Number.isFinite(after) && Math.abs(after - before) >= 2
+  })
+  if (!changed) return
   schedulePersistColumnWidths(table)
 }
 
 function closeAllPanels() {
   closeOtherPanels(null)
+}
+
+function persistCurrentTables() {
+  document.querySelectorAll(`.el-table[${ENHANCED_ATTR}="1"]`).forEach(table => {
+    persistSortInfo(table)
+  })
 }
 
 function getControlHost(table) {
@@ -783,11 +891,13 @@ function removeEnhancement(table) {
   delete table.dataset.nexusColumnSignature
   delete table.dataset.nexusColumnStorageKey
   delete table.dataset.nexusColumnWidthKey
+  delete table.dataset.nexusColumnSortKey
   delete table.dataset.nexusLegacyColumnKeys
   delete table.dataset.nexusLegacyColumnWidthKeys
   delete table.__nexusDefaultColumnWidths
   delete table.__nexusDefaultColumnState
   delete table.__nexusResizePending
+  delete table.__nexusAppliedSortSignature
 }
 
 function createControl(table, tableId, cells, storageInfo, visible, placement) {
@@ -868,9 +978,11 @@ function createControl(table, tableId, cells, storageInfo, visible, placement) {
   resetButton.addEventListener('click', () => {
     const all = cells.map(cell => cell.key)
     removeStorageKeys(storageInfo)
+    table.__nexusAppliedSortSignature = ''
     panel.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = true })
     document.getElementById(`${WIDTH_STYLE_ID_PREFIX}${tableId}`)?.remove()
     restoreDefaultColumnState(table, cells)
+    table.__vueParentComponent?.proxy?.clearSort?.()
     applyVisibility(table, tableId, cells, all)
     table.__vueParentComponent?.proxy?.doLayout?.()
   })
@@ -926,8 +1038,10 @@ function reapplyTablePreferences(table, cells) {
   }
   const visible = loadVisible(storageInfo, cells)
   const widths = loadColumnWidths(storageInfo, cells)
+  const sortInfo = loadSortInfo(storageInfo, table, cells)
   applyColumnWidths(table, tableId, cells, widths, true, visible)
   applyVisibility(table, tableId, cells, visible)
+  applySortInfo(table, sortInfo)
   ensureControlMounted(table, cells, storageInfo, visible)
 }
 
@@ -952,15 +1066,18 @@ function enhanceTable(table, index) {
   const storageInfo = makeStorageInfo(table, cells, index)
   const visible = loadVisible(storageInfo, cells)
   const widths = loadColumnWidths(storageInfo, cells)
+  const sortInfo = loadSortInfo(storageInfo, table, cells)
   table.__nexusDefaultColumnState = readDefaultColumnState(table, cells)
   bindTableEvents(table)
   table.dataset.nexusColumnStorageKey = storageInfo.storageKey
   table.dataset.nexusColumnWidthKey = storageInfo.widthKey
+  table.dataset.nexusColumnSortKey = storageInfo.sortKey
   table.dataset.nexusLegacyColumnKeys = storageInfo.legacyKeys.join('\n')
   table.dataset.nexusLegacyColumnWidthKeys = storageInfo.legacyWidthKeys.join('\n')
 
   applyColumnWidths(table, tableId, cells, widths, true, visible)
   applyVisibility(table, tableId, cells, visible)
+  applySortInfo(table, sortInfo)
   const placementHost = getControlHost(table)
   const control = createControl(table, tableId, cells, storageInfo, visible, placementHost.placement)
   mountControl(table, control, placementHost)
@@ -998,7 +1115,9 @@ export function installTableEnhancements() {
   }
   installTableEnhancements.scheduleEnhance = scheduleEnhance
   scheduleEnhance()
+  window.addEventListener('beforeunload', persistCurrentTables)
   window.addEventListener('hashchange', scheduleEnhance)
+  window.addEventListener('hashchange', persistCurrentTables, true)
   window.addEventListener('resize', closeAllPanels)
   window.addEventListener('scroll', closeAllPanels, true)
   document.addEventListener('click', closeAllPanels)
@@ -1015,6 +1134,8 @@ export function uninstallTableEnhancements() {
   if (scheduleEnhance) {
     window.removeEventListener('hashchange', scheduleEnhance)
   }
+  window.removeEventListener('beforeunload', persistCurrentTables)
+  window.removeEventListener('hashchange', persistCurrentTables, true)
   window.removeEventListener('resize', closeAllPanels)
   window.removeEventListener('scroll', closeAllPanels, true)
   document.removeEventListener('click', closeAllPanels)

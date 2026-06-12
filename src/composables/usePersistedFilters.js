@@ -1,11 +1,15 @@
 import { isRef, watch } from 'vue'
+import { getUser } from '@/utils/auth'
 
 export function usePersistedFilters(key, state, options = {}) {
-  const storageKey = `nexus_filters_${key}`
+  const storageKey = getScopedStorageKey(key)
+  const legacyStorageKey = `nexus_filters_${key}`
   const skipKeys = new Set(options.skip || [])
 
   try {
-    const raw = localStorage.getItem(storageKey)
+    const scopedRaw = localStorage.getItem(storageKey)
+    const legacyRaw = scopedRaw ? null : localStorage.getItem(legacyStorageKey)
+    const raw = scopedRaw || legacyRaw
     if (raw) {
       const saved = JSON.parse(raw)
       Object.keys(saved).forEach(k => {
@@ -14,6 +18,10 @@ export function usePersistedFilters(key, state, options = {}) {
           else state[k] = saved[k]
         }
       })
+      if (legacyRaw) {
+        localStorage.setItem(storageKey, JSON.stringify(saved))
+        localStorage.removeItem(legacyStorageKey)
+      }
     }
   } catch {}
 
@@ -32,4 +40,14 @@ export function usePersistedFilters(key, state, options = {}) {
     },
     { deep: true }
   )
+}
+
+function getScopedStorageKey(key) {
+  const user = getUser()
+  const rawUserKey = String(user?.id || user?.username || 'guest')
+  const userKey = rawUserKey
+    .replace(/\s+/g, '_')
+    .replace(/[^\w-]+/g, '_')
+    .replace(/^_+|_+$/g, '') || 'guest'
+  return `nexus_filters_${userKey}_${key}`
 }

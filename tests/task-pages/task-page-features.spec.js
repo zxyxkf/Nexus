@@ -555,6 +555,60 @@ test('table column visibility and resized widths survive reload', async ({ page 
   expect(afterWidth).toBeGreaterThan(beforeWidth + 30)
 })
 
+test('designer task table preferences survive leaving task pages and returning', async ({ page }) => {
+  await loginAs(page, users.designer)
+  await page.goto('/#/designer/tasks')
+
+  await expect(page.locator('.el-table')).toBeVisible()
+  await expect(page.locator('.el-loading-mask')).toHaveCount(0)
+
+  await page.locator('.header-right .el-select').first().click()
+  await page.getByRole('option', { name: '作图中' }).click()
+  await expect(page.locator('.header-right .el-select').first()).toContainText('作图中')
+
+  const titleHeader = page.locator('.el-table__header-wrapper th').filter({ hasText: '工作项目' }).first()
+  await expect(titleHeader).toBeVisible()
+  const beforeWidth = await titleHeader.evaluate(el => Math.round(el.getBoundingClientRect().width))
+  const box = await titleHeader.boundingBox()
+  expect(box).toBeTruthy()
+
+  await page.mouse.move(box.x + box.width - 4, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width + 80, box.y + box.height / 2, { steps: 8 })
+  await page.mouse.up()
+
+  await page.getByRole('button', { name: '列设置' }).first().click()
+  const publisherOption = page.locator('.nexus-column-panel.is-open .nexus-column-option').filter({ hasText: '发布人' }).first()
+  await expect(publisherOption).toBeVisible()
+  await publisherOption.locator('input[type="checkbox"]').uncheck()
+  await expectColumnHidden(page, '发布人')
+
+  const createTimeHeader = page.locator('.el-table__header-wrapper th').filter({ hasText: '发布时间' }).first()
+  await createTimeHeader.click()
+  await expect(page.locator('.el-table__body-wrapper tbody tr').first()).toContainText('T-ACCEPTED')
+  await expect.poll(async () => {
+    return page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('nexus_table_columns_v2') && key.endsWith('_sort')).length)
+  }).toBeGreaterThan(0)
+
+  await page.goto('/#/dashboard')
+  await expect(page).toHaveURL(/#\/dashboard/)
+  await expect(page.locator('.card-title').filter({ hasText: '运营 & 美工设计师' }).first()).toBeVisible()
+  await page.goto('/#/designer/tasks')
+  await expect(page).toHaveURL(/#\/designer\/tasks/)
+  await expect(page.locator('.card-title').filter({ hasText: '我的任务' }).first()).toBeVisible()
+  await expect(page.locator('.el-table')).toBeVisible()
+  await expect(page.locator('.el-loading-mask')).toHaveCount(0)
+
+  await expect(page.locator('.header-right .el-select').first()).toContainText('作图中')
+  await expectColumnHidden(page, '发布人')
+
+  const titleHeaderAfterReturn = page.locator('.el-table__header-wrapper th').filter({ hasText: '工作项目' }).first()
+  await expect(titleHeaderAfterReturn).toBeVisible()
+  const afterWidth = await titleHeaderAfterReturn.evaluate(el => Math.round(el.getBoundingClientRect().width))
+  expect(afterWidth).toBeGreaterThan(beforeWidth + 30)
+  await expect(page.locator('.el-table__body-wrapper tbody tr').first()).toContainText('T-ACCEPTED')
+})
+
 async function loginAs(page, user) {
   await page.addInitScript(({ token, userInfo }) => {
     localStorage.setItem('d_design_token', token)
