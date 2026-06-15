@@ -46,6 +46,29 @@ async function paginate({ countSql, countParams, dataSql, dataParams, page, page
   };
 }
 
+// 任务列表可排序字段白名单：前端只能按这些字段排序。
+// 字段名在这里写死，前端传入的 sortField 仅用于查表，永远不会被拼进 SQL，
+// 因此不存在 SQL 注入面。方向只接受 ASC / DESC 两个常量。
+const TASK_SORT_COLUMNS = {
+  create_time: 't.create_time',
+  task_no: 't.task_no',
+  status: 't.status'
+};
+
+/**
+ * 构造安全的 ORDER BY 子句。
+ * @param {string} sortField 前端传入的排序字段（需命中白名单，否则忽略）
+ * @param {string} sortOrder 'asc' | 'desc'
+ * @param {string} fallback  未指定排序时使用的默认 ORDER BY 子句（不含 "ORDER BY"）
+ */
+function buildTaskOrderBy(sortField, sortOrder, fallback) {
+  const column = TASK_SORT_COLUMNS[sortField];
+  if (!column) return `ORDER BY ${fallback}`;
+  const direction = String(sortOrder).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+  // 次级排序用 id 保证分页稳定（同值行顺序确定）
+  return `ORDER BY ${column} ${direction}, t.id ${direction}`;
+}
+
 /** 批量挂载文件到任务 */
 async function attachFilesToTasks(taskIds) {
   const filesByTask = {};
@@ -360,7 +383,7 @@ function appendStatusFilter(where, params, status) {
 }
 
 /** 我发布的任务 */
-async function queryMyPublished({ userId, role, permissions = [], filterGroup, selfOnly, status, styleNumber, keyword, taskNo, designerId, publisherId, dateStart, dateEnd, dateField, page, pageSize }) {
+async function queryMyPublished({ userId, role, permissions = [], filterGroup, selfOnly, status, styleNumber, keyword, taskNo, designerId, publisherId, dateStart, dateEnd, dateField, sortField, sortOrder, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE 1=1';
   const params = [];
@@ -399,7 +422,7 @@ async function queryMyPublished({ userId, role, permissions = [], filterGroup, s
   const result = await paginate({
     countSql: `SELECT COUNT(*) as total FROM task_info t ${where}`,
     countParams: params,
-    dataSql: `SELECT ${TASK_SELECT} FROM task_info t ${TASK_JOIN} ${where} ORDER BY t.create_time DESC LIMIT ? OFFSET ?`,
+    dataSql: `SELECT ${TASK_SELECT} FROM task_info t ${TASK_JOIN} ${where} ${buildTaskOrderBy(sortField, sortOrder, 't.create_time DESC')} LIMIT ? OFFSET ?`,
     dataParams: [...params, pageSize, offset],
     page, pageSize
   });
@@ -454,7 +477,7 @@ async function queryMyAccepted({ userId, role, permissions = [], taskGroup, stat
 }
 
 /** 任务大厅 */
-async function queryTaskHall({ role, permissions = [], taskGroup, keyword, page, pageSize }) {
+async function queryTaskHall({ role, permissions = [], taskGroup, keyword, sortField, sortOrder, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE t.status = \'wait\'';
   const params = [];
@@ -488,7 +511,7 @@ async function queryTaskHall({ role, permissions = [], taskGroup, keyword, page,
      LEFT JOIN sys_score_item_cs cs ON t.score_item_id = cs.id AND t.task_group = 'cs'
      LEFT JOIN sys_score_item_operator op ON t.score_item_id = op.id AND t.task_group = 'operator'
      ${where}
-     ORDER BY t.create_time ASC LIMIT ? OFFSET ?`,
+     ${buildTaskOrderBy(sortField, sortOrder, 't.create_time ASC')} LIMIT ? OFFSET ?`,
     [...params, pageSize, offset]
   );
 
@@ -503,7 +526,7 @@ async function queryTaskHall({ role, permissions = [], taskGroup, keyword, page,
 }
 
 /** 全量任务（管理端） */
-async function queryAllTasks({ status, keyword, publisherId, designerId, startDate, endDate, dateField, taskGroup, page, pageSize }) {
+async function queryAllTasks({ status, keyword, publisherId, designerId, startDate, endDate, dateField, taskGroup, sortField, sortOrder, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE 1=1';
   const params = [];
@@ -528,7 +551,7 @@ async function queryAllTasks({ status, keyword, publisherId, designerId, startDa
   return paginate({
     countSql: `SELECT COUNT(*) as total FROM task_info t ${where}`,
     countParams: params,
-    dataSql: `SELECT ${TASK_SELECT} FROM task_info t ${TASK_JOIN} ${where} ORDER BY t.create_time DESC LIMIT ? OFFSET ?`,
+    dataSql: `SELECT ${TASK_SELECT} FROM task_info t ${TASK_JOIN} ${where} ${buildTaskOrderBy(sortField, sortOrder, 't.create_time DESC')} LIMIT ? OFFSET ?`,
     dataParams: [...params, pageSize, offset],
     page, pageSize
   });

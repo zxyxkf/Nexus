@@ -559,54 +559,177 @@ test('designer task table preferences survive leaving task pages and returning',
   await loginAs(page, users.designer)
   await page.goto('/#/designer/tasks')
 
-  await expect(page.locator('.el-table')).toBeVisible()
-  await expect(page.locator('.el-loading-mask')).toHaveCount(0)
-
-  await page.locator('.header-right .el-select').first().click()
-  await page.getByRole('option', { name: '作图中' }).click()
-  await expect(page.locator('.header-right .el-select').first()).toContainText('作图中')
-
-  const titleHeader = page.locator('.el-table__header-wrapper th').filter({ hasText: '工作项目' }).first()
-  await expect(titleHeader).toBeVisible()
-  const beforeWidth = await titleHeader.evaluate(el => Math.round(el.getBoundingClientRect().width))
-  const box = await titleHeader.boundingBox()
-  expect(box).toBeTruthy()
-
-  await page.mouse.move(box.x + box.width - 4, box.y + box.height / 2)
-  await page.mouse.down()
-  await page.mouse.move(box.x + box.width + 80, box.y + box.height / 2, { steps: 8 })
-  await page.mouse.up()
-
-  await page.getByRole('button', { name: '列设置' }).first().click()
-  const publisherOption = page.locator('.nexus-column-panel.is-open .nexus-column-option').filter({ hasText: '发布人' }).first()
-  await expect(publisherOption).toBeVisible()
-  await publisherOption.locator('input[type="checkbox"]').uncheck()
-  await expectColumnHidden(page, '发布人')
-
-  const createTimeHeader = page.locator('.el-table__header-wrapper th').filter({ hasText: '发布时间' }).first()
-  await createTimeHeader.click()
-  await expect(page.locator('.el-table__body-wrapper tbody tr').first()).toContainText('T-ACCEPTED')
-  await expect.poll(async () => {
-    return page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('nexus_table_columns_v2') && key.endsWith('_sort')).length)
-  }).toBeGreaterThan(0)
+  const state = await setDesignerTaskPreferences(page)
 
   await page.goto('/#/dashboard')
   await expect(page).toHaveURL(/#\/dashboard/)
   await expect(page.locator('.card-title').filter({ hasText: '运营 & 美工设计师' }).first()).toBeVisible()
   await page.goto('/#/designer/tasks')
-  await expect(page).toHaveURL(/#\/designer\/tasks/)
-  await expect(page.locator('.card-title').filter({ hasText: '我的任务' }).first()).toBeVisible()
-  await expect(page.locator('.el-table')).toBeVisible()
-  await expect(page.locator('.el-loading-mask')).toHaveCount(0)
+  await assertDesignerTaskPreferencesAfterReturn(page, state)
+})
 
+test('task table preferences survive leaving to stats, hall, notifications and dashboards', async ({ browser }) => {
+  const cases = [
+    {
+      user: users.designer,
+      taskPath: '/#/designer/tasks',
+      leavePaths: ['/#/designer/stats', '/#/designer/hall', '/#/notifications', '/#/dashboard'],
+      statsMarker: '个人统计',
+      resizeColumn: '工作项目',
+      statusOption: '作图中',
+      expectedFirstTask: 'T-ACCEPTED'
+    },
+    {
+      user: users.basic,
+      taskPath: '/#/basic/tasks',
+      leavePaths: ['/#/basic/stats', '/#/basic/hall', '/#/notifications', '/#/dashboard/basic-designer'],
+      statsMarker: '个人统计',
+      resizeColumn: '旺旺ID',
+      statusOption: '作图中',
+      expectedFirstTask: 'T-DOING'
+    },
+    {
+      user: users.assistant,
+      taskPath: '/#/operator-assistant/tasks',
+      leavePaths: ['/#/operator-assistant/stats', '/#/operator-assistant/hall', '/#/notifications', '/#/dashboard/operator-assistant'],
+      statsMarker: '个人统计',
+      resizeColumn: '店铺',
+      statusOption: '进行中',
+      expectedFirstTask: 'T-REJECTED'
+    }
+  ]
+
+  for (const item of cases) {
+    const context = await browser.newContext({ viewport: { width: 1600, height: 900 } })
+    const page = await context.newPage()
+    await mockApis(page)
+    await loginAs(page, item.user)
+    try {
+      await page.goto(item.taskPath)
+      await expect(page, `failed to open ${item.taskPath} for ${item.user.role}; current url=${page.url()}`).toHaveURL(new RegExp(item.taskPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&').replace('/#/', '#/')))
+      const state = await setCommonTaskPreferences(page, item)
+
+      for (const leavePath of item.leavePaths) {
+        await page.goto(leavePath)
+        if (leavePath.includes('/stats')) {
+          await expect(page.getByText(item.statsMarker, { exact: false }).first()).toBeVisible()
+          await expect(page.locator('.el-table').first()).toBeVisible()
+          await expect(page.locator('.nexus-column-button')).toHaveCount(0)
+        } else if (leavePath.includes('/hall')) {
+          await expect(page.locator('.card-title').filter({ hasText: '任务大厅' }).first()).toBeVisible()
+          await expect(page.locator('.nexus-column-button')).toHaveCount(1)
+        } else if (leavePath.includes('/notifications')) {
+          await expect(page.locator('.card-title').filter({ hasText: '通知中心' }).first()).toBeVisible()
+          await expect(page.locator('.nexus-column-button')).toHaveCount(0)
+        } else {
+          await expect(page).toHaveURL(/#\/dashboard/)
+          await expect(page.locator('.nexus-column-button')).toHaveCount(0)
+        }
+        await page.goto(item.taskPath)
+        await assertCommonTaskPreferencesAfterReturn(page, state)
+      }
+    } finally {
+      await context.close()
+    }
+  }
+})
+
+test('table default clears hidden columns, resized widths and persisted sort', async ({ page }) => {
+  await loginAs(page, users.designer)
+  await page.goto('/#/designer/tasks')
+  const state = await setDesignerTaskPreferences(page)
+
+  const keysBeforeReset = await getCurrentTablePreferenceKeys(page)
+  expect(keysBeforeReset.widthKey).toBeTruthy()
+  expect(keysBeforeReset.sortKey).toBeTruthy()
+
+  await page.getByRole('button', { name: '列设置' }).first().click()
+  await page.locator('.nexus-column-panel.is-open .nexus-column-actions button').filter({ hasText: '默认' }).click()
+
+  await expectColumnVisible(page, '发布人')
   await expect(page.locator('.header-right .el-select').first()).toContainText('作图中')
-  await expectColumnHidden(page, '发布人')
+  await expect.poll(async () => getHeaderWidth(page, '工作项目')).toBeLessThan(state.widthBefore + 30)
+  await expect.poll(async () => getStoredPreferencePresence(page, keysBeforeReset)).toEqual({
+    visible: false,
+    widths: false,
+    sort: false
+  })
 
-  const titleHeaderAfterReturn = page.locator('.el-table__header-wrapper th').filter({ hasText: '工作项目' }).first()
-  await expect(titleHeaderAfterReturn).toBeVisible()
-  const afterWidth = await titleHeaderAfterReturn.evaluate(el => Math.round(el.getBoundingClientRect().width))
-  expect(afterWidth).toBeGreaterThan(beforeWidth + 30)
+  await page.goto('/#/designer/stats')
+  await expect(page.locator('.el-table').first()).toBeVisible()
+  await page.goto('/#/designer/tasks')
+  await waitForTaskTable(page)
+  await expectColumnVisible(page, '发布人')
+  await expect.poll(async () => getHeaderWidth(page, '工作项目')).toBeLessThan(state.widthBefore + 30)
+})
+
+test('table default restores narrowed min-width columns', async ({ page }) => {
+  await loginAs(page, users.designer)
+  await page.goto('/#/designer/tasks')
+  await waitForTaskTable(page)
+
+  const label = '参考路径'
+  const widthBefore = await getHeaderWidth(page, label)
+  await resizeHeader(page, label, -70)
+  const narrowedWidth = await getHeaderWidth(page, label)
+  expect(narrowedWidth).toBeLessThan(widthBefore - 20)
+
+  await page.getByRole('button', { name: '列设置' }).first().click()
+  await page.locator('.nexus-column-panel.is-open .nexus-column-actions button').filter({ hasText: '默认' }).click()
+
+  await expect.poll(async () => getHeaderWidth(page, label)).toBeGreaterThan(widthBefore - 20)
+})
+
+test('custom sortable task table keeps create time order and default clears it', async ({ page }) => {
+  await loginAs(page, users.basic)
+  await page.goto('/#/basic/tasks')
+  const state = await setCommonTaskPreferences(page, {
+    resizeColumn: '旺旺ID',
+    statusOption: '作图中',
+    expectedFirstTask: 'T-DOING'
+  })
+
+  await page.goto('/#/basic/stats')
+  await expect(page.locator('.el-table').first()).toBeVisible()
+  await expect(page.locator('.nexus-column-button')).toHaveCount(0)
+  await page.goto('/#/basic/tasks')
+  await assertCommonTaskPreferencesAfterReturn(page, state)
+  await expect.poll(async () => getCustomSortStorageCount(page)).toBeGreaterThan(0)
+
+  const keysBeforeReset = await getCurrentTablePreferenceKeys(page)
+  await page.getByRole('button', { name: '列设置' }).first().click()
+  await page.locator('.nexus-column-panel.is-open .nexus-column-actions button').filter({ hasText: '默认' }).click()
+
+  await expectColumnVisible(page, '发布人')
+  await expect.poll(async () => getHeaderWidth(page, '旺旺ID')).toBeLessThan(state.widthBefore + 30)
+  await expect.poll(async () => getStoredPreferencePresence(page, keysBeforeReset)).toEqual({
+    visible: false,
+    widths: false,
+    sort: false
+  })
+  await expect.poll(async () => getCustomSortStorageCount(page)).toBe(0)
+})
+
+test('create time ascending and descending survive leaving and returning', async ({ page }) => {
+  await loginAs(page, users.designer)
+  await page.goto('/#/designer/tasks')
+  await waitForTaskTable(page)
+
+  await sortByCreateTime(page, 'T-ACCEPTED')
   await expect(page.locator('.el-table__body-wrapper tbody tr').first()).toContainText('T-ACCEPTED')
+  await page.goto('/#/designer/stats')
+  await expect(page.locator('.el-table').first()).toBeVisible()
+  await page.goto('/#/designer/tasks')
+  await waitForTaskTable(page)
+  await expect(page.locator('.el-table__body-wrapper tbody tr').first()).toContainText('T-ACCEPTED')
+
+  await sortByCreateTime(page, 'T-DESIGN-DOING')
+  await expect(page.locator('.el-table__body-wrapper tbody tr').first()).toContainText('T-DESIGN-DOING')
+  await page.goto('/#/notifications')
+  await expect(page.locator('.card-title').filter({ hasText: '通知中心' }).first()).toBeVisible()
+  await page.goto('/#/designer/tasks')
+  await waitForTaskTable(page)
+  await expect(page.locator('.el-table__body-wrapper tbody tr').first()).toContainText('T-DESIGN-DOING')
 })
 
 async function loginAs(page, user) {
@@ -616,6 +739,140 @@ async function loginAs(page, user) {
     localStorage.setItem('design_server_url', '')
     sessionStorage.setItem('d_design_login_time', 'feature-test')
   }, { token: TOKEN, userInfo: user })
+}
+
+async function loginInPage(page, user) {
+  await setAuthInPage(page, user)
+}
+
+async function setAuthInPage(page, user) {
+  await page.context().clearCookies()
+  await page.goto('/#/login')
+  await page.evaluate(({ token, userInfo }) => {
+    localStorage.clear()
+    sessionStorage.clear()
+    localStorage.setItem('d_design_token', token)
+    localStorage.setItem('d_design_user', JSON.stringify(userInfo))
+    localStorage.setItem('design_server_url', '')
+    sessionStorage.setItem('d_design_login_time', 'feature-test')
+    window.dispatchEvent(new CustomEvent('nexus-auth-change'))
+  }, { token: TOKEN, userInfo: user })
+  await page.reload()
+}
+
+async function waitForTaskTable(page) {
+  await expect(page.locator('.el-table')).toBeVisible()
+  await expect(page.locator('.el-loading-mask')).toHaveCount(0)
+}
+
+async function setDesignerTaskPreferences(page) {
+  return setCommonTaskPreferences(page, {
+    resizeColumn: '工作项目',
+    statusOption: '作图中',
+    expectedFirstTask: 'T-ACCEPTED'
+  })
+}
+
+async function setCommonTaskPreferences(page, options = {}) {
+  const resizeColumn = options.resizeColumn || '工作项目'
+  const statusOption = options.statusOption || '作图中'
+  const expectedFirstTask = options.expectedFirstTask || 'T-ACCEPTED'
+  await waitForTaskTable(page)
+
+  const statusSelect = page.locator('.header-right .el-select').filter({ hasText: '状态筛选' }).first()
+  await expect(statusSelect).toBeVisible()
+  await statusSelect.click()
+  await page.getByRole('option', { name: statusOption }).click()
+  await expect(page.locator('.header-right .el-select').filter({ hasText: statusOption }).first()).toBeVisible()
+  await waitForTaskTable(page)
+
+  const widthBefore = await getHeaderWidth(page, resizeColumn)
+  await resizeHeader(page, resizeColumn, 80)
+
+  await page.getByRole('button', { name: '列设置' }).first().click()
+  const publisherOption = page.locator('.nexus-column-panel.is-open .nexus-column-option').filter({ hasText: '发布人' }).first()
+  await expect(publisherOption).toBeVisible()
+  await publisherOption.locator('input[type="checkbox"]').uncheck()
+  await expectColumnHidden(page, '发布人')
+
+  const createTimeHeader = page.locator('.el-table__header-wrapper th').filter({ hasText: '发布时间' }).first()
+  await createTimeHeader.click()
+  await expect(page.locator('.el-table__body-wrapper tbody tr').first()).toContainText(expectedFirstTask)
+  await expect.poll(async () => {
+    return page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('nexus_table_columns_v2') && key.endsWith('_sort')).length)
+  }).toBeGreaterThan(0)
+
+  return { widthBefore, resizeColumn, statusOption, expectedFirstTask }
+}
+
+async function assertDesignerTaskPreferencesAfterReturn(page, state) {
+  await assertCommonTaskPreferencesAfterReturn(page, state)
+}
+
+async function assertCommonTaskPreferencesAfterReturn(page, state) {
+  await expect(page.locator('.card-title').filter({ hasText: '我的任务' }).first()).toBeVisible()
+  await waitForTaskTable(page)
+  await expect(page.locator('.header-right .el-select').filter({ hasText: state.statusOption }).first()).toContainText(state.statusOption)
+  await expectColumnHidden(page, '发布人')
+  await expect.poll(async () => getHeaderWidth(page, state.resizeColumn)).toBeGreaterThan(state.widthBefore + 30)
+  await expect(page.locator('.el-table__body-wrapper tbody tr').first()).toContainText(state.expectedFirstTask)
+}
+
+async function resizeHeader(page, label, delta) {
+  const header = page.locator('.el-table__header-wrapper th').filter({ hasText: label }).first()
+  await expect(header).toBeVisible()
+  const box = await header.boundingBox()
+  expect(box).toBeTruthy()
+  await page.mouse.move(box.x + box.width - 4, box.y + box.height / 2)
+  await page.mouse.down()
+  await page.mouse.move(box.x + box.width + delta, box.y + box.height / 2, { steps: 8 })
+  await page.mouse.up()
+  if (delta >= 0) {
+    await expect.poll(async () => getHeaderWidth(page, label)).toBeGreaterThan(Math.round(box.width) + Math.min(30, delta / 2))
+  } else {
+    await expect.poll(async () => getHeaderWidth(page, label)).toBeLessThan(Math.round(box.width) - Math.min(20, Math.abs(delta) / 2))
+  }
+}
+
+async function sortByCreateTime(page, expectedFirstTaskNo) {
+  const header = page.locator('.el-table__header-wrapper th').filter({ hasText: '发布时间' }).first()
+  await expect(header).toBeVisible()
+  for (let index = 0; index < 4; index += 1) {
+    if (await page.locator('.el-table__body-wrapper tbody tr').first().textContent().then(text => text.includes(expectedFirstTaskNo)).catch(() => false)) {
+      return
+    }
+    await header.click()
+    await page.waitForTimeout(50)
+  }
+  throw new Error(`发布时间排序未切到首行为 ${expectedFirstTaskNo}`)
+}
+
+async function getHeaderWidth(page, label) {
+  return page.locator('.el-table__header-wrapper th').filter({ hasText: label }).first()
+    .evaluate(el => Math.round(el.getBoundingClientRect().width))
+}
+
+async function getCurrentTablePreferenceKeys(page) {
+  return page.evaluate(() => {
+    const table = document.querySelector('.el-table[data-nexus-column-settings="1"]')
+    return {
+      visibleKey: table?.dataset?.nexusColumnStorageKey || '',
+      widthKey: table?.dataset?.nexusColumnWidthKey || '',
+      sortKey: table?.dataset?.nexusColumnSortKey || ''
+    }
+  })
+}
+
+async function getStoredPreferencePresence(page, keys) {
+  return page.evaluate(({ visibleKey, widthKey, sortKey }) => ({
+    visible: visibleKey ? localStorage.getItem(visibleKey) !== null : false,
+    widths: widthKey ? localStorage.getItem(widthKey) !== null : false,
+    sort: sortKey ? localStorage.getItem(sortKey) !== null : false
+  }), keys)
+}
+
+async function getCustomSortStorageCount(page) {
+  return page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('nexus_table_custom_sort')).length)
 }
 
 async function getColumnStorageState(page) {
@@ -637,6 +894,16 @@ async function expectColumnHidden(page, label) {
     const style = getComputedStyle(el)
     const rect = el.getBoundingClientRect()
     return style.display === 'none' || rect.width <= 1
+  })).toBe(true)
+}
+
+async function expectColumnVisible(page, label) {
+  const header = page.locator('.el-table__header-wrapper th').filter({ hasText: label }).first()
+  await expect(header).toBeAttached()
+  await expect.poll(async () => header.evaluate(el => {
+    const style = getComputedStyle(el)
+    const rect = el.getBoundingClientRect()
+    return style.display !== 'none' && rect.width > 20
   })).toBe(true)
 }
 
@@ -681,7 +948,9 @@ async function mockApis(page) {
     if (path === '/api/health') return json(route, { code: 0, data: { status: 'ok' } })
     if (path === '/api/announcement/active') return json(route, { code: 0, data: null })
     if (path === '/api/notification/unread-count') return json(route, { code: 0, data: { count: 0 } })
-    if (path === '/api/notification/list') return json(route, listPayload([]))
+    if (path === '/api/notification/list') return json(route, listPayload([
+      { id: 1, title: '任务提醒', content: '测试通知', priority: 2, type: 'task_update', is_read: 0, create_time: '2026-06-01 09:00:00' }
+    ]))
     if (path === '/api/config/list') return json(route, {
       code: 0,
       data: [
@@ -695,6 +964,7 @@ async function mockApis(page) {
     if (path === '/api/user/basic-designers') return json(route, { code: 0, data: people.basicDesigners })
     if (path === '/api/user/operator-assistants') return json(route, { code: 0, data: people.assistants })
     if (path === '/api/score/items') return json(route, { code: 0, data: people.scoreItems })
+    if (path === '/api/task/stats/my') return json(route, { code: 0, data: statsPayload() })
 
     if (path === '/api/task/my-accepted') return json(route, listPayload(filterByTaskGroup(url.searchParams.get('taskGroup'))))
     if (path === '/api/task/my-published') return json(route, listPayload(filterByTaskGroup(url.searchParams.get('taskGroup'))))
@@ -779,6 +1049,45 @@ function listPayload(rows) {
       list: rows,
       total: rows.length
     }
+  }
+}
+
+function statsPayload() {
+  const monthly = [
+    { month: '2026-01', score: 10, finished: 1, total: 2, rate: 50 },
+    { month: '2026-02', score: 20, finished: 2, total: 3, rate: 67 }
+  ]
+  const groupedMonthly = [{
+    name: '测试人员',
+    months: Array.from({ length: 12 }, (_, index) => ({
+      month: index + 1,
+      published: index + 1,
+      finished: index,
+      unsubmitted: 1
+    }))
+  }]
+  return {
+    total_score: 30,
+    pending_review_score: 5,
+    total: 3,
+    finished_count: 2,
+    unfinished_count: 1,
+    wait_count: 1,
+    rejected_count: 1,
+    current_month_score: 20,
+    today_score: 3,
+    yesterday_score: 2,
+    completion_rate: 67,
+    monthly_stats: monthly,
+    design_stats: { total: 3, finished_count: 2, wait_count: 1, rejected_count: 1 },
+    operator_stats: { total: 3, finished_count: 2, wait_count: 1, rejected_count: 1 },
+    design_monthly: groupedMonthly,
+    operator_monthly: groupedMonthly,
+    self_monthly: [
+      { month: '2026-01', total: 2, finished: 1, unfinished: 1, wait: 0 },
+      { month: '2026-02', total: 3, finished: 2, unfinished: 1, wait: 1 }
+    ],
+    cs_monthly: groupedMonthly
   }
 }
 

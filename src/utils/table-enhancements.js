@@ -7,6 +7,22 @@ const STORAGE_PREFIX = 'nexus_table_columns_v2'
 const LEGACY_STORAGE_PREFIX = 'nexus_table_columns'
 const MIN_COLUMN_WIDTH = 40
 const MAX_COLUMN_WIDTH = 1600
+const RESET_SUPPRESS_MS = 900
+const SINGLE_TABLE_CONTEXT = 'main'
+const MULTI_TABLE_ROUTES = new Set([
+  '/admin/config'
+])
+const ENHANCED_ROUTE_PATTERNS = [
+  /^\/designer\/tasks(?:\/todo|\/pending)?$/,
+  /^\/basic\/tasks(?:\/todo|\/pending)?$/,
+  /^\/operator-assistant\/tasks(?:\/todo|\/pending)?$/,
+  /^\/(?:designer|basic|operator-assistant)\/hall$/,
+  /^\/operator\/(?:tasks|review|op-tasks|op-review)$/,
+  /^\/cs\/(?:tasks|review)$/,
+  /^\/admin\/tasks\/(?:design|operator|cs)$/,
+  /^\/basic\/(?:score-review|review-records)$/,
+  /^\/admin\/(?:users|logs|config)$/
+]
 
 let tableSeq = 0
 let observer = null
@@ -54,6 +70,11 @@ function stableHashOrPath() {
   return (raw.split('?')[0] || raw || 'root')
 }
 
+function stableRoutePath() {
+  const hashOrPath = stableHashOrPath()
+  return hashOrPath.startsWith('#') ? hashOrPath.slice(1) : hashOrPath
+}
+
 function legacyRouteKey(raw = window.location.hash || window.location.pathname || 'root') {
   return (raw || 'root').replace(/[^\w-]+/g, '_')
 }
@@ -63,8 +84,18 @@ function getRouteKey() {
 }
 
 function isDashboardRoute() {
-  const hash = stableHashOrPath()
-  return hash === '#/dashboard' || hash.startsWith('#/dashboard/')
+  const path = stableRoutePath()
+  return path === '/dashboard' || path.startsWith('/dashboard/')
+}
+
+function isEnhancedRoute() {
+  const path = stableRoutePath()
+  if (isDashboardRoute()) return false
+  return ENHANCED_ROUTE_PATTERNS.some(pattern => pattern.test(path))
+}
+
+function isMultiTableRoute() {
+  return MULTI_TABLE_ROUTES.has(stableRoutePath())
 }
 
 function getUserKey() {
@@ -83,6 +114,25 @@ function getTableColumns(table) {
   return Array.isArray(leafColumns) && leafColumns.length
     ? leafColumns
     : (Array.isArray(columns) ? columns : [])
+}
+
+function getAllTableColumns(table) {
+  const tableProxy = table.__vueParentComponent?.proxy
+  const candidates = [
+    tableProxy?.layout?.getFlattenColumns?.(),
+    tableProxy?.store?.states?.leafColumns?.value,
+    tableProxy?.store?.states?.columns?.value,
+    tableProxy?.store?.states?.fixedColumns?.value,
+    tableProxy?.store?.states?.rightFixedColumns?.value
+  ]
+  const seen = new Set()
+  const result = []
+  candidates.flat().forEach(column => {
+    if (!column || seen.has(column)) return
+    seen.add(column)
+    result.push(column)
+  })
+  return result
 }
 
 function getColumnBaseKey(column, label, index) {
@@ -173,6 +223,14 @@ function getTableContextKey(table) {
     return token('custom', table.dataset.nexusColumnKey)
   }
 
+  return SINGLE_TABLE_CONTEXT
+}
+
+function getLegacyTableContextKey(table) {
+  if (table.dataset.nexusColumnKey) {
+    return token('custom', table.dataset.nexusColumnKey)
+  }
+
   const parts = []
   const tab = getTabContext(table)
   const title = getCardTitle(table)
@@ -180,6 +238,20 @@ function getTableContextKey(table) {
   if (title) parts.push(token('card', title))
   parts.push(`table_${getLocalTableIndex(table)}`)
   return parts.join('_')
+}
+
+function isSortManaged(table) {
+  return table?.dataset?.nexusSort !== 'off'
+}
+
+function shouldEnhanceTable(table) {
+  if (!isEnhancedRoute()) return false
+  if (isMultiTableRoute()) return Boolean(table.dataset.nexusColumnKey)
+  if (table.dataset.nexusColumnKey) return true
+
+  const tables = Array.from(document.querySelectorAll('.el-table'))
+    .filter(item => !item.closest('.el-dialog') && !item.closest('.el-drawer') && !item.closest('.el-popover'))
+  return tables[0] === table
 }
 
 function legacyStorageKeyCandidates(table, cells, legacyIndex) {
@@ -201,16 +273,26 @@ function legacyStorageKeyCandidates(table, cells, legacyIndex) {
 }
 
 function makeStorageInfo(table, cells, legacyIndex) {
-  const storageKey = `${STORAGE_PREFIX}_${getUserKey()}_${getRouteKey()}_${getTableContextKey(table)}`
+  const routeKey = getRouteKey()
+  const userKey = getUserKey()
+  const storageKey = `${STORAGE_PREFIX}_${getUserKey()}_${routeKey}_${getTableContextKey(table)}`
   const widthKey = `${storageKey}_widths`
   const sortKey = `${storageKey}_sort`
-  const legacyKeys = legacyStorageKeyCandidates(table, cells, legacyIndex)
+  const previousV2Keys = unique([
+    `${STORAGE_PREFIX}_${userKey}_${routeKey}_${getLegacyTableContextKey(table)}`
+  ]).filter(key => key !== storageKey)
+  const legacyKeys = [
+    ...previousV2Keys,
+    ...legacyStorageKeyCandidates(table, cells, legacyIndex)
+  ]
   return {
     storageKey,
     widthKey,
     sortKey,
+    routeKey,
     legacyKeys,
-    legacyWidthKeys: legacyKeys.map(key => `${key}_widths`)
+    legacyWidthKeys: legacyKeys.map(key => `${key}_widths`),
+    legacySortKeys: legacyKeys.map(key => `${key}_sort`)
   }
 }
 
@@ -321,8 +403,39 @@ function normalizeSortInfo(table, value, cells) {
 function loadSortInfo(storageInfo, table, cells) {
   if (!storageInfo?.sortKey) return null
   const stored = readStoredValue([storageInfo.sortKey])
-  if (!stored.key) return null
-  return normalizeSortInfo(table, stored.value, cells)
+  if (stored.key) return normalizeSortInfo(table, stored.value, cells)
+
+  const legacy = readStoredValue(storageInfo.legacySortKeys || [])
+  if (!legacy.key) return null
+
+  const sortInfo = normalizeSortInfo(table, legacy.value, cells)
+  if (sortInfo) saveSortInfo(storageInfo, sortInfo)
+  return sortInfo
+}
+
+function getStorageKeyUserRoutePrefix(storageInfo) {
+  const marker = `_${SINGLE_TABLE_CONTEXT}`
+  const key = String(storageInfo?.storageKey || '')
+  return key.endsWith(marker) ? key.slice(0, -marker.length) : ''
+}
+
+function removeRelatedStorageKeys(storageInfo) {
+  removeStorageKeys(storageInfo)
+  const prefix = getStorageKeyUserRoutePrefix(storageInfo)
+  if (!prefix) return
+
+  for (const key of Object.keys(localStorage)) {
+    if (
+      key === storageInfo.storageKey ||
+      key === storageInfo.widthKey ||
+      key === storageInfo.sortKey ||
+      key.startsWith(`${prefix}_table_`) ||
+      key.startsWith(`${prefix}_tab_`) ||
+      key.startsWith(`${prefix}_card_`)
+    ) {
+      localStorage.removeItem(key)
+    }
+  }
 }
 
 function saveSortInfo(storageInfo, sortInfo) {
@@ -334,6 +447,11 @@ function saveSortInfo(storageInfo, sortInfo) {
   localStorage.setItem(storageInfo.sortKey, JSON.stringify(sortInfo))
 }
 
+function getBodySignature(table) {
+  const rows = Array.from(table.querySelectorAll('.el-table__body-wrapper tbody tr')).slice(0, 5)
+  return rows.map(row => textContent(row).slice(0, 120)).join('|')
+}
+
 function persistSortInfo(table, eventPayload = null) {
   const storageInfo = storageInfoFromDataset(table)
   if (!storageInfo) return
@@ -343,6 +461,7 @@ function persistSortInfo(table, eventPayload = null) {
   const prop = eventPayload?.prop || table.__vueParentComponent?.proxy?.store?.states?.sortProp?.value || ''
   const order = eventPayload?.order || table.__vueParentComponent?.proxy?.store?.states?.sortOrder?.value || ''
   if (!prop || !order) {
+    if (!eventPayload) return
     saveSortInfo(storageInfo, null)
     table.__nexusAppliedSortSignature = ''
     return
@@ -357,12 +476,42 @@ function persistSortInfo(table, eventPayload = null) {
 function applySortInfo(table, sortInfo) {
   if (!sortInfo?.prop || !sortInfo?.order) return
   const signature = `${sortInfo.prop}:${sortInfo.order}`
-  if (table.__nexusAppliedSortSignature === signature) return
   table.__nexusAppliedSortSignature = signature
   const tableProxy = table.__vueParentComponent?.proxy
+  const states = tableProxy?.store?.states
+  const currentSignature = `${states?.sortProp?.value || ''}:${states?.sortOrder?.value || ''}`
+  const bodySignature = getBodySignature(table)
+  if (
+    currentSignature === signature &&
+    table.__nexusAppliedSortBodySignature === bodySignature
+  ) {
+    return
+  }
+  table.__nexusAppliedSortBodySignature = bodySignature
+  const version = (table.__nexusSortApplyVersion || 0) + 1
+  table.__nexusSortApplyVersion = version
   requestAnimationFrame(() => {
+    if (table.__nexusSortApplyVersion !== version) return
     tableProxy?.sort?.(sortInfo.prop, sortInfo.order)
+    requestAnimationFrame(() => {
+      if (table.__nexusSortApplyVersion !== version) return
+      table.__nexusAppliedSortBodySignature = getBodySignature(table)
+    })
   })
+}
+
+// Element Plus clearSort() nulls the store's sortingColumn but leaves the
+// previously-sorted column's own `order` property untouched. The header arrow
+// highlight is driven by that `column.order` (it becomes a CSS class), so the
+// arrow stays lit after a reset unless we clear it explicitly. This matters for
+// tables whose initial sort came from :default-sort.
+function clearTableSortIndicator(table) {
+  const tableProxy = table.__vueParentComponent?.proxy
+  tableProxy?.clearSort?.()
+  getAllTableColumns(table).forEach(column => {
+    if (column && column.order) column.order = null
+  })
+  tableProxy?.doLayout?.()
 }
 
 function storageInfoFromDataset(table) {
@@ -374,8 +523,10 @@ function storageInfoFromDataset(table) {
     storageKey,
     widthKey,
     sortKey: sortKey || `${storageKey}_sort`,
+    routeKey: table.dataset.nexusColumnRouteKey || '',
     legacyKeys: (table.dataset.nexusLegacyColumnKeys || '').split('\n').filter(Boolean),
-    legacyWidthKeys: (table.dataset.nexusLegacyColumnWidthKeys || '').split('\n').filter(Boolean)
+    legacyWidthKeys: (table.dataset.nexusLegacyColumnWidthKeys || '').split('\n').filter(Boolean),
+    legacySortKeys: (table.dataset.nexusLegacyColumnSortKeys || '').split('\n').filter(Boolean)
   }
 }
 
@@ -385,7 +536,8 @@ function removeStorageKeys(storageInfo) {
     storageInfo.widthKey,
     storageInfo.sortKey,
     ...storageInfo.legacyKeys,
-    ...storageInfo.legacyWidthKeys
+    ...storageInfo.legacyWidthKeys,
+    ...(storageInfo.legacySortKeys || [])
   ].filter(Boolean)) {
     localStorage.removeItem(key)
   }
@@ -404,34 +556,6 @@ function getTableScopeSelectors(tableId) {
     `[data-nexus-table-id="${escapeAttributeValue(tableId)}"]`,
     `.nexus-table-${tableId}`
   ]
-}
-
-function readColumnWidths(table, cells) {
-  const domWidths = readDomColumnWidths(table, cells)
-  if (Object.keys(domWidths).length) return domWidths
-
-  const columns = getTableColumns(table)
-  if (Array.isArray(columns) && columns.length) {
-    const stateWidths = Object.fromEntries(
-      cells
-        .map(cell => {
-          const column = columns[cell.index - 1]
-          return [cell.key, Math.round(Number(column?.realWidth || column?.width || 0))]
-        })
-        .filter(([, width]) => Number.isFinite(width) && width >= MIN_COLUMN_WIDTH && width <= MAX_COLUMN_WIDTH)
-    )
-    if (Object.keys(stateWidths).length) return stateWidths
-  }
-
-  const rows = table.querySelectorAll('.el-table__header-wrapper thead tr')
-  const row = rows[rows.length - 1]
-  if (!row) return {}
-  const headers = Array.from(row.querySelectorAll('th'))
-  return Object.fromEntries(
-    cells
-      .map(cell => [cell.key, Math.round(headers[cell.index - 1]?.getBoundingClientRect().width || 0)])
-      .filter(([, width]) => Number.isFinite(width) && width >= MIN_COLUMN_WIDTH && width <= MAX_COLUMN_WIDTH)
-  )
 }
 
 function readColumnWidthsFromState(table, cells) {
@@ -484,6 +608,12 @@ function readDomColumnWidth(table, cell, headers) {
   return widths.find(width => Number.isFinite(width) && width >= MIN_COLUMN_WIDTH && width <= MAX_COLUMN_WIDTH) || 0
 }
 
+function stashPristineColumnWidth(column) {
+  if (!column || column.__nexusPristineWidth !== undefined) return
+  column.__nexusPristineWidth = column.width
+  column.__nexusPristineMinWidth = column.minWidth
+}
+
 function readDefaultColumnState(table, cells) {
   const columns = getTableColumns(table)
   if (!Array.isArray(columns) || !columns.length) return {}
@@ -491,30 +621,149 @@ function readDefaultColumnState(table, cells) {
   return Object.fromEntries(
     cells.map(cell => {
       const column = columns[cell.index - 1]
+      const hasPristine = column?.__nexusPristineWidth !== undefined
       return [cell.key, {
-        width: column?.width,
-        minWidth: column?.minWidth
+        id: column?.id || cell.columnClass || '',
+        width: hasPristine ? column.__nexusPristineWidth : column?.width,
+        minWidth: hasPristine ? column.__nexusPristineMinWidth : column?.minWidth
       }]
     })
   )
 }
 
-function restoreDefaultColumnState(table, cells) {
-  const columns = getTableColumns(table)
-  const defaults = table.__nexusDefaultColumnState || {}
-  if (!Array.isArray(columns) || !columns.length) return
+function defaultsKeyFor(storageKeyOrInfo) {
+  const storageKey = typeof storageKeyOrInfo === 'string'
+    ? storageKeyOrInfo
+    : storageKeyOrInfo?.storageKey
+  return storageKey ? `${storageKey}_defaults` : ''
+}
 
+// Freeze each column's declared default width/minWidth into localStorage the
+// first time a table layout is enhanced. Declared props (not rendered pixels)
+// are what "默认" must restore: fixed-width columns keep their width, flexible
+// columns re-flow. localStorage survives view remounts, so the snapshot can no
+// longer be lost (it lived on the DOM element before) or polluted by a
+// previously applied custom width.
+function ensureDefaultsStored(table, cells, defaultsKey) {
+  if (!defaultsKey || localStorage.getItem(defaultsKey) !== null) return
+  const columns = getTableColumns(table)
+  if (!Array.isArray(columns) || !columns.length) return
+  const defaults = {}
   cells.forEach(cell => {
     const column = columns[cell.index - 1]
-    const state = defaults[cell.key]
-    if (!column || !state) return
-    column.width = state.width
-    column.minWidth = state.minWidth
-    column.realWidth = undefined
+    if (!column) return
+    const width = column.__nexusPristineWidth !== undefined ? column.__nexusPristineWidth : column.width
+    const minWidth = column.__nexusPristineMinWidth !== undefined ? column.__nexusPristineMinWidth : column.minWidth
+    defaults[cell.key] = {
+      width: width === undefined ? null : width,
+      minWidth: minWidth === undefined ? null : minWidth
+    }
   })
-  table.__vueParentComponent?.proxy?.doLayout?.()
+  try {
+    localStorage.setItem(defaultsKey, JSON.stringify(defaults))
+  } catch {}
+}
+
+function loadStoredDefaults(defaultsKey, cells) {
+  if (!defaultsKey) return null
+  const parsed = parseJson(localStorage.getItem(defaultsKey))
+  if (!parsed || typeof parsed !== 'object') return null
+  const result = {}
+  cells.forEach(cell => {
+    const entry = parsed[cell.key]
+    if (!entry || typeof entry !== 'object') return
+    result[cell.key] = {
+      width: entry.width === null ? undefined : entry.width,
+      minWidth: entry.minWidth === null ? undefined : entry.minWidth
+    }
+  })
+  return Object.keys(result).length ? result : null
+}
+
+function findColumnTargets(table, cell, columns = getTableColumns(table)) {
+  const primary = columns[cell.index - 1]
+  const targets = []
+  const seen = new Set()
+  const add = column => {
+    if (!column || seen.has(column)) return
+    seen.add(column)
+    targets.push(column)
+  }
+  add(primary)
+  getAllTableColumns(table).forEach(column => {
+    if (
+      column === primary ||
+      column.id === cell.columnClass ||
+      column.id === primary?.id
+    ) {
+      add(column)
+    }
+  })
+  return targets
+}
+
+function restoreColumnWidthState(column, state) {
+  if (!column || !state) return
+  column.width = state.width
+  column.minWidth = state.minWidth
+  column.realWidth = null
+}
+
+function restoreDefaultColumnState(table, cells) {
+  const columns = getTableColumns(table)
+  const storedDefaults = loadStoredDefaults(defaultsKeyFor(table.dataset.nexusColumnStorageKey), cells)
+  const defaults = storedDefaults || table.__nexusDefaultColumnState || {}
+  if (!Array.isArray(columns) || !columns.length) return
+
+  const tableProxy = table.__vueParentComponent?.proxy
+  const clearDomWidths = () => {
+    table.querySelectorAll('colgroup col').forEach(col => {
+      col.removeAttribute('width')
+      col.style.width = ''
+      col.style.minWidth = ''
+      col.style.maxWidth = ''
+    })
+    cells.forEach(cell => {
+      const selectors = [
+        `.el-table__header-wrapper th:nth-child(${cell.index})`,
+        `.el-table__body-wrapper td:nth-child(${cell.index})`,
+        `.el-table__footer-wrapper td:nth-child(${cell.index})`
+      ]
+      if (cell.columnClass) selectors.push(`.${escapeSelectorValue(cell.columnClass)}`)
+      table.querySelectorAll(selectors.join(',')).forEach(element => {
+        element.style.width = ''
+        element.style.minWidth = ''
+        element.style.maxWidth = ''
+        element.querySelectorAll?.('.cell').forEach(cellElement => {
+          cellElement.style.width = ''
+          cellElement.style.minWidth = ''
+          cellElement.style.maxWidth = ''
+        })
+      })
+    })
+  }
+
+  cells.forEach(cell => {
+    const state = defaults[cell.key]
+    if (!state) return
+    findColumnTargets(table, cell, columns).forEach(column => restoreColumnWidthState(column, state))
+  })
+  clearDomWidths()
+  tableProxy?.layout?.updateColumnsWidth?.()
+  tableProxy?.store?.updateColumns?.()
+  tableProxy?.store?.scheduleLayout?.(true, true)
+  tableProxy?.doLayout?.()
   requestAnimationFrame(() => {
-    table.__vueParentComponent?.proxy?.doLayout?.()
+    clearDomWidths()
+    tableProxy?.layout?.updateColumnsWidth?.()
+    tableProxy?.store?.scheduleLayout?.(true, true)
+    tableProxy?.doLayout?.()
+    requestAnimationFrame(() => {
+      clearDomWidths()
+      tableProxy?.layout?.updateColumnsWidth?.()
+      tableProxy?.store?.scheduleLayout?.(true, true)
+      tableProxy?.doLayout?.()
+    })
   })
 }
 
@@ -524,11 +773,15 @@ function syncTableColumnState(table, cells, widths, persistAsColumnWidth = false
   let changed = false
   cells.forEach(cell => {
     const width = widths[cell.key]
-    const column = columns[cell.index - 1]
-    if (!column || !Number.isFinite(width) || width < MIN_COLUMN_WIDTH || width > MAX_COLUMN_WIDTH) return
-    if (persistAsColumnWidth) column.width = width
-    column.realWidth = width
-    changed = true
+    if (!Number.isFinite(width) || width < MIN_COLUMN_WIDTH || width > MAX_COLUMN_WIDTH) return
+    findColumnTargets(table, cell, columns).forEach(column => {
+      if (persistAsColumnWidth) {
+        stashPristineColumnWidth(column)
+        column.width = width
+      }
+      column.realWidth = width
+      changed = true
+    })
   })
   if (changed) table.__vueParentComponent?.proxy?.doLayout?.()
   return changed
@@ -581,25 +834,60 @@ function applyColumnWidths(table, tableId, cells, widths, persistAsColumnWidth =
   }
 }
 
-function persistColumnWidths(table) {
-  const storageInfo = storageInfoFromDataset(table)
-  if (!storageInfo) return
-  const cells = getHeaderCells(table)
-  if (!cells.length) return
-  const widths = readColumnWidths(table, cells)
-  if (!Object.keys(widths).length) return
-  saveColumnWidths(storageInfo.widthKey, { ...loadColumnWidths(storageInfo, cells), ...widths })
-}
-
 function persistColumnWidthsFromState(table) {
   const storageInfo = storageInfoFromDataset(table)
   if (!storageInfo) return
+  if (storageInfo.routeKey && storageInfo.routeKey !== getRouteKey()) return
+  if (isWidthSaveSuppressed(table)) return
   const cells = getHeaderCells(table)
   if (!cells.length) return
   const widths = readColumnWidthsFromState(table, cells)
   if (!Object.keys(widths).length) return
   saveColumnWidths(storageInfo.widthKey, { ...loadColumnWidths(storageInfo, cells), ...widths })
   reapplyTablePreferences(table, cells)
+}
+
+function getCellForElementPlusColumn(table, column, cells) {
+  if (!column) return null
+  return cells.find(cell => {
+    const tableColumn = getTableColumns(table)[cell.index - 1]
+    return tableColumn === column ||
+      tableColumn?.id === column.id ||
+      cell.columnClass === column.id ||
+      getColumnPropForCell(table, cell) === column.property ||
+      getColumnPropForCell(table, cell) === column.prop
+  }) || null
+}
+
+function persistDraggedColumnWidth(table, width, column) {
+  if (isWidthSaveSuppressed(table)) return
+  const storageInfo = storageInfoFromDataset(table)
+  if (!storageInfo) return
+  if (storageInfo.routeKey && storageInfo.routeKey !== getRouteKey()) return
+  const cells = getHeaderCells(table)
+  if (!cells.length) return
+  const cell = getCellForElementPlusColumn(table, column, cells)
+  if (!cell) return
+  persistKnownColumnWidth(table, cell.key, width)
+}
+
+function persistKnownColumnWidth(table, cellKey, width) {
+  const storageInfo = storageInfoFromDataset(table)
+  if (!storageInfo) return
+  if (storageInfo.routeKey && storageInfo.routeKey !== getRouteKey()) return
+  if (isWidthSaveSuppressed(table)) return
+  const cells = getHeaderCells(table)
+  if (!cells.length || !cellKey) return
+  const nextWidth = Math.round(Number(width))
+  if (!Number.isFinite(nextWidth) || nextWidth < MIN_COLUMN_WIDTH || nextWidth > MAX_COLUMN_WIDTH) return
+  const currentWidths = loadColumnWidths(storageInfo, cells)
+  const nextWidths = { ...currentWidths, [cellKey]: nextWidth }
+  saveColumnWidths(storageInfo.widthKey, nextWidths)
+  applyColumnWidths(table, table.dataset.nexusTableId, cells, nextWidths, true, loadVisible(storageInfo, cells))
+}
+
+function isWidthSaveSuppressed(table) {
+  return Number(table?.__nexusSuppressWidthSaveUntil || 0) > Date.now()
 }
 
 function bindTableEvents(table) {
@@ -613,12 +901,10 @@ function bindTableEvents(table) {
   instance.emit = (eventName, ...args) => {
     const result = originalEmit(eventName, ...args)
     if (eventName === 'header-dragend') {
-      requestAnimationFrame(() => {
-        persistColumnWidthsFromState(table)
-      })
+      persistDraggedColumnWidth(table, args[0], args[2])
     }
     if (eventName === 'sort-change') {
-      persistSortInfo(table, args[0])
+      if (isSortManaged(table)) persistSortInfo(table, args[0])
     }
     return result
   }
@@ -636,14 +922,25 @@ function unbindTableEvents(table) {
 }
 
 function schedulePersistColumnWidths(table) {
+  const version = table ? (table.__nexusWidthSaveVersion || 0) + 1 : 0
+  if (table) table.__nexusWidthSaveVersion = version
   requestAnimationFrame(() => {
     requestAnimationFrame(() => {
-      persistColumnWidths(table)
+      if (!table || table.__nexusWidthSaveVersion !== version) return
       if (table) table.__nexusResizePending = false
+      if (isWidthSaveSuppressed(table)) return
       const cells = table ? getHeaderCells(table) : []
       if (table && cells.length) reapplyTablePreferences(table, cells)
     })
   })
+}
+
+function cancelPendingColumnWidthSave(table) {
+  if (!table) return
+  table.__nexusWidthSaveVersion = (table.__nexusWidthSaveVersion || 0) + 1
+  table.__nexusResizePending = false
+  table.__nexusSuppressWidthSaveUntil = Date.now() + RESET_SUPPRESS_MS
+  delete table.__nexusLastResizeDelta
 }
 
 function applyVisibility(table, tableId, cells, visible) {
@@ -804,22 +1101,9 @@ function startResizeFeedback(event) {
       const cells = getHeaderCells(table)
       const cell = cells.find(item => item.columnClass && th.classList.contains(item.columnClass)) ||
         cells[Array.from(th.parentElement?.children || []).indexOf(th)]
-      const widthKey = table.dataset.nexusColumnWidthKey
-      if (cell && widthKey) {
-        const currentWidths = loadColumnWidths({
-          storageKey: table.dataset.nexusColumnStorageKey,
-          widthKey,
-          legacyKeys: (table.dataset.nexusLegacyColumnKeys || '').split('\n').filter(Boolean),
-          legacyWidthKeys: (table.dataset.nexusLegacyColumnWidthKeys || '').split('\n').filter(Boolean)
-        }, cells)
+      if (cell) {
         const nextWidth = Math.min(MAX_COLUMN_WIDTH, Math.max(MIN_COLUMN_WIDTH, Math.round(startWidth + table.__nexusLastResizeDelta)))
-        saveColumnWidths(widthKey, { ...currentWidths, [cell.key]: nextWidth })
-        applyColumnWidths(table, table.dataset.nexusTableId, cells, { ...currentWidths, [cell.key]: nextWidth }, true, loadVisible({
-          storageKey: table.dataset.nexusColumnStorageKey,
-          widthKey,
-          legacyKeys: (table.dataset.nexusLegacyColumnKeys || '').split('\n').filter(Boolean),
-          legacyWidthKeys: (table.dataset.nexusLegacyColumnWidthKeys || '').split('\n').filter(Boolean)
-        }, cells))
+        persistKnownColumnWidth(table, cell.key, nextWidth)
       }
     }
     delete table.__nexusLastResizeDelta
@@ -842,7 +1126,7 @@ function persistAfterHeaderMouseUp(event) {
     const after = afterWidths[cell.key]
     return Number.isFinite(before) && Number.isFinite(after) && Math.abs(after - before) >= 2
   })
-  if (!changed) return
+  if (!changed || document.body.classList.contains('nexus-table-resizing')) return
   schedulePersistColumnWidths(table)
 }
 
@@ -892,11 +1176,12 @@ function removeEnhancement(table) {
   delete table.dataset.nexusColumnStorageKey
   delete table.dataset.nexusColumnWidthKey
   delete table.dataset.nexusColumnSortKey
+  delete table.dataset.nexusColumnRouteKey
   delete table.dataset.nexusLegacyColumnKeys
   delete table.dataset.nexusLegacyColumnWidthKeys
-  delete table.__nexusDefaultColumnWidths
-  delete table.__nexusDefaultColumnState
+  delete table.dataset.nexusLegacyColumnSortKeys
   delete table.__nexusResizePending
+  delete table.__nexusWidthSaveVersion
   delete table.__nexusAppliedSortSignature
 }
 
@@ -977,12 +1262,30 @@ function createControl(table, tableId, cells, storageInfo, visible, placement) {
 
   resetButton.addEventListener('click', () => {
     const all = cells.map(cell => cell.key)
-    removeStorageKeys(storageInfo)
+    cancelPendingColumnWidthSave(table)
+    removeRelatedStorageKeys(storageInfo)
     table.__nexusAppliedSortSignature = ''
+    table.__nexusAppliedSortBodySignature = ''
+    table.__nexusSortApplyVersion = (table.__nexusSortApplyVersion || 0) + 1
+    const resetDetail = { routePath: stableRoutePath(), storageKey: storageInfo.storageKey, sortKey: storageInfo.sortKey }
+    const resetEvent = new CustomEvent('nexus-table-preferences-reset', {
+      bubbles: true,
+      detail: resetDetail
+    })
+    table.dispatchEvent(resetEvent)
+    window.dispatchEvent(new CustomEvent('nexus-table-preferences-reset', { detail: resetDetail }))
     panel.querySelectorAll('input[type="checkbox"]').forEach(input => { input.checked = true })
+    document.getElementById(`${STYLE_ID_PREFIX}${tableId}`)?.remove()
     document.getElementById(`${WIDTH_STYLE_ID_PREFIX}${tableId}`)?.remove()
     restoreDefaultColumnState(table, cells)
-    table.__vueParentComponent?.proxy?.clearSort?.()
+    if (isSortManaged(table)) {
+      // For tables whose sort is managed by system A (not opted out via
+      // data-nexus-sort="off"), clear the arrow here. Views that own their sort
+      // (usePersistedTableSort) clear it themselves in response to the
+      // nexus-table-preferences-reset event dispatched above.
+      clearTableSortIndicator(table)
+      table.__vueParentComponent?.emit?.('sort-change', { column: null, prop: '', order: '' })
+    }
     applyVisibility(table, tableId, cells, all)
     table.__vueParentComponent?.proxy?.doLayout?.()
   })
@@ -1033,19 +1336,32 @@ function reapplyTablePreferences(table, cells) {
   const storageInfo = {
     storageKey,
     widthKey,
+    sortKey: table.dataset.nexusColumnSortKey || `${storageKey}_sort`,
+    routeKey: table.dataset.nexusColumnRouteKey || '',
     legacyKeys: (table.dataset.nexusLegacyColumnKeys || '').split('\n').filter(Boolean),
-    legacyWidthKeys: (table.dataset.nexusLegacyColumnWidthKeys || '').split('\n').filter(Boolean)
+    legacyWidthKeys: (table.dataset.nexusLegacyColumnWidthKeys || '').split('\n').filter(Boolean),
+    legacySortKeys: (table.dataset.nexusLegacyColumnSortKeys || '').split('\n').filter(Boolean)
   }
   const visible = loadVisible(storageInfo, cells)
   const widths = loadColumnWidths(storageInfo, cells)
-  const sortInfo = loadSortInfo(storageInfo, table, cells)
   applyColumnWidths(table, tableId, cells, widths, true, visible)
   applyVisibility(table, tableId, cells, visible)
-  applySortInfo(table, sortInfo)
+  if (isSortManaged(table)) {
+    const sortInfo = loadSortInfo(storageInfo, table, cells)
+    applySortInfo(table, sortInfo)
+  }
   ensureControlMounted(table, cells, storageInfo, visible)
 }
 
 function enhanceTable(table, index) {
+  if (!shouldEnhanceTable(table)) {
+    if (table.getAttribute(ENHANCED_ATTR) === '1') removeEnhancement(table)
+    return
+  }
+  if (table.dataset.nexusColumnRouteKey && table.dataset.nexusColumnRouteKey !== getRouteKey()) {
+    removeEnhancement(table)
+    return
+  }
   const cells = getHeaderCells(table)
   if (!cells.length) return
   const signature = cells.map(cell => cell.key).join('|')
@@ -1066,18 +1382,26 @@ function enhanceTable(table, index) {
   const storageInfo = makeStorageInfo(table, cells, index)
   const visible = loadVisible(storageInfo, cells)
   const widths = loadColumnWidths(storageInfo, cells)
-  const sortInfo = loadSortInfo(storageInfo, table, cells)
-  table.__nexusDefaultColumnState = readDefaultColumnState(table, cells)
+  const sortInfo = isSortManaged(table) ? loadSortInfo(storageInfo, table, cells) : null
+  if (!table.__nexusDefaultColumnState || table.__nexusDefaultColumnSignature !== signature) {
+    table.__nexusDefaultColumnState = readDefaultColumnState(table, cells)
+    table.__nexusDefaultColumnSignature = signature
+  }
+  // Freeze declared default widths to localStorage before any custom width is
+  // applied to the column instances below (no-op if already stored).
+  ensureDefaultsStored(table, cells, defaultsKeyFor(storageInfo.storageKey))
   bindTableEvents(table)
   table.dataset.nexusColumnStorageKey = storageInfo.storageKey
   table.dataset.nexusColumnWidthKey = storageInfo.widthKey
   table.dataset.nexusColumnSortKey = storageInfo.sortKey
+  table.dataset.nexusColumnRouteKey = storageInfo.routeKey
   table.dataset.nexusLegacyColumnKeys = storageInfo.legacyKeys.join('\n')
   table.dataset.nexusLegacyColumnWidthKeys = storageInfo.legacyWidthKeys.join('\n')
+  table.dataset.nexusLegacyColumnSortKeys = storageInfo.legacySortKeys.join('\n')
 
   applyColumnWidths(table, tableId, cells, widths, true, visible)
   applyVisibility(table, tableId, cells, visible)
-  applySortInfo(table, sortInfo)
+  if (isSortManaged(table)) applySortInfo(table, sortInfo)
   const placementHost = getControlHost(table)
   const control = createControl(table, tableId, cells, storageInfo, visible, placementHost.placement)
   mountControl(table, control, placementHost)
@@ -1093,7 +1417,7 @@ function enhanceTable(table, index) {
 
 function enhanceTables() {
   const tables = document.querySelectorAll('.el-table')
-  if (isDashboardRoute()) {
+  if (!isEnhancedRoute()) {
     tables.forEach(removeEnhancement)
     return
   }

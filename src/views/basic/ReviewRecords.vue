@@ -34,7 +34,7 @@
         </div>
       </template>
 
-      <el-table :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无审核记录" highlight-current-row @sort-change="onSortChange">
+      <el-table data-nexus-sort="off" :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无审核记录" highlight-current-row @sort-change="onSortChange">
         <el-table-column prop="task_no" label="任务编号" width="130" show-overflow-tooltip />
         <el-table-column label="旺旺ID" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">{{ row.wangwang_id || row.ref_path || '-' }}</template>
@@ -281,6 +281,7 @@ import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import RejectHistory from '@/components/RejectHistory.vue'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 
 const loading = ref(false)
@@ -298,6 +299,10 @@ const basicDesignerList = ref([])
 
 const sortField = ref('score_review_time')
 const sortOrder = ref('descending')
+usePersistedTableSort('basic_review_records', { prop: sortField, order: sortOrder }, {
+  defaultProp: 'score_review_time',
+  defaultOrder: 'descending'
+})
 
 const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
   onError: error => console.error('[ReviewRecords] 加载详情失败:', error)

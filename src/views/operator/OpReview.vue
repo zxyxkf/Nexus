@@ -13,7 +13,7 @@
         </el-button>
       </div>
 
-      <el-table :data="displayList" v-loading="loading" stripe style="width:100%" empty-text="暂无待审核任务" @selection-change="onSelectChange" @sort-change="handleSortChange">
+      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" :data="displayList" v-loading="loading" stripe style="width:100%" empty-text="暂无待审核任务" @selection-change="onSelectChange" @sort-change="handleSortChange">
         <el-table-column type="selection" width="45" />
         <el-table-column prop="task_no" label="任务编号" width="95" align="center" show-overflow-tooltip sortable="custom" />
         <el-table-column prop="shop_name" label="店铺" width="140" align="center" show-overflow-tooltip>
@@ -254,6 +254,7 @@ import { Close, PictureFilled, Document } from '@element-plus/icons-vue'
 import { getMyPublishedApi, reviewTaskApi, batchReviewApi, getFileUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import { formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
@@ -262,6 +263,8 @@ const loading = ref(false)
 const list = ref([])
 const sortKey = ref('')
 const sortOrder = ref('')
+const tableRef = ref(null)
+const { defaultSort } = usePersistedTableSort('operator_op_review', { prop: sortKey, order: sortOrder }, { tableRef })
 
 const displayList = computed(() => {
   const arr = [...list.value]

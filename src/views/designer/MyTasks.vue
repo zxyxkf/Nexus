@@ -46,7 +46,7 @@
         </div>
       </template>
 
-      <el-table :data="sortedList" v-loading="loading" stripe style="width:100%" empty-text="暂无接单任务" highlight-current-row :row-class-name="tableRowClassName">
+      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" :data="displayList" v-loading="loading" stripe style="width:100%" empty-text="暂无接单任务" highlight-current-row :row-class-name="tableRowClassName" @sort-change="handleSortChange">
         <el-table-column prop="task_no" label="编号" width="130" show-overflow-tooltip />
         <el-table-column prop="title" label="工作项目" min-width="100" show-overflow-tooltip />
         <el-table-column label="分值" width="80" align="center">
@@ -133,7 +133,7 @@
             />
           </template>
         </el-table-column>
-        <el-table-column prop="create_time" label="发布时间" width="170" sortable show-overflow-tooltip>
+        <el-table-column prop="create_time" label="发布时间" width="170" sortable="custom" show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="200" fixed="right" align="center">
@@ -347,6 +347,7 @@ import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { useOverdueSort } from '@/composables/useOverdueSort'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
+import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
@@ -393,6 +394,30 @@ const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
 
 // 逾期检测 + 置顶排序
 const { isOverdue, sortedList, tableRowClassName } = useOverdueSort(list)
+const sortKey = ref('')
+const sortOrder = ref('')
+const tableRef = ref(null)
+const { defaultSort } = usePersistedTableSort(
+  () => `designer_my_tasks_${route.path}`,
+  { prop: sortKey, order: sortOrder },
+  { routePath: () => route.path, tableRef }
+)
+
+const displayList = computed(() => {
+  const arr = [...sortedList.value]
+  if (sortKey.value === 'create_time' && sortOrder.value) {
+    arr.sort((a, b) => {
+      const cmp = new Date(a.create_time || 0) - new Date(b.create_time || 0)
+      return sortOrder.value === 'ascending' ? cmp : -cmp
+    })
+  }
+  return arr
+})
+
+function handleSortChange({ prop, order }) {
+  sortKey.value = prop || ''
+  sortOrder.value = order || ''
+}
 
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }

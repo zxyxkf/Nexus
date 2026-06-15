@@ -13,7 +13,7 @@
         </el-button>
       </div>
 
-      <el-table :data="displayList" v-loading="loading" stripe style="width:100%" empty-text="暂无待审核任务" @selection-change="onSelectChange" @sort-change="handleSortChange">
+      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" :data="displayList" v-loading="loading" stripe style="width:100%" empty-text="暂无待审核任务" @selection-change="onSelectChange" @sort-change="handleSortChange">
         <el-table-column type="selection" width="45" />
         <el-table-column prop="task_no" label="任务编号" show-overflow-tooltip sortable="custom" />
         <el-table-column prop="title" label="工作项目" show-overflow-tooltip />
@@ -339,6 +339,7 @@ import { getMyPublishedApi, reviewTaskApi, batchReviewApi, uploadFilesApi, getFi
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import { formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
@@ -356,6 +357,12 @@ const loading = ref(false)
 const list = ref([])
 const sortKey = ref('')
 const sortOrder = ref('')
+const tableRef = ref(null)
+const { defaultSort } = usePersistedTableSort(
+  () => `shared_review_${route.path}`,
+  { prop: sortKey, order: sortOrder },
+  { routePath: () => route.path, tableRef }
+)
 
 const displayList = computed(() => {
   const arr = [...list.value]

@@ -346,6 +346,7 @@ async function getMyPublished(query, user) {
     publisherId: query.publisherId,
     dateStart: query.dateStart, dateEnd: query.dateEnd,
     dateField: query.dateField,
+    sortField: query.sortField, sortOrder: query.sortOrder,
     page, pageSize
   });
   return result;
@@ -379,6 +380,7 @@ async function getTaskHall(query, user) {
     permissions: user.permissions || [],
     taskGroup: query.taskGroup,
     keyword: query.keyword,
+    sortField: query.sortField, sortOrder: query.sortOrder,
     page, pageSize
   });
 }
@@ -393,6 +395,7 @@ async function getAllTasks(query) {
     startDate: query.startDate, endDate: query.endDate,
     dateField: query.dateField,
     taskGroup: query.taskGroup || undefined,
+    sortField: query.sortField, sortOrder: query.sortOrder,
     page, pageSize
   });
 }

@@ -31,10 +31,10 @@
         <el-button @click="loadData" type="primary">查询</el-button>
       </div>
 
-      <el-table :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无数据" highlight-current-row>
-        <el-table-column prop="username" label="用户名" width="130" sortable />
+      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" @sort-change="handleSortChange" :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无数据" highlight-current-row>
+        <el-table-column prop="username" label="用户名" width="130" sortable="custom" />
         <el-table-column prop="real_name" label="姓名" width="110" />
-        <el-table-column label="角色" width="100" prop="role" sortable>
+        <el-table-column label="角色" width="100" prop="role" sortable="custom">
           <template #default="{ row }">
             <el-tag :type="roleTagType(row.role)" size="small" effect="plain">
               {{ roleLabel(row.role) }}
@@ -215,12 +215,23 @@ import { ref, reactive, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete } from '@element-plus/icons-vue'
 import { getUserListApi, createUserApi, updateUserApi, resetPasswordApi, toggleUserStatusApi, deleteUserApi, getShopListApi, getPermissionCatalogApi, getUserPermissionsApi, saveUserPermissionsApi } from '@/api'
+import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 
 const loading = ref(false)
 const list = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(15)
+const sortKey = ref('')
+const sortOrder = ref('')
+const tableRef = ref(null)
+const { defaultSort } = usePersistedTableSort('admin_users', { prop: sortKey, order: sortOrder }, { tableRef })
+function handleSortChange({ prop, order }) {
+  sortKey.value = prop || ''
+  sortOrder.value = order || ''
+  page.value = 1
+  loadData()
+}
 
 const filter = reactive({ keyword: '', role: '', status: '' })
 
@@ -384,7 +395,9 @@ async function loadData() {
       pageSize: pageSize.value,
       keyword: filter.keyword || undefined,
       role: filter.role || undefined,
-      status: filter.status !== '' ? filter.status : undefined
+      status: filter.status !== '' ? filter.status : undefined,
+      sortField: sortKey.value || undefined,
+      sortOrder: sortOrder.value === 'ascending' ? 'asc' : sortOrder.value === 'descending' ? 'desc' : undefined
     })
     if (res.code === 0) {
       list.value = res.data.list

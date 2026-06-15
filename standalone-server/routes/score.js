@@ -115,7 +115,7 @@ router.post('/delete', requireAnyPermission(['admin.config'], 'admin'), async (r
 // 待审核列表（组长查看 pending 状态的任务）
 router.get('/review/list', requireAnyPermission(['score.review.basic'], 'admin', 'sub_admin'), async (req, res) => {
   try {
-    const { page = 1, pageSize = 15, publisherId, designerId } = req.query;
+    const { page = 1, pageSize = 15, publisherId, designerId, sortField, sortOrder } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
 
     let where = `t.task_group = 'cs' AND t.score_review_status = 'pending'`;
@@ -123,6 +123,11 @@ router.get('/review/list', requireAnyPermission(['score.review.basic'], 'admin',
 
     if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
     if (designerId) { where += ' AND t.designer_id = ?'; params.push(designerId); }
+
+    // 可排序字段白名单：字段名写死，前端 sortField 仅用于查表，不拼接进 SQL
+    const allowedSort = { create_time: 't.create_time', task_no: 't.task_no', applied_score: 't.applied_score' };
+    const orderColumn = allowedSort[sortField] || 't.create_time';
+    const direction = String(sortOrder).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 
     const [rows] = await execute(
       `SELECT t.id, t.task_no, t.title, t.description, t.status, t.score, t.applied_score,
@@ -132,7 +137,7 @@ router.get('/review/list', requireAnyPermission(['score.review.basic'], 'admin',
               t.specified_color
        FROM task_info t
        WHERE ${where}
-       ORDER BY t.create_time DESC
+       ORDER BY ${orderColumn} ${direction}, t.id ${direction}
        LIMIT ? OFFSET ?`,
       [...params, parseInt(pageSize), offset]
     );

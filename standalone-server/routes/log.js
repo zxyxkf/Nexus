@@ -15,7 +15,7 @@ router.use(requireAuth, requireAnyPermission(['admin.logs'], 'admin'));
  */
 router.get('/list', async (req, res, next) => {
   try {
-    const { page = 1, pageSize = 20, operation, username, startDate, endDate } = req.query;
+    const { page = 1, pageSize = 20, operation, username, startDate, endDate, sortField, sortOrder } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
 
     let whereSql = 'WHERE 1=1';
@@ -38,6 +38,10 @@ router.get('/list', async (req, res, next) => {
       params.push(endDate + ' 23:59:59');
     }
 
+    const LOG_SORT_COLUMNS = { create_time: 'l.create_time', username: 'l.username', role: 'l.role' };
+    const orderColumn = LOG_SORT_COLUMNS[sortField] || 'l.create_time';
+    const direction = String(sortOrder).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
     const pool = getPool();
 
     const [countResult] = await pool.execute(
@@ -47,7 +51,7 @@ router.get('/list', async (req, res, next) => {
 
     const [rows] = await pool.execute(
       `SELECT * FROM sys_oper_log l ${whereSql}
-       ORDER BY l.create_time DESC
+       ORDER BY ${orderColumn} ${direction}, l.id ${direction}
        LIMIT ? OFFSET ?`,
       [...params, parseInt(pageSize), offset]
     );

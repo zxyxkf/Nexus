@@ -17,7 +17,7 @@
         </div>
       </template>
 
-      <el-table :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无待审核的分值申请" highlight-current-row>
+      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" @sort-change="handleSortChange" :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无待审核的分值申请" highlight-current-row>
         <el-table-column prop="task_no" label="任务编号" width="130" show-overflow-tooltip />
         <el-table-column label="旺旺ID" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">{{ row.wangwang_id || row.ref_path || '-' }}</template>
@@ -93,7 +93,7 @@
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="create_time" label="发布时间" width="170" sortable show-overflow-tooltip>
+        <el-table-column prop="create_time" label="发布时间" width="170" sortable="custom" show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="260" fixed="right" align="center">
@@ -236,6 +236,7 @@ import Pagination from '@/components/Pagination.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import RejectHistory from '@/components/RejectHistory.vue'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 
 const loading = ref(false)
@@ -244,6 +245,20 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(15)
 const actionLoading = ref(null)
+const sortKey = ref('')
+const sortOrder = ref('')
+const tableRef = ref(null)
+const { defaultSort } = usePersistedTableSort(
+  'basic_score_review',
+  { prop: sortKey, order: sortOrder },
+  { tableRef }
+)
+function handleSortChange({ prop, order }) {
+  sortKey.value = prop || ''
+  sortOrder.value = order || ''
+  page.value = 1
+  loadData()
+}
 
 const publisherFilter = ref('')
 const designerFilter = ref('')
@@ -299,7 +314,9 @@ async function loadData() {
       page: page.value,
       pageSize: pageSize.value,
       publisherId: publisherFilter.value || undefined,
-      designerId: designerFilter.value || undefined
+      designerId: designerFilter.value || undefined,
+      sortField: sortKey.value || undefined,
+      sortOrder: sortOrder.value === 'ascending' ? 'asc' : sortOrder.value === 'descending' ? 'desc' : undefined
     })
     if (res.code === 0) {
       list.value = res.data.list || []

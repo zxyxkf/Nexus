@@ -41,7 +41,7 @@
         </el-button>
       </div>
 
-      <el-table :data="list" v-loading="loading" stripe style="width:100%" @selection-change="onSelectionChange">
+      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" @sort-change="handleSortChange" :data="list" v-loading="loading" stripe style="width:100%" @selection-change="onSelectionChange">
         <template #empty>
           <TaskEmptyState description="暂无任务记录" hint="可以调整筛选条件后重新查询" action-text="重置筛选" @action="resetFilter" />
         </template>
@@ -58,7 +58,7 @@
         </el-table-column>
         <el-table-column prop="publisher_name" :label="publisherLabel" />
         <el-table-column prop="designer_name" :label="designerLabel" />
-        <el-table-column prop="create_time" label="发布时间" width="170" sortable show-overflow-tooltip>
+        <el-table-column prop="create_time" label="发布时间" width="170" sortable="custom" show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="120">
@@ -249,6 +249,7 @@ import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'
 import RejectHistory from '@/components/RejectHistory.vue'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
+import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import { exportTasksApi } from '@/api/export'
 
@@ -261,6 +262,20 @@ const page = ref(1)
 const pageSize = ref(15)
 const filter = reactive({ keyword: '', status: '', publisherId: '', designerId: '', dateRange: null, dateField: '' })
 usePersistedFilters(`admin_all_tasks_${route.meta.taskGroup || 'design'}`, filter)
+const sortKey = ref('')
+const sortOrder = ref('')
+const tableRef = ref(null)
+const { defaultSort } = usePersistedTableSort(
+  () => `admin_all_tasks_${route.path}`,
+  { prop: sortKey, order: sortOrder },
+  { routePath: () => route.path, tableRef }
+)
+function handleSortChange({ prop, order }) {
+  sortKey.value = prop || ''
+  sortOrder.value = order || ''
+  page.value = 1
+  loadData()
+}
 applyQueryFilters()
 const publisherList = ref([])
 const designerList = ref([])
@@ -311,7 +326,9 @@ async function loadData() {
       startDate: filter.dateRange?.[0] || undefined,
       endDate: filter.dateRange?.[1] || undefined,
       dateField: filter.dateField || undefined,
-      taskGroup: taskGroup.value
+      taskGroup: taskGroup.value,
+      sortField: sortKey.value || undefined,
+      sortOrder: sortOrder.value === 'ascending' ? 'asc' : sortOrder.value === 'descending' ? 'desc' : undefined
     })
     if (res.code === 0) {
       list.value = res.data.list

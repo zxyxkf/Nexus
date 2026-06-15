@@ -21,7 +21,7 @@
         </div>
       </template>
 
-      <el-table :data="list" v-loading="loading" stripe style="width:100%" highlight-current-row>
+      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" @sort-change="handleSortChange" :data="list" v-loading="loading" stripe style="width:100%" highlight-current-row>
         <template #empty>
           <TaskEmptyState description="暂无可领取任务" hint="可稍后查看，或清空搜索条件后重试" action-text="清空搜索" @action="clearSearch" />
         </template>
@@ -87,7 +87,7 @@
           <template #default="{ row }">{{ row.deadline || '-' }}</template>
         </el-table-column>
         <el-table-column prop="publisher_name" label="发布人" width="105" />
-        <el-table-column prop="create_time" label="发布时间" width="170" sortable show-overflow-tooltip>
+        <el-table-column prop="create_time" label="发布时间" width="170" sortable="custom" show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="130" fixed="right" align="center">
@@ -257,6 +257,7 @@ import { getTaskHallApi, acceptTaskApi, getFileUrl, setupFileDrag, preloadFilesF
 import { formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
+import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'
 
@@ -276,6 +277,20 @@ const page = ref(1)
 const pageSize = ref(15)
 const keyword = ref('')
 const acceptingId = ref(null)
+const sortKey = ref('')
+const sortOrder = ref('')
+const tableRef = ref(null)
+const { defaultSort } = usePersistedTableSort(
+  () => `task_hall_${route.path}`,
+  { prop: sortKey, order: sortOrder },
+  { routePath: () => route.path, tableRef }
+)
+function handleSortChange({ prop, order }) {
+  sortKey.value = prop || ''
+  sortOrder.value = order || ''
+  page.value = 1
+  loadData()
+}
 const { detailVisible, currentTask, openDetail: openTaskDetail } = useTaskDetail({
   collectPreloadFiles: detail => detail.files || [],
   collectPreviewFiles: detail => (detail.files || []).filter(file => file.file_category === 'reference' && file.file_type === 'image'),
@@ -322,7 +337,9 @@ async function loadData(options = {}) {
       page: page.value,
       pageSize: pageSize.value,
       keyword: keyword.value || undefined,
-      taskGroup: taskGroup.value
+      taskGroup: taskGroup.value,
+      sortField: sortKey.value || undefined,
+      sortOrder: sortOrder.value === 'ascending' ? 'asc' : sortOrder.value === 'descending' ? 'desc' : undefined
     })
     if (res.code === 0) {
       list.value = res.data.list

@@ -50,8 +50,8 @@
         </div>
       </template>
 
-      <el-table :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无运营任务" highlight-current-row>
-        <el-table-column prop="task_no" label="任务编号" width="95" align="center" sortable />
+      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" @sort-change="handleSortChange" :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无运营任务" highlight-current-row>
+        <el-table-column prop="task_no" label="任务编号" width="95" align="center" sortable="custom" />
         <el-table-column prop="shop_name" label="店铺" width="140" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ row.shop_name || '-' }}</template>
         </el-table-column>
@@ -69,7 +69,7 @@
         <el-table-column label="文件地址" width="180" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ row.task_file_path || '-' }}</template>
         </el-table-column>
-        <el-table-column label="状态" width="130" prop="status" align="center" sortable>
+        <el-table-column label="状态" width="130" prop="status" align="center" sortable="custom">
           <template #default="{ row }">
             <div class="status-cell">
               <el-tag :type="statusType(row.status)" size="small" effect="plain">
@@ -141,7 +141,7 @@
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="create_time" label="发布时间" width="170" align="center" sortable show-overflow-tooltip>
+        <el-table-column prop="create_time" label="发布时间" width="170" align="center" sortable="custom" show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="220" align="center" fixed="right">
@@ -347,6 +347,7 @@ import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatTaskHead
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
+import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import { getUser } from '@/utils/auth'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
@@ -360,6 +361,20 @@ const list = ref([])
 const total = ref(0)
 const page = ref(1)
 const pageSize = ref(15)
+const sortKey = ref('')
+const sortOrder = ref('')
+const tableRef = ref(null)
+const { defaultSort } = usePersistedTableSort(
+  () => `operator_op_my_tasks_${route.path}`,
+  { prop: sortKey, order: sortOrder },
+  { routePath: () => route.path, tableRef }
+)
+function handleSortChange({ prop, order }) {
+  sortKey.value = prop || ''
+  sortOrder.value = order || ''
+  page.value = 1
+  loadData()
+}
 const statusFilter = ref('')
 const assistantFilter = ref('')
 const publisherFilter = ref('')
@@ -424,7 +439,9 @@ async function loadData(options = {}) {
       taskGroup: 'operator',
       dateStart: dateRange.value?.[0] || undefined,
       dateEnd: dateRange.value?.[1] || undefined,
-      dateField: dateField.value || undefined
+      dateField: dateField.value || undefined,
+      sortField: sortKey.value || undefined,
+      sortOrder: sortOrder.value === 'ascending' ? 'asc' : sortOrder.value === 'descending' ? 'desc' : undefined
     })
     if (res.code === 0) {
       list.value = res.data.list

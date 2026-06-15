@@ -16,10 +16,10 @@ const DEFAULT_PASSWORD = '123456';
 async function getUserList(query) {
   const page = Math.max(1, parseInt(query.page) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize) || 15));
-  const { role, status: statusStr, keyword } = query;
+  const { role, status: statusStr, keyword, sortField, sortOrder } = query;
   const status = statusStr !== undefined && statusStr !== '' ? parseInt(statusStr) : undefined;
 
-  return userDao.getUserList({ page, pageSize, role, status, keyword });
+  return userDao.getUserList({ page, pageSize, role, status, keyword, sortField, sortOrder });
 }
 
 async function getPermissionCatalog() {

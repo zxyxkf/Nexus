@@ -52,7 +52,7 @@
         </div>
       </template>
 
-      <el-table :data="displayList" v-loading="loading" stripe style="width:100%" empty-text="暂无接单任务" highlight-current-row :row-class-name="tableRowClassName" @sort-change="handleSortChange">
+      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" :data="displayList" v-loading="loading" stripe style="width:100%" empty-text="暂无接单任务" highlight-current-row :row-class-name="tableRowClassName" @sort-change="handleSortChange">
         <el-table-column prop="task_no" label="编号" width="130" show-overflow-tooltip sortable="custom" />
         <el-table-column prop="title" label="工作项目" min-width="100" show-overflow-tooltip v-if="!isBasicDesigner" />
         <el-table-column label="分值" width="80" align="center" v-if="!isBasicDesigner">
@@ -391,6 +391,7 @@ import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { useOverdueSort } from '@/composables/useOverdueSort'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
+import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import { getUser } from '@/utils/auth'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
@@ -444,6 +445,12 @@ const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
 const { isOverdue, sortedList, tableRowClassName } = useOverdueSort(list)
 const sortKey = ref('')
 const sortOrder = ref('')
+const tableRef = ref(null)
+const { defaultSort } = usePersistedTableSort(
+  () => `basic_my_tasks_${route.path}`,
+  { prop: sortKey, order: sortOrder },
+  { routePath: () => route.path, tableRef }
+)
 
 const displayList = computed(() => {
   const arr = [...sortedList.value]

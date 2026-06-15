@@ -20,10 +20,10 @@
         </el-button>
       </div>
 
-      <el-table ref="tableRef" :data="list" v-loading="loading" stripe style="width:100%" :max-height="620" empty-text="暂无操作日志" highlight-current-row @selection-change="onSelectChange">
+      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" @sort-change="handleSortChange" :data="list" v-loading="loading" stripe style="width:100%" :max-height="620" empty-text="暂无操作日志" highlight-current-row @selection-change="onSelectChange">
         <el-table-column type="selection" width="45" />
-        <el-table-column prop="username" label="用户" width="90" sortable />
-        <el-table-column label="角色" width="70" prop="role" sortable>
+        <el-table-column prop="username" label="用户" width="90" sortable="custom" />
+        <el-table-column label="角色" width="70" prop="role" sortable="custom">
           <template #default="{ row }">
             <el-tag size="small" :type="row.role==='admin'?'danger':row.role==='sub_admin'?'':row.role==='operator'?'warning':'success'" effect="plain">
               {{ row.role==='admin'?'超级管理':row.role==='sub_admin'?'子管理':row.role==='operator'?'运营':'美工' }}
@@ -74,6 +74,7 @@
 import { ref, reactive, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { getLogListApi, getOperationTypesApi, batchDeleteLogsApi } from '@/api'
+import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 
 const loading = ref(false)
 const list = ref([])
@@ -82,6 +83,16 @@ const page = ref(1)
 const pageSize = ref(20)
 const operationTypes = ref([])
 const selectedRows = ref([])
+const sortKey = ref('')
+const sortOrder = ref('')
+const tableRef = ref(null)
+const { defaultSort } = usePersistedTableSort('admin_logs', { prop: sortKey, order: sortOrder }, { tableRef })
+function handleSortChange({ prop, order }) {
+  sortKey.value = prop || ''
+  sortOrder.value = order || ''
+  page.value = 1
+  loadData()
+}
 
 function onSelectChange(rows) { selectedRows.value = rows }
 
@@ -107,7 +118,9 @@ async function loadData() {
       operation: filter.operation || undefined,
       username: filter.username || undefined,
       startDate: filter.dateRange?.[0] || undefined,
-      endDate: filter.dateRange?.[1] || undefined
+      endDate: filter.dateRange?.[1] || undefined,
+      sortField: sortKey.value || undefined,
+      sortOrder: sortOrder.value === 'ascending' ? 'asc' : sortOrder.value === 'descending' ? 'desc' : undefined
     }
     const res = await getLogListApi(params)
     if (res.code === 0) {

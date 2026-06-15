@@ -17,7 +17,7 @@
             <el-button type="primary" link @click="loadConfig"><el-icon><Refresh /></el-icon></el-button>
           </div>
 
-          <el-table :data="filteredConfigs" v-loading="configLoading" stripe style="width:100%" empty-text="暂无配置数据" :max-height="550">
+          <el-table data-nexus-column-key="admin-config-system" :data="filteredConfigs" v-loading="configLoading" stripe style="width:100%" empty-text="暂无配置数据" :max-height="550">
             <el-table-column prop="config_key" label="配置键" width="220" show-overflow-tooltip />
             <el-table-column label="配置值" min-width="300">
               <template #default="{ row, $index }">
@@ -56,7 +56,7 @@
             <el-button link @click="loadScoreItems"><el-icon><Refresh /></el-icon></el-button>
           </div>
 
-          <el-table :data="scoreList" v-loading="scoreLoading" stripe style="width:100%" empty-text="暂无积分项目" :max-height="550">
+          <el-table data-nexus-column-key="admin-config-score-design" :data="scoreList" v-loading="scoreLoading" stripe style="width:100%" empty-text="暂无积分项目" :max-height="550">
             <el-table-column prop="name" label="项目名称" min-width="200" show-overflow-tooltip />
             <el-table-column prop="score" label="分值" width="100" align="center" sortable />
             <el-table-column prop="score_desc" label="备注" min-width="200" show-overflow-tooltip />
@@ -83,7 +83,7 @@
             <el-button link @click="loadScoreCsItems"><el-icon><Refresh /></el-icon></el-button>
           </div>
 
-          <el-table :data="scoreCsList" v-loading="scoreCsLoading" stripe style="width:100%" empty-text="暂无积分项目" :max-height="550">
+          <el-table data-nexus-column-key="admin-config-score-cs" :data="scoreCsList" v-loading="scoreCsLoading" stripe style="width:100%" empty-text="暂无积分项目" :max-height="550">
             <el-table-column prop="name" label="项目名称" min-width="200" show-overflow-tooltip />
             <el-table-column prop="score" label="分值" width="100" align="center" sortable />
             <el-table-column prop="score_desc" label="备注" min-width="200" show-overflow-tooltip />
@@ -110,7 +110,7 @@
             <el-button link @click="loadAnnouncements"><el-icon><Refresh /></el-icon></el-button>
           </div>
 
-          <el-table :data="announceList" v-loading="announceLoading" stripe style="width:100%" empty-text="暂无公告" :max-height="550">
+          <el-table data-nexus-column-key="admin-config-announcements" :data="announceList" v-loading="announceLoading" stripe style="width:100%" empty-text="暂无公告" :max-height="550">
             <el-table-column prop="title" label="标题" min-width="180" show-overflow-tooltip />
             <el-table-column prop="content" label="内容" min-width="280" show-overflow-tooltip />
             <el-table-column label="状态" width="90" align="center">
@@ -145,7 +145,7 @@
             <el-button link @click="loadShops"><el-icon><Refresh /></el-icon></el-button>
           </div>
 
-          <el-table :data="shopList" v-loading="shopLoading" stripe style="width:100%" empty-text="暂无店铺" :max-height="550">
+          <el-table data-nexus-column-key="admin-config-shops" :data="shopList" v-loading="shopLoading" stripe style="width:100%" empty-text="暂无店铺" :max-height="550">
             <el-table-column type="index" label="#" width="50" align="center" />
             <el-table-column prop="name" label="店铺名称" min-width="200" show-overflow-tooltip />
             <el-table-column prop="create_time" label="创建时间" width="160" align="center" />
@@ -172,7 +172,7 @@
             <el-button link @click="loadScoreOpItems"><el-icon><Refresh /></el-icon></el-button>
           </div>
 
-          <el-table :data="scoreOpList" v-loading="scoreOpLoading" stripe style="width:100%" empty-text="暂无积分项目" :max-height="550">
+          <el-table data-nexus-column-key="admin-config-score-operator" :data="scoreOpList" v-loading="scoreOpLoading" stripe style="width:100%" empty-text="暂无积分项目" :max-height="550">
             <el-table-column prop="name" label="项目名称" min-width="200" show-overflow-tooltip />
             <el-table-column prop="score" label="分值" width="100" align="center" sortable />
             <el-table-column prop="score_desc" label="备注" min-width="200" show-overflow-tooltip />

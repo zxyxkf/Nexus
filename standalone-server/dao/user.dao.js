@@ -5,7 +5,7 @@ const { getPool, execute, executeTransaction } = require('../config/database');
 
 // ==================== 查询 ====================
 
-async function getUserList({ page, pageSize, role, status, keyword }) {
+async function getUserList({ page, pageSize, role, status, keyword, sortField, sortOrder }) {
   const pool = getPool();
   const offset = (page - 1) * pageSize;
 
@@ -25,6 +25,10 @@ async function getUserList({ page, pageSize, role, status, keyword }) {
     params.push(`%${keyword}%`, `%${keyword}%`);
   }
 
+  const USER_SORT_COLUMNS = { username: 'u.username', role: 'u.role', create_time: 'u.create_time' };
+  const orderColumn = USER_SORT_COLUMNS[sortField] || 'u.create_time';
+  const direction = String(sortOrder).toLowerCase() === 'asc' ? 'ASC' : 'DESC';
+
   const [countResult] = await pool.execute(
     `SELECT COUNT(*) as total FROM sys_user u ${whereSql}`,
     params
@@ -34,7 +38,7 @@ async function getUserList({ page, pageSize, role, status, keyword }) {
     `SELECT u.id, u.username, u.real_name, u.role, u.store, u.is_team_lead, u.status, u.email, u.phone, u.remark,
             u.last_login_time, u.create_time, u.update_time
      FROM sys_user u ${whereSql}
-     ORDER BY u.create_time DESC
+     ORDER BY ${orderColumn} ${direction}, u.id ${direction}
      LIMIT ? OFFSET ?`,
     [...params, pageSize, offset]
   );

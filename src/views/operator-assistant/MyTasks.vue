@@ -36,7 +36,7 @@
         </div>
       </template>
 
-      <el-table :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无接单任务" :row-class-name="tableRowClassName">
+      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" :data="displayList" v-loading="loading" stripe style="width:100%" empty-text="暂无接单任务" :row-class-name="tableRowClassName" @sort-change="handleSortChange">
         <el-table-column prop="task_no" label="任务编号" width="95" align="center" show-overflow-tooltip />
         <el-table-column prop="shop_name" label="店铺" width="140" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ row.shop_name || '-' }}</template>
@@ -117,7 +117,7 @@
             <el-tag :type="statusType(row.status)" size="small">{{ statusLabel(row.status) }}</el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="发布时间" width="170" prop="create_time" align="center" sortable show-overflow-tooltip>
+        <el-table-column label="发布时间" width="170" prop="create_time" align="center" sortable="custom" show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="200" align="center" fixed="right">
@@ -332,6 +332,7 @@ import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
+import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
@@ -360,6 +361,30 @@ const fixedStatus = computed(() => route.meta.fixedStatus || '')
 const pageTitle = computed(() => route.meta.title || '我的任务')
 
 const shopOptions = ['店铺A', '店铺B', '店铺C', '店铺D', '店铺E', '店铺F', '店铺G', '店铺H']
+const sortKey = ref('')
+const sortOrder = ref('')
+const tableRef = ref(null)
+const { defaultSort } = usePersistedTableSort(
+  () => `operator_assistant_my_tasks_${route.path}`,
+  { prop: sortKey, order: sortOrder },
+  { routePath: () => route.path, tableRef }
+)
+
+const displayList = computed(() => {
+  const arr = [...list.value]
+  if (sortKey.value === 'create_time' && sortOrder.value) {
+    arr.sort((a, b) => {
+      const cmp = new Date(a.create_time || 0) - new Date(b.create_time || 0)
+      return sortOrder.value === 'ascending' ? cmp : -cmp
+    })
+  }
+  return arr
+})
+
+function handleSortChange({ prop, order }) {
+  sortKey.value = prop || ''
+  sortOrder.value = order || ''
+}
 
 const imagePreviewList = ref([])
 const { detailVisible, currentTask, openDetail: openTaskDetail } = useTaskDetail({
