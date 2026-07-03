@@ -12,6 +12,9 @@ const HIGH_PRIORITY_TYPES = ['task_urge', 'task_reject', 'task_transfer', 'score
 const MEDIUM_PRIORITY_TYPES = ['task_submit', 'task_review', 'task_assigned'];
 const LOW_PRIORITY_TYPES = ['task_accept', 'task_comment', 'system'];
 const KNOWN_TYPES = new Set([...HIGH_PRIORITY_TYPES, ...MEDIUM_PRIORITY_TYPES, ...LOW_PRIORITY_TYPES]);
+const TYPE_ALIASES = {
+  task_submitted: 'task_submit'
+};
 
 function priorityCaseSql(alias = '') {
   const col = alias ? `${alias}.type` : 'type';
@@ -40,7 +43,8 @@ router.get('/list', requireAuth, async (req, res) => {
     const pageSize = parseInt(req.query.pageSize) || 20;
     const offset = (page - 1) * pageSize;
     const unreadOnly = req.query.unreadOnly === 'true';
-    const type = String(req.query.type || '').trim();
+    const rawType = String(req.query.type || '').trim();
+    const type = TYPE_ALIASES[rawType] || rawType;
     const priority = String(req.query.priority || '').trim();
 
     let whereSql = 'WHERE user_id = ?';
@@ -63,10 +67,10 @@ router.get('/list', requireAuth, async (req, res) => {
       params.push(...LOW_PRIORITY_TYPES);
     }
 
-    const [countResult] = await execute(
+    const [countRows] = await execute(
       `SELECT COUNT(*) as total FROM sys_notification ${whereSql}`, params
     );
-    const total = countResult?.total || 0;
+    const total = Number(countRows?.[0]?.total || 0);
 
     const prioritySql = priorityCaseSql();
     const priorityParams = [...HIGH_PRIORITY_TYPES, ...MEDIUM_PRIORITY_TYPES];
@@ -135,11 +139,11 @@ router.post('/delete', requireAuth, createLogMiddleware('删除通知', '通知�
  */
 router.get('/unread-count', requireAuth, async (req, res) => {
   try {
-    const [result] = await execute(
+    const [rows] = await execute(
       `SELECT COUNT(*) as count FROM sys_notification WHERE user_id = ? AND is_read = 0`,
       [req.user.id]
     );
-    res.json({ code: 0, data: { count: result?.count || 0 } });
+    res.json({ code: 0, data: { count: Number(rows?.[0]?.count || 0) } });
   } catch (err) {
     res.json({ code: 0, data: { count: 0 } });
   }

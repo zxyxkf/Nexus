@@ -119,8 +119,19 @@ async function notifyTaskEvent(eventType, task, actor) {
       publisherId: publisher_id,
       designerId: designer_id
     },
+    task_transfer: {
+      userId: designer_id,
+      type: 'task_transfer',
+      title: '任务已转移给您',
+      taskTitle: title,
+      content: `${roleLabel(actor?.role)} ${actor?.realName || ''} 将任务「${title}」转移给您`,
+      taskId: task.id,
+      taskGroup: task.task_group,
+      publisherId: publisher_id,
+      designerId: designer_id
+    },
     task_comment: {
-      userId: task.publisher_id === actor?.id ? designer_id : publisher_id,
+      userId: Number(task.publisher_id) === Number(actor?.id) ? designer_id : publisher_id,
       type: 'task_comment',
       title: '新消息',
       taskTitle: title,

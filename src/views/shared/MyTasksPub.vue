@@ -111,7 +111,7 @@
         <el-table-column label="款号" width="140" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ row.style_number || '-' }}</template>
         </el-table-column>
-        <el-table-column v-if="!isCsAgent" label="指定颜色" width="140" align="center" show-overflow-tooltip>
+        <el-table-column label="指定颜色" width="140" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ row.specified_color || '-' }}</template>
         </el-table-column>
         <el-table-column prop="designer_name" :label="designerLabel" width="105" align="center" />
@@ -253,6 +253,10 @@
                 <div class="inline-detail-stat-card">
                   <label>旺旺ID</label>
                   <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
+                </div>
+                <div class="inline-detail-stat-card">
+                  <label>指定颜色</label>
+                  <span>{{ currentTask.specified_color || '无' }}</span>
                 </div>
               </template>
               <template v-else>

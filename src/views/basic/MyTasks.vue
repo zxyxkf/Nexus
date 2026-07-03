@@ -64,6 +64,9 @@
         <el-table-column label="款号" width="150" show-overflow-tooltip>
           <template #default="{ row }">{{ row.style_number || '-' }}</template>
         </el-table-column>
+        <el-table-column label="指定颜色" width="120" show-overflow-tooltip>
+          <template #default="{ row }">{{ row.specified_color || '-' }}</template>
+        </el-table-column>
         <el-table-column label="参考图" min-width="160" align="center">
           <template #default="{ row }">
             <div
@@ -219,6 +222,10 @@
               <div class="inline-detail-stat-card">
                 <label>款号</label>
                 <span>{{ currentTask.style_number || '无' }}</span>
+              </div>
+              <div class="inline-detail-stat-card">
+                <label>指定颜色</label>
+                <span>{{ currentTask.specified_color || '无' }}</span>
               </div>
               <div class="inline-detail-stat-card full-width">
                 <label>任务描述</label>

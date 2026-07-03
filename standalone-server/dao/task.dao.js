@@ -357,7 +357,7 @@ async function getTaskBrief(taskId) {
 
 // ==================== 查询 ====================
 
-const TASK_SELECT = `t.*, u1.real_name as publisher_name, u2.real_name as designer_name`;
+const TASK_SELECT = `t.*, u1.real_name as publisher_name, u1.username as publisher_username, u2.real_name as designer_name, u2.username as designer_username`;
 const TASK_JOIN = `LEFT JOIN sys_user u1 ON t.publisher_id = u1.id
                     LEFT JOIN sys_user u2 ON t.designer_id = u2.id`;
 
@@ -406,7 +406,9 @@ async function queryMyPublished({ userId, role, permissions = [], filterGroup, s
     params.push(userId, group);
   }
 
-  if (!hasPerm(group === 'operator' ? 'operator.tasks.assistant' : group === 'cs' ? 'cs.tasks.basic' : 'operator.tasks.design') && role !== 'admin' && role !== 'sub_admin') {
+  const requiredPerm = group === 'operator' ? 'operator.tasks.assistant' : group === 'cs' ? 'cs.tasks.basic' : 'operator.tasks.design';
+  const reviewPerm = group === 'operator' ? 'operator.review.assistant' : group === 'cs' ? 'cs.review.basic' : 'operator.review.design';
+  if (!hasPerm(requiredPerm) && !hasPerm(reviewPerm) && role !== 'admin' && role !== 'sub_admin') {
     where += ' AND 1=0';
   }
 
@@ -558,7 +560,7 @@ async function queryAllTasks({ status, keyword, publisherId, designerId, startDa
 }
 
 async function searchTasks({ userId, role, store, permissions = [], keyword, pageSize }) {
-  const limit = Math.min(parseInt(pageSize) || 12, 30);
+  const limit = Math.min(Math.max(parseInt(pageSize) || 12, 1), 30);
   const params = [];
   let where = 'WHERE 1=1';
   const hasPerm = (code) => role === 'admin' || permissions.includes('*') || permissions.includes(code);
@@ -573,8 +575,10 @@ async function searchTasks({ userId, role, store, permissions = [], keyword, pag
     if (!groups.includes('operator') && hasPerm('dashboard.operator')) groups.push('operator');
     if (!groups.includes('cs') && hasPerm('dashboard.cs')) groups.push('cs');
     if (groups.length) {
-      where += ` AND COALESCE(t.task_group, 'design') IN (${groups.map(() => '?').join(',')})`;
+      where += ` AND COALESCE(NULLIF(t.task_group, ''), 'design') IN (${groups.map(() => '?').join(',')})`;
       params.push(...groups);
+    } else {
+      where += ' AND 1=0';
     }
   } else {
     const accessParts = ['(t.publisher_id = ? OR t.designer_id = ?)'];
@@ -587,6 +591,15 @@ async function searchTasks({ userId, role, store, permissions = [], keyword, pag
       accessParts.push(`(COALESCE(t.task_group, 'design') IN ('design','operator') AND t.publisher_id IN (SELECT id FROM sys_user WHERE role = 'operator' AND store = ?))`);
       params.push(store || '');
     }
+    if (hasPerm('designer.hall.design')) {
+      accessParts.push(`(t.status = 'wait' AND COALESCE(NULLIF(t.task_group, ''), 'design') = 'design')`);
+    }
+    if (hasPerm('assistant.hall.operator')) {
+      accessParts.push(`(t.status = 'wait' AND t.task_group = 'operator')`);
+    }
+    if (hasPerm('basic.hall.cs')) {
+      accessParts.push(`(t.status = 'wait' AND t.task_group = 'cs')`);
+    }
     where += ` AND (${accessParts.join(' OR ')})`;
   }
 
@@ -595,9 +608,11 @@ async function searchTasks({ userId, role, store, permissions = [], keyword, pag
     where += ` AND (
       t.task_no LIKE ? OR t.title LIKE ? OR t.style_number LIKE ? OR
       t.wangwang_id LIKE ? OR t.shop_name LIKE ? OR t.publisher_name LIKE ? OR t.designer_name LIKE ? OR
+      t.specified_color LIKE ? OR t.task_file_path LIKE ? OR
+      u1.username LIKE ? OR u2.username LIKE ? OR
       EXISTS (SELECT 1 FROM task_file tf WHERE tf.task_id = t.id AND tf.file_name LIKE ?)
     )`;
-    params.push(like, like, like, like, like, like, like, like);
+    params.push(like, like, like, like, like, like, like, like, like, like, like, like);
   }
 
   const pool = getPool();
@@ -606,8 +621,8 @@ async function searchTasks({ userId, role, store, permissions = [], keyword, pag
      FROM task_info t ${TASK_JOIN}
      ${where}
      ORDER BY t.update_time DESC
-     LIMIT ?`,
-    [...params, limit]
+     LIMIT ${limit}`,
+    params
   );
   return { list: rows, total: rows.length, page: 1, pageSize: limit, totalPages: 1 };
 }
@@ -699,7 +714,7 @@ async function getDesignerSummary(userId) {
             SUM(CASE WHEN status = 'finished' THEN 1 ELSE 0 END) as finished_count,
             SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected_count,
             COALESCE(SUM(CASE WHEN status = 'doing' THEN score * CASE WHEN COALESCE(actual_quantity, 0) > 0 THEN actual_quantity ELSE 1 END ELSE 0 END), 0) as pending_review_score,
-            COALESCE(SUM(CASE WHEN status = 'finished' AND (score_review_status IS NULL OR score_review_status = '' OR score_review_status = 'approved') THEN score * CASE WHEN COALESCE(actual_quantity, 0) > 0 THEN actual_quantity ELSE 1 END ELSE 0 END), 0) as total_score
+            COALESCE(SUM(CASE WHEN status = 'finished' AND COALESCE(score_review_status, '') <> 'pending' THEN score * CASE WHEN COALESCE(actual_quantity, 0) > 0 THEN actual_quantity ELSE 1 END ELSE 0 END), 0) as total_score
      FROM task_info WHERE designer_id = ?`, [userId]
   );
   return rows[0];
@@ -735,7 +750,7 @@ async function getFinishedDesignerScores(role) {
             t.finish_time
      FROM sys_user u
      INNER JOIN task_info t ON u.id = t.designer_id AND t.status = 'finished'
-       AND (t.score_review_status IS NULL OR t.score_review_status = '' OR t.score_review_status = 'approved')
+       AND COALESCE(t.score_review_status, '') <> 'pending'
      WHERE u.role = ? AND u.status = 1`, [role]
   );
   return rows;
@@ -798,6 +813,25 @@ async function getAllTasksForStats() {
      WHERE (t.designer_id IS NOT NULL OR t.publisher_id IS NOT NULL)`
   );
   return rows;
+}
+
+async function getSidebarBadgeStats(userId, allReview = false) {
+  const pool = getPool();
+  const reviewOwnerSql = allReview ? '1=1' : 'publisher_id = ?';
+  const params = allReview ? [userId, userId, userId] : [userId, userId, userId, userId, userId, userId];
+  const [rows] = await pool.execute(
+    `SELECT
+       SUM(CASE WHEN designer_id = ? AND COALESCE(NULLIF(task_group, ''), 'design') = 'design' AND status IN ('accepted', 'rejected') THEN 1 ELSE 0 END) as design_todo_count,
+       SUM(CASE WHEN designer_id = ? AND task_group = 'cs' AND status IN ('accepted', 'rejected') THEN 1 ELSE 0 END) as basic_todo_count,
+       SUM(CASE WHEN designer_id = ? AND task_group = 'operator' AND status IN ('accepted', 'rejected') THEN 1 ELSE 0 END) as assistant_todo_count,
+       SUM(CASE WHEN COALESCE(task_group, 'design') IN ('design', '') AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as design_review_count,
+       SUM(CASE WHEN task_group = 'operator' AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as operator_review_count,
+       SUM(CASE WHEN task_group = 'cs' AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as cs_review_count,
+       SUM(CASE WHEN task_group = 'cs' AND score_review_status = 'pending' AND status IN ('doing', 'finished') THEN 1 ELSE 0 END) as score_review_count
+     FROM task_info`,
+    params
+  );
+  return rows[0] || {};
 }
 
 /** 查询任务列表中的任务，用于统计聚合 */
@@ -864,5 +898,6 @@ module.exports = {
   getDesignerRank,
   getPublisherRank,
   getScoreItems,
-  getAllTasksForStats
+  getAllTasksForStats,
+  getSidebarBadgeStats
 };

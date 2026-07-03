@@ -1,11 +1,11 @@
 {
   "name": "nexus",
-  "version": "15.2.7",
+  "version": "15.2.8",
   "description": "Nexus",
   "main": "electron/main.js",
   "scripts": {
     "dev": "vite",
-    "dev:full": "concurrently \"cd standalone-server && npm start\" \"vite\"",
+    "dev:full": "concurrently \"cd standalone-server && npm start\" \"cross-env VITE_FORCE_LOCAL_API=1 vite\"",
     "build": "vite build",
     "test:task-pages": "playwright test --config=playwright.task-pages.config.js",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",

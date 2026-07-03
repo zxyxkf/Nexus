@@ -6,6 +6,7 @@ const express = require('express');
 const router = express.Router();
 const { execute } = require('../config/database');
 const { requireAuth, requireAdmin } = require('../middleware/auth');
+const { notifyTaskEvent } = require('../utils/notification');
 
 /**
  * GET /api/comment/list - 获取任务评论列表
@@ -41,6 +42,12 @@ router.post('/create', requireAuth, async (req, res) => {
        VALUES (?, ?, ?, ?, ?, ?, ?)`,
       [taskId, req.user.id, req.user.username, req.user.realName || '', req.user.role, content.trim(), images || '']
     );
+
+    const [tasks] = await execute(
+      `SELECT id, title, task_no, publisher_id, designer_id, task_group FROM task_info WHERE id = ?`,
+      [taskId]
+    );
+    if (tasks[0]) await notifyTaskEvent('task_comment', tasks[0], req.user);
 
     res.json({ code: 0, msg: '评论成功' });
   } catch (err) {

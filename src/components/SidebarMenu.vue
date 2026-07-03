@@ -23,6 +23,7 @@
           <List v-else />
         </el-icon>
         <span class="nav-text">{{ item.label }}</span>
+        <span v-if="badgeCount(item.path) > 0" class="nav-badge">{{ badgeText(item.path) }}</span>
       </div>
     </template>
   </div>
@@ -36,7 +37,8 @@ import { buildSidebarMenu } from '@/config/menus'
 
 const props = defineProps({
   activePath: { type: String, default: '' },
-  isCollapsed: { type: Boolean, default: false }
+  isCollapsed: { type: Boolean, default: false },
+  badges: { type: Object, default: () => ({}) }
 })
 
 const emit = defineEmits(['navigate'])
@@ -47,6 +49,11 @@ const activeMenu = computed(() => props.activePath)
 const menuItems = computed(() => buildSidebarMenu(store.userInfo, (permission) => store.hasPermission(permission)))
 
 function nav(path) { emit('navigate', path) }
+function badgeCount(path) { return Number(props.badges?.[path] || 0) }
+function badgeText(path) {
+  const count = badgeCount(path)
+  return count > 99 ? '99+' : String(count)
+}
 </script>
 
 <style scoped>
@@ -108,6 +115,35 @@ function nav(path) { emit('navigate', path) }
 
 .sidebar-nav:not(.is-collapsed) .nav-text {
   opacity: 1;
+}
+
+.nav-badge {
+  margin-left: auto;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 999px;
+  background: #e63946;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 18px;
+  text-align: center;
+  box-shadow: 0 4px 10px rgba(230, 57, 70, 0.28);
+}
+
+.sidebar-nav.is-collapsed .nav-badge {
+  position: absolute;
+  top: 4px;
+  right: 6px;
+  min-width: 8px;
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  overflow: hidden;
+  color: transparent;
+  line-height: 8px;
+  box-shadow: none;
 }
 
 .nav-section-label {

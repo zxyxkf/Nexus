@@ -171,6 +171,10 @@
                 <label>款号</label>
                 <span>{{ currentTask.style_number || '无' }}</span>
               </div>
+              <div class="inline-detail-stat-card">
+                <label>指定颜色</label>
+                <span>{{ currentTask.specified_color || '无' }}</span>
+              </div>
             </template>
             <template v-else>
               <div class="inline-detail-stat-card">

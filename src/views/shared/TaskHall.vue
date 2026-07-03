@@ -48,7 +48,7 @@
         <el-table-column v-if="isBasicDesigner" label="任务描述" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">{{ row.description || '-' }}</template>
         </el-table-column>
-        <el-table-column v-if="!isBasicDesigner && !isOperatorAssistant" label="指定颜色" min-width="100" show-overflow-tooltip>
+        <el-table-column v-if="!isOperatorAssistant" label="指定颜色" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">{{ row.specified_color || '-' }}</template>
         </el-table-column>
         <el-table-column v-if="!isBasicDesigner && !isOperatorAssistant" label="参考路径" min-width="100" show-overflow-tooltip>
@@ -170,6 +170,10 @@
                 <div class="inline-detail-stat-card">
                   <label>款号</label>
                   <span>{{ currentTask.style_number || '无' }}</span>
+                </div>
+                <div class="inline-detail-stat-card">
+                  <label>指定颜色</label>
+                  <span>{{ currentTask.specified_color || '无' }}</span>
                 </div>
               </template>
               <template v-else-if="!isOperatorAssistant">

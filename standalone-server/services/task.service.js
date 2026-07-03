@@ -11,7 +11,7 @@ const { saveImage, saveAttachment, resolvePath } = require('../utils/share');
 const { withLock } = require('../utils/mutex');
 const { IMAGE_EXTS, fixFilenameEncoding } = require('../utils/upload');
 const logger = require('../utils/business-logger');
-const { sendNotification } = require('../utils/notification');
+const { sendNotification, notifyTaskEvent } = require('../utils/notification');
 const { isUserOnline } = require('../utils/online');
 const { defaultPermissionsFor } = require('../config/permissions');
 const {
@@ -445,6 +445,21 @@ function emptyGroupStats(taskGroup) {
   return { task_group: taskGroup, total: 0, wait_count: 0, accepted_count: 0, doing_count: 0, finished_count: 0, rejected_count: 0 };
 }
 
+function visibleSidebarBadges(user, ownStats = {}, reviewStats = {}) {
+  const badges = {};
+
+  if (hasPermission(user, 'designer.tasks.design')) badges['/designer/tasks/todo'] = Number(reviewStats.design_todo_count || 0);
+  if (hasPermission(user, 'basic.tasks.cs')) badges['/basic/tasks/todo'] = Number(reviewStats.basic_todo_count || 0);
+  if (hasPermission(user, 'assistant.tasks.operator')) badges['/operator-assistant/tasks/todo'] = Number(reviewStats.assistant_todo_count || 0);
+
+  if (hasPermission(user, 'operator.review.design')) badges['/operator/review'] = Number(reviewStats.design_review_count || 0);
+  if (hasPermission(user, 'operator.review.assistant')) badges['/operator/op-review'] = Number(reviewStats.operator_review_count || 0);
+  if (hasPermission(user, 'cs.review.basic')) badges['/cs/review'] = Number(reviewStats.cs_review_count || 0);
+  if (hasPermission(user, 'score.review.basic')) badges['/basic/score-review'] = Number(reviewStats.score_review_count || 0);
+
+  return badges;
+}
+
 function filterDashboardStatsByPermission(data, user) {
   const allowed = new Set(allowedDashboardGroups(user));
   return {
@@ -499,6 +514,7 @@ async function acceptTask(taskId, user) {
 
     const brief = await taskDao.getTaskBrief(taskId);
     if (brief) {
+      await notifyTaskEvent('task_accept', { ...brief, designer_id: user.id }, user);
       socketEmit(`user:${brief.publisher_id}`);
       socketEmit(`group:${brief.task_group || 'design'}`);
     }
@@ -666,6 +682,7 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
 
       if (fileCategory !== 'reference' && !isRejectAttachment) {
         socketEmit(`user:${task.publisher_id}`);
+        if (taskGroup === 'cs') socketEmit('group:cs');
       }
     }
 
@@ -684,6 +701,7 @@ async function transferTask(taskId, newDesignerId, reason, user) {
   const transferReason = String(reason || '').trim();
   if (!transferReason) throw new AppError(400, '请填写转移原因');
 
+  let transferredTask = null;
   await executeTransaction(async (conn) => {
     const task = await taskDao.getTaskForUpdate(conn, taskId);
     if (!task) throw new AppError(400, '任务不存在');
@@ -709,8 +727,10 @@ async function transferTask(taskId, newDesignerId, reason, user) {
     await taskDao.updateTaskFields(conn, taskId, {
       designer_id: newDesignerId, designer_name: d.real_name
     });
+    transferredTask = { ...task, id: taskId, designer_id: newDesignerId, designer_name: d.real_name };
   });
 
+  if (transferredTask) await notifyTaskEvent('task_transfer', transferredTask, user);
   socketEmit(`user:${newDesignerId}`);
   return { msg: '任务转移成功' };
 }
@@ -932,6 +952,14 @@ function buildMonthlyTable(users, rawData) {
 async function getMyStats(user) {
   const userId = user.id;
   const role = user.role;
+  const attachBadges = async (stats) => ({
+    ...(stats || {}),
+    sidebar_badges: visibleSidebarBadges(
+      user,
+      stats || {},
+      await taskDao.getSidebarBadgeStats(userId, role === 'admin' || role === 'sub_admin')
+    )
+  });
 
   if (role === 'operator' || role === 'cs_agent') {
     const base = await taskDao.getPublisherSummary(userId);
@@ -975,7 +1003,7 @@ async function getMyStats(user) {
         self_monthly: buildSelfMonthly(selfMonthlyRaw)
       };
     }
-    return result;
+    return attachBadges(result);
   }
 
   // designer / basic_designer / operator_assistant
@@ -1022,7 +1050,7 @@ async function getMyStats(user) {
   const finished = Number(base.finished_count) || 0;
   const total = Number(base.total) || 1;
 
-  return {
+  return attachBadges({
     ...base,
     current_month_score: Math.round(currentMonthScore * 100) / 100,
     today_score: Math.round(todayScore * 100) / 100,
@@ -1033,7 +1061,7 @@ async function getMyStats(user) {
       score: Math.round(item.score * 100) / 100,
       rate: item.total > 0 ? Math.round(item.finished / item.total * 1000) / 10 : null
     }))
-  };
+  });
 }
 
 function buildDesignerStats(users, tasks, scoreItems, refDate, taskGroup) {

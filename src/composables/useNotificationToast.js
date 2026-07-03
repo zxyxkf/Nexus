@@ -114,9 +114,9 @@ function resetToastTimer(id) {
 // ---- 公开 API ----
 
 export function notify(type, title, content, payload = {}) {
-  const key = `${payload.taskId || ''}_${type}`
   const now = Date.now()
   const eventType = payload.eventType || payload.rawType || payload.type || type
+  const key = `${payload.taskId || ''}_${eventType}`
   const priority = getToastPriority(type, { ...payload, eventType })
   const duration = getToastDuration(type, { ...payload, eventType, priority })
 
@@ -260,7 +260,10 @@ function setupWebSocket() {
       urge: 'warning',
       task_rejected: 'error',
       task_accepted: 'success',
-      task_transferred: 'info'
+      task_transferred: 'info',
+      task_submitted: 'info',
+      task_assigned: 'info',
+      task_comment: 'info'
     }
     notify(
       typeMap[payload.type] || 'info',
@@ -270,6 +273,12 @@ function setupWebSocket() {
     )
     // 同步刷新顶部 bell 未读数
     if (unreadPollCb) unreadPollCb()
+  })
+
+  socket.on('task:update', (payload) => {
+    if (typeof window !== 'undefined') {
+      window.dispatchEvent(new CustomEvent('nexus:task-updated', { detail: payload || {} }))
+    }
   })
 
   socket.on('connect', () => {
@@ -358,6 +367,7 @@ export function destroyNotificationToast() {
 
   if (socket) {
     socket.off('notification:new')
+    socket.off('task:update')
     socket.off('connect')
     socket.off('disconnect')
     socket.disconnect()

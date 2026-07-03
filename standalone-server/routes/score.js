@@ -10,6 +10,10 @@ const { requireAuth, requireAnyPermission } = require('../middleware/auth');
 
 router.use(requireAuth);
 
+function socketEmit(room) {
+  if (global.io) global.io.to(room).emit('task:update');
+}
+
 function scoreTable(taskGroup) {
   if (taskGroup === 'operator') return 'sys_score_item_operator';
   if (taskGroup === 'cs') return 'sys_score_item_cs';
@@ -118,7 +122,7 @@ router.get('/review/list', requireAnyPermission(['score.review.basic'], 'admin',
     const { page = 1, pageSize = 15, publisherId, designerId, sortField, sortOrder } = req.query;
     const offset = (parseInt(page) - 1) * parseInt(pageSize);
 
-    let where = `t.task_group = 'cs' AND t.score_review_status = 'pending'`;
+    let where = `t.task_group = 'cs' AND t.score_review_status = 'pending' AND t.status IN ('doing', 'finished')`;
     const params = [];
 
     if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
@@ -234,7 +238,7 @@ router.post('/review/approve', requireAnyPermission(['score.review.basic'], 'adm
     if (!taskId) return res.json({ code: 400, msg: '任务ID不能为空' });
     const [task] = await execute(`SELECT id, status, applied_score, score_review_status FROM task_info WHERE id = ?`, [taskId]);
     if (!task.length) return res.json({ code: 400, msg: '任务不存在' });
-    if (task[0].status !== 'doing' || task[0].score_review_status !== 'pending') {
+    if (!['doing', 'finished'].includes(task[0].status) || task[0].score_review_status !== 'pending') {
       return res.json({ code: 400, msg: '该分值申请已失效或无需审核' });
     }
     await execute(
@@ -243,10 +247,12 @@ router.post('/review/approve', requireAnyPermission(['score.review.basic'], 'adm
            score_review_reason = '',
            score_review_time = NOW(),
            score_review_score = applied_score,
+           score = CASE WHEN status = 'finished' THEN applied_score ELSE score END,
            update_time = NOW()
        WHERE id = ?`,
       [taskId]
     );
+    socketEmit('group:cs');
     res.json({ code: 0, msg: '分值审核通过' });
   } catch (err) {
     res.status(500).json({ code: 500, msg: '操作失败' });
@@ -261,7 +267,7 @@ router.post('/review/reject', requireAnyPermission(['score.review.basic'], 'admi
     if (!reason || !reason.trim()) return res.json({ code: 400, msg: '请填写不予通过的原因' });
     const [task] = await execute(`SELECT id, status, score_review_status FROM task_info WHERE id = ?`, [taskId]);
     if (!task.length) return res.json({ code: 400, msg: '任务不存在' });
-    if (task[0].status !== 'doing' || task[0].score_review_status !== 'pending') {
+    if (!['doing', 'finished'].includes(task[0].status) || task[0].score_review_status !== 'pending') {
       return res.json({ code: 400, msg: '该分值申请已失效或无需审核' });
     }
     await execute(
@@ -275,6 +281,7 @@ router.post('/review/reject', requireAnyPermission(['score.review.basic'], 'admi
        WHERE id = ?`,
       [reason.trim(), taskId]
     );
+    socketEmit('group:cs');
     res.json({ code: 0, msg: '分值申请已驳回' });
   } catch (err) {
     res.status(500).json({ code: 500, msg: '操作失败' });

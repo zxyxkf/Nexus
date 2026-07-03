@@ -3,16 +3,19 @@ const { setupApp } = require('./helpers/setup');
 
 let app;
 let adminToken;
+let subAdminToken;
 let csToken;
 let basicToken;
 let leadToken;
 let operatorToken;
+let subAdminId;
 let csId;
 let basicId;
 let leadId;
 let operatorId;
 
 const suffix = Date.now();
+const subAdminUser = `score_sub_admin_${suffix}`;
 const csUser = `score_cs_${suffix}`;
 const basicUser = `score_basic_${suffix}`;
 const leadUser = `score_lead_${suffix}`;
@@ -26,6 +29,11 @@ beforeAll(async () => {
     .post('/api/auth/login')
     .send({ username: 'admin', password: 'admin123' });
   adminToken = adminLogin.body.data.token;
+
+  await request(app)
+    .post('/api/user/create')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ username: subAdminUser, password: 'test123456', realName: 'test sub admin', role: 'sub_admin' });
 
   await request(app)
     .post('/api/user/create')
@@ -47,9 +55,11 @@ beforeAll(async () => {
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ username: operatorUser, password: 'test123456', realName: '测试运营', role: 'operator', store: '测试店铺' });
 
+  const subAdminList = await request(app).get('/api/user/list?role=sub_admin').set('Authorization', `Bearer ${adminToken}`);
   const csList = await request(app).get('/api/user/list?role=cs_agent').set('Authorization', `Bearer ${adminToken}`);
   const basicList = await request(app).get('/api/user/list?role=basic_designer').set('Authorization', `Bearer ${adminToken}`);
   const operatorList = await request(app).get('/api/user/list?role=operator').set('Authorization', `Bearer ${adminToken}`);
+  subAdminId = subAdminList.body.data.list.find(u => u.username === subAdminUser).id;
   csId = csList.body.data.list.find(u => u.username === csUser).id;
   basicId = basicList.body.data.list.find(u => u.username === basicUser).id;
   leadId = basicList.body.data.list.find(u => u.username === leadUser).id;
@@ -64,6 +74,7 @@ beforeAll(async () => {
       deniedPermissions: []
     });
 
+  subAdminToken = (await request(app).post('/api/auth/login').send({ username: subAdminUser, password: 'test123456' })).body.data.token;
   csToken = (await request(app).post('/api/auth/login').send({ username: csUser, password: 'test123456' })).body.data.token;
   basicToken = (await request(app).post('/api/auth/login').send({ username: basicUser, password: 'test123456' })).body.data.token;
   leadToken = (await request(app).post('/api/auth/login').send({ username: leadUser, password: 'test123456' })).body.data.token;
@@ -166,6 +177,60 @@ describe('基础美工申请分以客服通过为最终入账基准', () => {
     expect(Number(detail.body.data.score_review_score || 0)).toBe(3);
     expect(detail.body.data.score_review_status).toBe('approved');
     expect(detail.body.data.score_review_time).toBeTruthy();
+  });
+
+  it('allows score approval after CS has already passed the finished task', async () => {
+    const create = await request(app)
+      .post('/api/task/create')
+      .set('Authorization', `Bearer ${csToken}`)
+      .send({
+        title: 'score approval after finish',
+        taskGroup: 'cs',
+        score: 1,
+        designerId: basicId
+      });
+    expect(create.body.code).toBe(0);
+    const finishedPendingTaskId = create.body.data.id;
+
+    await request(app)
+      .post('/api/task/upload-files')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(finishedPendingTaskId))
+      .field('fileCategory', 'work')
+      .field('actualQuantity', '1')
+      .field('appliedScore', '2.5')
+      .attach('files', Buffer.from('finished pending work'), 'finished-pending.txt')
+      .expect(200);
+
+    const pass = await request(app)
+      .post('/api/task/review')
+      .set('Authorization', `Bearer ${csToken}`)
+      .send({ taskId: finishedPendingTaskId, action: 'pass' });
+    expect(pass.body.code).toBe(0);
+
+    const leadStatsBefore = await request(app)
+      .get('/api/task/stats/my')
+      .set('Authorization', `Bearer ${leadToken}`);
+    expect(Number(leadStatsBefore.body.data.sidebar_badges?.['/basic/score-review'] || 0)).toBeGreaterThan(0);
+
+    const reviewList = await request(app)
+      .get('/api/score/review/list?pageSize=50')
+      .set('Authorization', `Bearer ${leadToken}`);
+    expect(reviewList.body.data.list.some(t => Number(t.id) === Number(finishedPendingTaskId))).toBe(true);
+
+    const approve = await request(app)
+      .post('/api/score/review/approve')
+      .set('Authorization', `Bearer ${subAdminToken}`)
+      .send({ taskId: finishedPendingTaskId });
+    expect(approve.body.code).toBe(0);
+
+    const detail = await request(app)
+      .get(`/api/task/detail?taskId=${finishedPendingTaskId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(detail.body.data.status).toBe('finished');
+    expect(Number(detail.body.data.score)).toBe(2.5);
+    expect(Number(detail.body.data.score_review_score || 0)).toBe(2.5);
+    expect(detail.body.data.score_review_status).toBe('approved');
   });
 });
 
@@ -308,7 +373,7 @@ describe('客服已完成基础美工任务编号修改', () => {
 });
 
 afterAll(async () => {
-  for (const id of [csId, basicId, leadId, operatorId]) {
+  for (const id of [subAdminId, csId, basicId, leadId, operatorId]) {
     if (id) {
       await request(app)
         .post('/api/user/delete')

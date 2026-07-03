@@ -137,6 +137,10 @@
               <label>款号</label>
               <span>{{ currentTask.style_number || '无' }}</span>
             </div>
+            <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
+              <label>指定颜色</label>
+              <span>{{ currentTask.specified_color || '无' }}</span>
+            </div>
             <div class="inline-detail-stat-card full-width">
               <label>任务描述</label>
               <div class="value" style="white-space:pre-wrap;">{{ currentTask.description || '暂无' }}</div>
@@ -530,6 +534,8 @@ async function batchDeleteSelected() {
 }
 
 watch(() => route.meta.taskGroup, () => {
+  detailVisible.value = false
+  currentTask.value = null
   filter.keyword = ''
   filter.status = ''
   filter.publisherId = ''

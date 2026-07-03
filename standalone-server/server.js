@@ -36,21 +36,29 @@ async function start() {
     if (!token) return next(new Error('未登录'));
     const decoded = verifyToken(token);
     if (!decoded) return next(new Error('Token无效或已过期'));
+    const permissions = Array.isArray(decoded.permissions) ? decoded.permissions : [];
+    const groups = new Set([
+      decoded.role === 'cs_agent' || decoded.role === 'basic_designer' ? 'cs' : decoded.role === 'operator_assistant' ? 'operator' : 'design'
+    ]);
+    if (decoded.role === 'admin' || permissions.includes('*') || permissions.some(p => p.endsWith('.design'))) groups.add('design');
+    if (decoded.role === 'admin' || permissions.includes('*') || permissions.some(p => p.endsWith('.cs') || p.endsWith('.basic'))) groups.add('cs');
+    if (decoded.role === 'admin' || permissions.includes('*') || permissions.some(p => p.endsWith('.operator') || p.endsWith('.assistant'))) groups.add('operator');
     socket.data = {
       userId: decoded.id,
       username: decoded.username,
       role: decoded.role,
       realName: decoded.realName,
-      taskGroup: decoded.role === 'cs_agent' || decoded.role === 'basic_designer' ? 'cs' : decoded.role === 'operator_assistant' ? 'operator' : 'design'
+      taskGroup: [...groups][0],
+      taskGroups: [...groups]
     };
     next();
   });
 
   io.on('connection', (socket) => {
-    const { userId, role, taskGroup } = socket.data;
+    const { userId, role, taskGroup, taskGroups } = socket.data;
     socket.join(`user:${userId}`);
     socket.join(`role:${role}`);
-    socket.join(`group:${taskGroup}`);
+    for (const group of taskGroups || [taskGroup]) socket.join(`group:${group}`);
     console.log(`[WS] 连接: ${socket.data.username}(${role}) userId=${userId} group=${taskGroup}`);
     if (role === 'basic_designer') {
       socket.to('group:cs').emit('task:update');

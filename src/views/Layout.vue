@@ -38,7 +38,7 @@
         </div>
       </div>
 
-      <SidebarMenu :active-path="activeMenu" :is-collapsed="effectiveCollapse" @navigate="nav => router.push(nav)" />
+      <SidebarMenu :active-path="activeMenu" :is-collapsed="effectiveCollapse" :badges="sidebarBadges" @navigate="nav => router.push(nav)" />
 
       <!-- 底部区 -->
       <div class="sidebar-bottom">
@@ -281,11 +281,11 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted } from 'vue'
+import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store'
-import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, onConnectionChange, getOnlineStatus, getTaskDetailApi } from '@/api'
+import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, onConnectionChange, getOnlineStatus, getTaskDetailApi, getMyStatsApi } from '@/api'
 import { ROLE_LABEL, ROLE_TAG_TYPE } from '@/utils/format'
 import { useConfig } from '@/composables/useConfig'
 import { HomeFilled, Bell, Moon, Sunny, User, Connection, WarningFilled } from '@element-plus/icons-vue'
@@ -301,6 +301,9 @@ const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
 const isConnected = ref(getOnlineStatus())
+const sidebarBadges = ref({})
+let todoRefreshTimer = null
+let todoRefreshDebounceTimer = null
 
 const homeRoute = computed(() => {
   const role = userStore.role
@@ -377,8 +380,36 @@ async function loadUnreadCount() {
       }
       unreadCount.value = newCount
       updateDocTitle()
+      loadTodoCount()
     }
   } catch (e) {}
+}
+
+async function loadTodoCount() {
+  try {
+    const res = await getMyStatsApi()
+    if (res.code === 0) {
+      const stats = res.data || {}
+      if (stats.sidebar_badges && typeof stats.sidebar_badges === 'object') {
+        sidebarBadges.value = stats.sidebar_badges
+      } else {
+        const todoCount = Number(stats.accepted_count || 0) + Number(stats.rejected_count || 0)
+        sidebarBadges.value = {
+          '/designer/tasks/todo': todoCount,
+          '/basic/tasks/todo': todoCount,
+          '/operator-assistant/tasks/todo': todoCount
+        }
+      }
+    }
+  } catch (e) {}
+}
+
+function scheduleTodoCountRefresh() {
+  if (todoRefreshDebounceTimer) clearTimeout(todoRefreshDebounceTimer)
+  todoRefreshDebounceTimer = setTimeout(() => {
+    todoRefreshDebounceTimer = null
+    loadTodoCount()
+  }, 150)
 }
 
 function updateDocTitle() {
@@ -439,16 +470,27 @@ onMounted(() => {
   useConfig().ensureLoaded()
   updateClock()
   timeTimer = setInterval(updateClock, 1000)
+  loadTodoCount()
+  todoRefreshTimer = setInterval(loadTodoCount, 60000)
+  window.addEventListener('nexus:task-updated', scheduleTodoCountRefresh)
   onConnectionChange(online => { isConnected.value = online })
-  initNotificationToast(loadUnreadCount)
+  initNotificationToast(() => {
+    loadUnreadCount()
+    scheduleTodoCountRefresh()
+  })
 })
 
 onUnmounted(() => {
   if (timeTimer) clearInterval(timeTimer)
+  if (todoRefreshTimer) clearInterval(todoRefreshTimer)
+  if (todoRefreshDebounceTimer) clearTimeout(todoRefreshDebounceTimer)
+  window.removeEventListener('nexus:task-updated', scheduleTodoCountRefresh)
   if (hoverTimer) clearTimeout(hoverTimer)
   if (curtainTimer) clearTimeout(curtainTimer)
   destroyNotificationToast()
 })
+
+watch(() => route.fullPath, () => loadTodoCount())
 
 // 侧边栏
 const SIDEBAR_STATE_KEY = 'd_design_sidebar_collapsed'
