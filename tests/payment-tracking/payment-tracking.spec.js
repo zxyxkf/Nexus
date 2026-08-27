@@ -24,15 +24,6 @@ const records = [
   {
     ...baseRecord,
     id: 101,
-    images: [{
-      id: 501,
-      category: 'product_main',
-      originalName: 'dress-main-1.png',
-      mimeType: 'image/png',
-      fileSize: 4096,
-      sortOrder: 0,
-      sourceTaskFileId: 2001
-    }],
     sourceTaskId: 201,
     sourceTaskNo: 'D202608270001',
     storeSeq: 18,
@@ -96,6 +87,22 @@ const records = [
     allowedActions: { restore: true, delete: true }
   }
 ]
+
+const linkedImageRecord = {
+  ...records[0],
+  id: 111,
+  storeSeq: 28,
+  styleNumber: 'NX-260828',
+  images: [{
+    id: 501,
+    category: 'product_main',
+    originalName: 'dress-main-1.png',
+    mimeType: 'image/png',
+    fileSize: 4096,
+    sortOrder: 0,
+    sourceTaskFileId: 2001
+  }]
+}
 
 const preparationRecord = {
   ...baseRecord,
@@ -253,6 +260,7 @@ const invalidBreakoutRecord = {
 
 const allDetailRecords = [
   ...records,
+  linkedImageRecord,
   preparationRecord,
   ...laterStageRecords,
   advancePreparationRecord,
@@ -515,7 +523,7 @@ test('联动原任务图片拖到桌面时保留原文件名', async ({ page }) 
     }
   })
 
-  await page.goto('/#/payment-tracking/records/101/stages/selection')
+  await page.goto('/#/payment-tracking/records/111/stages/selection')
   const linkedImage = page.locator('.image-item').first()
   await expect(linkedImage).toContainText('dress-main-1.png')
 
@@ -582,6 +590,24 @@ test('阶段详情拒绝未来节点并按测款分支展示表单', async ({ pa
   await expect(page.getByRole('heading', { name: '信息及选品' })).toBeVisible()
   await expect(page.getByRole('textbox', { name: '毛利' })).toHaveValue('60.61%')
   await expect(page.locator('.el-checkbox').filter({ hasText: '通过并设计主图' })).toBeVisible()
+  const stageHeaderActions = page.locator('.stage-header-actions')
+  await expect(stageHeaderActions.getByRole('button', { name: '保存本阶段' })).toBeVisible()
+  await expect(stageHeaderActions.getByRole('button', { name: '进入下一阶段' })).toBeVisible()
+  await expect(stageHeaderActions.getByRole('button', { name: '结束流程' })).toBeVisible()
+  await expect(page.locator('.action-bar')).toHaveCount(0)
+  await expect(page.locator('.payment-page')).toHaveCSS('background-color', 'rgb(255, 255, 255)')
+  const pageInsets = await page.evaluate(() => {
+    const mainRect = document.querySelector('.layout-main').getBoundingClientRect()
+    const pageRect = document.querySelector('.payment-page').getBoundingClientRect()
+    return {
+      top: pageRect.top - mainRect.top,
+      left: pageRect.left - mainRect.left,
+      right: mainRect.right - pageRect.right
+    }
+  })
+  expect(pageInsets.top).toBeLessThanOrEqual(1)
+  expect(pageInsets.left).toBeLessThanOrEqual(1)
+  expect(pageInsets.right).toBeLessThanOrEqual(1)
   await expectNoHorizontalPageOverflow(page)
   await page.screenshot({ path: testInfo.outputPath('payment-selection.png'), fullPage: true })
 

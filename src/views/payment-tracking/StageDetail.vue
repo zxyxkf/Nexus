@@ -25,6 +25,48 @@
             </div>
           </div>
         </div>
+        <div class="stage-header-actions">
+          <span v-if="!isEditable && record.processStatus === 'in_progress'" class="readonly-hint">
+            历史阶段需重开后才能修改
+          </span>
+          <div class="action-buttons">
+            <el-button
+              v-if="isEditable"
+              :icon="Check"
+              :loading="saving"
+              @click="saveCurrentStage()"
+            >保存本阶段</el-button>
+            <el-button
+              v-if="showAdvance"
+              type="primary"
+              :icon="Right"
+              :loading="advancing"
+              @click="advanceStage"
+            >进入下一阶段</el-button>
+            <el-button
+              v-if="showEnd"
+              type="danger"
+              plain
+              :icon="CircleClose"
+              :loading="ending"
+              @click="endProcess"
+            >{{ endActionLabel }}</el-button>
+            <el-button
+              v-if="showReopen"
+              type="warning"
+              :icon="RefreshRight"
+              :loading="reopening"
+              @click="reopenStage"
+            >重开此阶段</el-button>
+            <el-button
+              v-if="record.allowedActions?.restore"
+              type="warning"
+              :icon="RefreshRight"
+              :loading="restoring"
+              @click="restoreProcess"
+            >恢复流程</el-button>
+          </div>
+        </div>
       </header>
 
       <section class="timeline-band" aria-label="已进入阶段">
@@ -57,48 +99,6 @@
         <el-empty v-else description="该阶段表单即将开放" />
       </section>
 
-      <footer class="action-bar">
-        <span v-if="!isEditable && record.processStatus === 'in_progress'" class="readonly-hint">
-          历史阶段需重开后才能修改
-        </span>
-        <div class="action-buttons">
-          <el-button
-            v-if="isEditable"
-            :icon="Check"
-            :loading="saving"
-            @click="saveCurrentStage()"
-          >保存本阶段</el-button>
-          <el-button
-            v-if="showAdvance"
-            type="primary"
-            :icon="Right"
-            :loading="advancing"
-            @click="advanceStage"
-          >进入下一阶段</el-button>
-          <el-button
-            v-if="showEnd"
-            type="danger"
-            plain
-            :icon="CircleClose"
-            :loading="ending"
-            @click="endProcess"
-          >{{ endActionLabel }}</el-button>
-          <el-button
-            v-if="showReopen"
-            type="warning"
-            :icon="RefreshRight"
-            :loading="reopening"
-            @click="reopenStage"
-          >重开此阶段</el-button>
-          <el-button
-            v-if="record.allowedActions?.restore"
-            type="warning"
-            :icon="RefreshRight"
-            :loading="restoring"
-            @click="restoreProcess"
-          >恢复流程</el-button>
-        </div>
-      </footer>
     </template>
 
     <el-empty v-else-if="!loading" description="未找到选品记录" />
@@ -462,20 +462,26 @@ watch(
 
 <style scoped>
 .payment-page {
+  box-sizing: border-box;
   min-width: 0;
+  min-height: calc(100vh - 60px);
+  margin: -24px;
+  padding: 44px 46px 52px;
+  background: #fff;
 }
 
 .detail-header,
 .detail-heading,
 .heading-line,
 .record-meta,
-.action-bar,
+.stage-header-actions,
 .action-buttons {
   display: flex;
   align-items: center;
 }
 
 .detail-header {
+  align-items: flex-start;
   justify-content: space-between;
   gap: 16px;
   margin-bottom: 16px;
@@ -538,17 +544,15 @@ h1 {
   min-width: 0;
 }
 
-.action-bar {
+.stage-header-actions {
+  flex: 0 0 auto;
+  flex-wrap: wrap;
   justify-content: flex-end;
-  min-height: 62px;
-  margin-top: 18px;
-  padding: 10px 0;
-  border-top: 1px solid var(--dd-border-light, #e4e7ed);
-  background: var(--dd-bg-card, #fff);
+  gap: 10px;
+  min-height: 36px;
 }
 
 .readonly-hint {
-  margin-right: auto;
   color: var(--dd-text-secondary, #909399);
   font-size: 12px;
 }
@@ -563,9 +567,25 @@ h1 {
   margin-left: 0;
 }
 
+@media (max-width: 1360px) {
+  .detail-header {
+    align-items: stretch;
+    flex-direction: column;
+  }
+
+  .stage-header-actions {
+    justify-content: space-between;
+    width: 100%;
+  }
+}
+
 @media (max-width: 640px) {
+  .payment-page {
+    padding: 40px;
+  }
+
   .end-banner,
-  .action-bar {
+  .stage-header-actions {
     align-items: flex-start;
     flex-direction: column;
   }
