@@ -2,7 +2,7 @@ const AppError = require('../../utils/AppError');
 const { executeTransaction } = require('../../config/database');
 const { ownsPermission } = require('../../middleware/auth');
 const repository = require('./repository');
-const { PERMISSIONS } = require('./constants');
+const { PERMISSIONS, STAGES } = require('./constants');
 const { calculateGrossMargin, calculateSearchShare } = require('./rules');
 const {
   isAdmin,
@@ -43,6 +43,15 @@ function snakeToCamel(value) {
     key.replace(/_([a-z0-9])/g, (_, char) => char.toUpperCase()),
     snakeToCamel(item)
   ]));
+}
+
+function groupByRecordId(rows) {
+  return rows.reduce((groups, row) => {
+    const items = groups.get(row.record_id) || [];
+    items.push(row);
+    groups.set(row.record_id, items);
+    return groups;
+  }, new Map());
 }
 
 function presentRecord(record, stages = [], images = [], user, stageData = {}) {
@@ -104,10 +113,18 @@ async function listRecords(query, user) {
   const processStatus = resolveListStatus(query, user);
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize, 10) || 20));
+  const plannerId = query.plannerId ? Number(query.plannerId) : null;
+  if (plannerId !== null && (!Number.isInteger(plannerId) || plannerId < 1)) {
+    throw new AppError(400, '无效的策划人');
+  }
+  const stageCode = String(query.stageCode || '').trim();
+  if (stageCode && !STAGES.includes(stageCode)) throw new AppError(400, '无效的阶段');
   const filters = {
     store: isAdmin(user) ? (query.store || '') : user.store,
     processStatus,
     keyword: String(query.keyword || '').trim(),
+    plannerId,
+    stageCode,
     page,
     pageSize
   };
@@ -117,8 +134,20 @@ async function listRecords(query, user) {
     repository.listRecords(filters),
     repository.countRecords(filters)
   ]);
+  const recordIds = records.map(record => record.id);
+  const [stages, images] = await Promise.all([
+    repository.listEnteredStagesForRecords(recordIds),
+    repository.listProductImagesForRecords(recordIds)
+  ]);
+  const stagesByRecord = groupByRecordId(stages);
+  const imagesByRecord = groupByRecordId(images);
   return {
-    list: records.map(record => presentRecord(record, [], [], user)),
+    list: records.map(record => presentRecord(
+      record,
+      stagesByRecord.get(record.id) || [],
+      imagesByRecord.get(record.id) || [],
+      user
+    )),
     total,
     page,
     pageSize,

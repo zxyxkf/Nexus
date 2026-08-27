@@ -170,6 +170,63 @@ it('creates store-scoped records with independent store sequences', async () => 
   expect(afterDelete.body.data.list.map(record => record.styleNumber)).toEqual(['A-101']);
 });
 
+it('returns list card details and applies planner and current-stage filters', async () => {
+  const created = await request(app)
+    .post('/api/payment-tracking/records')
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ styleNumber: 'LIST-CARD-100' });
+  const recordId = created.body.data.id;
+
+  const { execute } = require('../../config/database');
+  await execute(
+    `INSERT INTO payment_selection_image
+       (record_id, category, storage_root, relative_path, original_name, mime_type, file_size)
+     VALUES (?, 'product_main', ?, ?, 'cover.png', 'image/png', 8)`,
+    [recordId, 'test-fixtures', 'cover.png']
+  );
+  await execute(
+    `UPDATE payment_selection_stage SET stage_status = 'completed', completed_at = CURRENT_TIMESTAMP
+     WHERE record_id = ? AND stage_code = 'selection'`,
+    [recordId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_stage (record_id, stage_code, stage_status)
+     VALUES (?, 'preparation', 'completed'), (?, 'testing', 'active')`,
+    [recordId, recordId]
+  );
+  await execute(
+    `UPDATE payment_selection_record SET current_stage = 'testing' WHERE id = ?`,
+    [recordId]
+  );
+
+  const filtered = await request(app)
+    .get(`/api/payment-tracking/records?processStatus=in_progress&plannerId=${storeAUserId}&stageCode=testing`)
+    .set('Authorization', `Bearer ${storeAToken}`);
+  expect(filtered.body.code).toBe(0);
+  expect(filtered.body.data.list).toHaveLength(1);
+  expect(filtered.body.data.list[0]).toMatchObject({
+    id: recordId,
+    styleNumber: 'LIST-CARD-100',
+    currentStage: 'testing'
+  });
+  expect(filtered.body.data.list[0].stages.map(stage => stage.stageCode)).toEqual([
+    'selection', 'preparation', 'testing'
+  ]);
+  expect(filtered.body.data.list[0].images).toEqual([
+    expect.objectContaining({ category: 'product_main', originalName: 'cover.png' })
+  ]);
+
+  const wrongPlanner = await request(app)
+    .get('/api/payment-tracking/records?processStatus=in_progress&plannerId=999999&stageCode=testing')
+    .set('Authorization', `Bearer ${storeAToken}`);
+  expect(wrongPlanner.body.data.total).toBe(0);
+
+  const cannotOverrideStore = await request(app)
+    .get('/api/payment-tracking/records?processStatus=in_progress&store=B店&stageCode=testing')
+    .set('Authorization', `Bearer ${storeAToken}`);
+  expect(cannotOverrideStore.body.data.list.every(record => record.store === 'A店')).toBe(true);
+});
+
 it('runs the workflow without exposing future stages and enforces optimistic locking', async () => {
   const created = await request(app)
     .post('/api/payment-tracking/records')

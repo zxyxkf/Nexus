@@ -51,6 +51,14 @@ function buildRecordWhere(filters) {
     clauses.push('process_status = ?');
     params.push(filters.processStatus);
   }
+  if (filters.plannerId) {
+    clauses.push('planner_id = ?');
+    params.push(filters.plannerId);
+  }
+  if (filters.stageCode) {
+    clauses.push('current_stage = ?');
+    params.push(filters.stageCode);
+  }
   if (filters.keyword) {
     const like = `%${filters.keyword}%`;
     clauses.push(`(style_number LIKE ? OR product_id LIKE ? OR planner_name LIKE ? OR source_task_no LIKE ?)`);
@@ -157,6 +165,18 @@ async function listEnteredStages(recordId, conn) {
   return rows;
 }
 
+async function listEnteredStagesForRecords(recordIds) {
+  if (!recordIds.length) return [];
+  const placeholders = recordIds.map(() => '?').join(',');
+  const [rows] = await getPool().execute(
+    `SELECT * FROM payment_selection_stage
+     WHERE record_id IN (${placeholders})
+     ORDER BY record_id ASC, id ASC`,
+    recordIds
+  );
+  return rows;
+}
+
 async function insertInitialStage(conn, recordId) {
   await conn.execute(
     `INSERT INTO payment_selection_stage (record_id, stage_code, stage_status)
@@ -174,6 +194,20 @@ async function listImages(recordId, category, conn) {
      WHERE record_id = ? AND deleted_at IS NULL ${categoryClause}
      ORDER BY category ASC, sort_order ASC, id ASC`,
     params
+  );
+  return rows;
+}
+
+async function listProductImagesForRecords(recordIds) {
+  if (!recordIds.length) return [];
+  const placeholders = recordIds.map(() => '?').join(',');
+  const [rows] = await getPool().execute(
+    `SELECT * FROM payment_selection_image
+     WHERE record_id IN (${placeholders})
+       AND category = 'product_main'
+       AND deleted_at IS NULL
+     ORDER BY record_id ASC, sort_order ASC, id ASC`,
+    recordIds
   );
   return rows;
 }
@@ -413,6 +447,7 @@ module.exports = {
   insertRecord,
   softDeleteRecord,
   listEnteredStages,
+  listEnteredStagesForRecords,
   insertInitialStage,
   findStage,
   loadStageData,
@@ -425,6 +460,7 @@ module.exports = {
   reopenStage,
   lockStage,
   listImages,
+  listProductImagesForRecords,
   insertImage,
   softDeleteImage,
   findImageById,
