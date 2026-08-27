@@ -159,10 +159,22 @@ it('creates store-scoped records with independent store sequences', async () => 
     .set('Authorization', `Bearer ${recordsOnlyToken}`);
   expect(recordsCannotReadSelections.body.code).toBe(403);
 
+  const recordsCannotReadSelectionDetail = await request(app)
+    .get(`/api/payment-tracking/records/${created.body.data.id}`)
+    .set('Authorization', `Bearer ${recordsOnlyToken}`);
+  expect(recordsCannotReadSelectionDetail.body.code).toBe(403);
+
   const deleted = await request(app)
     .delete(`/api/payment-tracking/records/${created.body.data.id}`)
-    .set('Authorization', `Bearer ${adminToken}`);
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: created.body.data.version });
   expect(deleted.body.code).toBe(0);
+
+  const repeatedDelete = await request(app)
+    .delete(`/api/payment-tracking/records/${created.body.data.id}`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: created.body.data.version });
+  expect(repeatedDelete.body.code).toBe(0);
 
   const afterDelete = await request(app)
     .get('/api/payment-tracking/records?processStatus=in_progress')
@@ -241,6 +253,19 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
      VALUES (?, 'product_main', ?, ?, 'fixture.png', 'image/png', 8)`,
     [recordId, 'test-fixtures', 'fixture.png']
   );
+
+  const invalidPrice = await request(app)
+    .put(`/api/payment-tracking/records/${recordId}/stages/selection`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ version: 1, data: { cost: 24, salePrice: 0 } });
+  expect(invalidPrice.body).toMatchObject({
+    code: 400,
+    data: { errors: { sale_price: '售价必须大于0' } }
+  });
+  const unchangedAfterInvalidPrice = await request(app)
+    .get(`/api/payment-tracking/records/${recordId}`)
+    .set('Authorization', `Bearer ${storeAToken}`);
+  expect(unchangedAfterInvalidPrice.body.data).toMatchObject({ version: 1, salePrice: null });
 
   const selection = await request(app)
     .put(`/api/payment-tracking/records/${recordId}/stages/selection`)
@@ -379,6 +404,20 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
     endReason: '流程完成'
   });
 
+  const repeatedEnd = await request(app)
+    .post(`/api/payment-tracking/records/${recordId}/end`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ version: summarySaved.body.data.version });
+  expect(repeatedEnd.body.data).toMatchObject({
+    processStatus: 'ended',
+    version: ended.body.data.version
+  });
+
+  const selectionsCannotReadEndedDetail = await request(app)
+    .get(`/api/payment-tracking/records/${recordId}`)
+    .set('Authorization', `Bearer ${storeAToken}`);
+  expect(selectionsCannotReadEndedDetail.body.code).toBe(403);
+
   const nonPlannerRestore = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/restore`)
     .set('Authorization', `Bearer ${managerToken}`)
@@ -390,6 +429,15 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
     .set('Authorization', `Bearer ${storeAToken}`)
     .send({ version: ended.body.data.version });
   expect(restored.body.data).toMatchObject({ processStatus: 'in_progress', currentStage: 'summary' });
+
+  const repeatedRestore = await request(app)
+    .post(`/api/payment-tracking/records/${recordId}/restore`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ version: ended.body.data.version });
+  expect(repeatedRestore.body.data).toMatchObject({
+    processStatus: 'in_progress',
+    version: restored.body.data.version
+  });
 
   const reopened = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/stages/selection/reopen`)

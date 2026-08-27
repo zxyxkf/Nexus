@@ -25,6 +25,10 @@
         <span>店铺 {{ record.store || '-' }}</span>
         <span>策划 {{ record.plannerName || '-' }}</span>
         <span>产品 ID {{ record.productId || '-' }}</span>
+        <SourceTaskLink
+          :source-task-id="record.sourceTaskId"
+          :source-task-no="record.sourceTaskNo"
+        />
       </div>
       <div class="product-metrics">
         <span>毛利 <strong>{{ grossMarginText }}</strong></span>
@@ -84,6 +88,7 @@ import { Delete, EditPen, Picture, RefreshRight, View } from '@element-plus/icon
 import { getPaymentImageUrl } from '@/api'
 import { PAYMENT_STAGE_BY_CODE } from '@/config/payment-tracking'
 import StageTimeline from './StageTimeline.vue'
+import SourceTaskLink from './SourceTaskLink.vue'
 
 const props = defineProps({
   record: { type: Object, required: true }

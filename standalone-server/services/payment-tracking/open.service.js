@@ -4,7 +4,7 @@ const repository = require('./repository');
 const recordService = require('./record.service');
 const imageService = require('./image.service');
 const { PERMISSIONS } = require('./constants');
-const { assertPermission, isAdmin } = require('./access');
+const { assertPermission, assertStoreAccess, isAdmin } = require('./access');
 
 async function findSourceTask(taskId) {
   const [rows] = await getPool().execute(
@@ -36,6 +36,7 @@ async function listSourceImages(taskId) {
 async function presentOpenedRecord(recordId, user, alreadyOpened = false) {
   const record = await repository.findRecordById(recordId);
   if (!record) throw new AppError(404, '选品记录不存在');
+  assertStoreAccess(record, user);
   const [stages, images] = await Promise.all([
     repository.listEnteredStages(record.id),
     repository.listImages(record.id)

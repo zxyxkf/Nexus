@@ -43,7 +43,7 @@ router.post('/records', requirePermission('payment.selection.view'), async (req,
 
 router.delete('/records/:id', requirePermission('payment.delete'), async (req, res, next) => {
   try {
-    await recordService.deleteRecord(req.params.id, req.user);
+    await recordService.deleteRecord(req.params.id, req.body || {}, req.user);
     res.json({ code: 0, msg: '删除成功' });
   } catch (error) {
     next(error);

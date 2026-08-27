@@ -24,6 +24,13 @@ function assertStoreAccess(record, user) {
   }
 }
 
+function assertRecordViewPermission(record, user) {
+  assertPermission(
+    user,
+    record.process_status === 'ended' ? 'payment.records.view' : 'payment.selection.view'
+  );
+}
+
 function canManageOwnerRecord(record, user) {
   return isAdmin(user)
     || Number(record.planner_id) === Number(user?.id)
@@ -49,6 +56,7 @@ module.exports = {
   assertPermission,
   assertAnyPermission,
   assertStoreAccess,
+  assertRecordViewPermission,
   canManageOwnerRecord,
   buildAllowedActions
 };

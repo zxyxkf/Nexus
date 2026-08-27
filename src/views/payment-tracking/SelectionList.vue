@@ -157,7 +157,7 @@ async function deleteRecord(record) {
       confirmButtonText: '确认删除',
       type: 'warning'
     })
-    const response = await deletePaymentRecordApi(record.id)
+    const response = await deletePaymentRecordApi(record.id, record.version)
     if (response.code === 0) {
       ElMessage.success('记录已删除')
       await loadRecords()

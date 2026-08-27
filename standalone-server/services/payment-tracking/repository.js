@@ -146,12 +146,12 @@ async function insertRecord(conn, data) {
   return result.insertId;
 }
 
-async function softDeleteRecord(id) {
-  const [result] = await getPool().execute(
+async function softDeleteRecord(id, version, conn) {
+  const [result] = await executor(conn).execute(
     `UPDATE payment_selection_record
      SET deleted_at = CURRENT_TIMESTAMP, update_time = CURRENT_TIMESTAMP, version = version + 1
-     WHERE id = ? AND deleted_at IS NULL`,
-    [id]
+     WHERE id = ? AND version = ? AND deleted_at IS NULL`,
+    [id, version]
   );
   return Number(result.affectedRows || 0) > 0;
 }

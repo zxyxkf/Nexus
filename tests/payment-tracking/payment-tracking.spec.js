@@ -24,6 +24,8 @@ const records = [
   {
     ...baseRecord,
     id: 101,
+    sourceTaskId: 201,
+    sourceTaskNo: 'D202608270001',
     storeSeq: 18,
     styleNumber: 'NX-260818',
     currentStage: 'selection',
@@ -345,6 +347,14 @@ async function installMocks(page, options = {}) {
       })
       return
     }
+    if (url.pathname === '/api/task/detail') {
+      const task = reviewTasks.find(item => item.id === Number(url.searchParams.get('taskId')))
+      await route.fulfill({
+        status: task ? 200 : 404,
+        json: task ? { code: 0, data: task } : { code: 404, msg: '任务不存在' }
+      })
+      return
+    }
     if (url.pathname === '/api/payment-tracking/open/batch') {
       await route.fulfill({
         json: {
@@ -380,6 +390,18 @@ async function installMocks(page, options = {}) {
       const stageCode = stageSaveMatch[2]
       const current = getMockRecord(id)
       const payload = route.request().postDataJSON()
+      if (id === Number(options.stageSaveConflictId)) {
+        recordOverrides.set(id, {
+          ...current,
+          version: Number(current.version || 0) + 1,
+          stageData: {
+            ...current.stageData,
+            [stageCode]: { ...current.stageData?.[stageCode], reviewCount: 99 }
+          }
+        })
+        await route.fulfill({ json: { code: 409, msg: '记录已被其他人更新，请刷新后重试' } })
+        return
+      }
       const updated = {
         ...current,
         version: Number(current.version || 0) + 1,
@@ -471,6 +493,10 @@ test('列表只展示已进入的阶段节点并直接显示结束原因', async
   const activeCards = page.locator('.product-row-card')
   await expect(activeCards).toHaveCount(2)
   await expect(activeCards.nth(0).locator('.stage-node')).toHaveCount(1)
+  await expect(activeCards.nth(0).getByRole('button', { name: 'D202608270001' })).toBeVisible()
+  await activeCards.nth(0).getByRole('button', { name: 'D202608270001' }).click()
+  await expect(page.getByRole('dialog', { name: '夏季连衣裙主图' })).toBeVisible()
+  await page.getByRole('dialog', { name: '夏季连衣裙主图' }).getByRole('button', { name: '关闭', exact: true }).click()
   await expect(activeCards.nth(1).locator('.stage-node')).toHaveCount(3)
   await expect(activeCards.nth(1)).not.toContainText('第12-18天数据监测')
 
@@ -585,6 +611,18 @@ test('有效准备工作可以保存并进入测款阶段', async ({ page }) => 
   await saveRequest
   await advanceRequest
   await expect(page).toHaveURL(/#\/payment-tracking\/records\/108\/stages\/testing$/)
+})
+
+test('保存遇到版本冲突时刷新服务器最新记录', async ({ page }) => {
+  await installMocks(page, { stageSaveConflictId: 108 })
+  await page.goto('/#/payment-tracking/records/108/stages/preparation')
+
+  const reviewCount = page.getByRole('spinbutton', { name: '评价数量' })
+  await expect(reviewCount).toHaveValue('16')
+  await page.getByRole('button', { name: '保存本阶段' }).click()
+
+  await expect(page.getByText('记录已被其他人更新，请刷新后重试', { exact: true })).toBeVisible()
+  await expect(reviewCount).toHaveValue('99')
 })
 
 test('各阶段关键必填条件会阻止无效推进或结束', async ({ page }) => {

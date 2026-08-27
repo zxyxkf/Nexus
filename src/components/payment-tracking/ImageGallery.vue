@@ -91,13 +91,14 @@ import {
 
 const props = defineProps({
   recordId: { type: [Number, String], required: true },
+  version: { type: Number, required: true },
   images: { type: Array, default: () => [] },
   category: { type: String, required: true },
   label: { type: String, required: true },
   readonly: Boolean
 })
 
-const emit = defineEmits(['record-updated'])
+const emit = defineEmits(['record-updated', 'reload-requested'])
 const fileInput = ref(null)
 const busy = ref(false)
 const categoryImages = computed(() => props.images
@@ -105,13 +106,21 @@ const categoryImages = computed(() => props.images
   .sort((a, b) => (a.sortOrder - b.sortOrder) || (a.id - b.id)))
 const previewUrls = computed(() => categoryImages.value.map(getPaymentImageUrl))
 
+function handleVersionConflict(response) {
+  if (Number(response?.code) !== 409) return false
+  ElMessage.warning(response.msg || '记录已被其他人更新，请刷新后重试')
+  emit('reload-requested')
+  return true
+}
+
 async function uploadFiles(event) {
   const files = Array.from(event.target.files || [])
   event.target.value = ''
   if (!files.length) return
   busy.value = true
   try {
-    const response = await uploadPaymentImagesApi(props.recordId, props.category, files)
+    const response = await uploadPaymentImagesApi(props.recordId, props.category, files, props.version)
+    if (handleVersionConflict(response)) return
     if (response.code === 0) {
       emit('record-updated', response.data)
       ElMessage.success(`已上传 ${files.length} 张图片`)
@@ -128,7 +137,8 @@ async function moveImage(index, offset) {
   ;[ordered[index], ordered[nextIndex]] = [ordered[nextIndex], ordered[index]]
   busy.value = true
   try {
-    const response = await sortPaymentImagesApi(props.recordId, ordered.map(image => image.id))
+    const response = await sortPaymentImagesApi(props.recordId, ordered.map(image => image.id), props.version)
+    if (handleVersionConflict(response)) return
     if (response.code === 0) emit('record-updated', response.data)
   } finally {
     busy.value = false
@@ -142,7 +152,8 @@ async function removeImage(image) {
       type: 'warning'
     })
     busy.value = true
-    const response = await deletePaymentImageApi(props.recordId, image.id)
+    const response = await deletePaymentImageApi(props.recordId, image.id, props.version)
+    if (handleVersionConflict(response)) return
     if (response.code === 0) {
       emit('record-updated', response.data)
       ElMessage.success('图片已删除')

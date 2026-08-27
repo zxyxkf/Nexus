@@ -57,6 +57,7 @@ router.post(
         req.params.id,
         req.params.category,
         req.files,
+        req.body?.version,
         req.user
       );
       res.json({ code: 0, msg: '上传成功', data });
@@ -71,7 +72,12 @@ router.put(
   requirePermission('payment.selection.view'),
   async (req, res, next) => {
     try {
-      const data = await imageService.reorderImages(req.params.id, req.body?.imageIds, req.user);
+      const data = await imageService.reorderImages(
+        req.params.id,
+        req.body?.imageIds,
+        req.body?.version,
+        req.user
+      );
       res.json({ code: 0, msg: '排序已保存', data });
     } catch (error) {
       next(error);
@@ -84,7 +90,12 @@ router.delete(
   requirePermission('payment.selection.view'),
   async (req, res, next) => {
     try {
-      const data = await imageService.deleteImage(req.params.id, req.params.imageId, req.user);
+      const data = await imageService.deleteImage(
+        req.params.id,
+        req.params.imageId,
+        req.body?.version,
+        req.user
+      );
       res.json({ code: 0, msg: '图片已删除', data });
     } catch (error) {
       next(error);

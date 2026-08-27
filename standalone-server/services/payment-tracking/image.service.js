@@ -13,8 +13,10 @@ const { PERMISSIONS } = require('./constants');
 const {
   assertPermission,
   assertAnyPermission,
-  assertStoreAccess
+  assertStoreAccess,
+  assertRecordViewPermission
 } = require('./access');
+const { conflictError, requireVersion, assertVersion } = require('./optimistic-lock');
 
 const IMAGE_CATEGORIES = ['product_main', 'detail_screenshot', 'competitor'];
 const MIME_EXTENSIONS = {
@@ -79,8 +81,9 @@ async function loadEditableRecord(conn, recordId, user) {
   return record;
 }
 
-async function uploadImages(recordId, category, files, user) {
+async function uploadImages(recordId, category, files, versionValue, user) {
   validateCategory(category);
+  const version = requireVersion(versionValue);
   if (!Array.isArray(files) || !files.length) throw new AppError(400, '请选择要上传的图片');
   for (const file of files) extensionForMime(file.mimetype);
 
@@ -88,6 +91,7 @@ async function uploadImages(recordId, category, files, user) {
   try {
     await executeTransaction(async conn => {
       const record = await loadEditableRecord(conn, recordId, user);
+      assertVersion(record, version);
       const storageRoot = path.resolve(getPaymentTrackingImageDir());
       let sortOrder = await repository.getNextImageSortOrder(record.id, category, conn);
 
@@ -111,18 +115,19 @@ async function uploadImages(recordId, category, files, user) {
         sortOrder += 1;
       }
 
-      const updated = await repository.updateRecordWithVersion(conn, record.id, record.version);
-      if (!updated) throw new AppError(409, '记录已被其他人更新，请刷新后重试');
+      const updated = await repository.updateRecordWithVersion(conn, record.id, version);
+      if (!updated) throw conflictError();
     });
   } catch (error) {
     cleanupWrittenFiles(writtenPaths);
     throw error;
   }
 
-  return recordService.getRecord(recordId, user);
+  return recordService.getRecord(recordId, user, { skipViewPermission: true });
 }
 
-async function reorderImages(recordId, imageIds, user) {
+async function reorderImages(recordId, imageIds, versionValue, user) {
+  const version = requireVersion(versionValue);
   const ids = Array.isArray(imageIds) ? imageIds.map(Number) : [];
   if (!ids.length || ids.some(id => !Number.isInteger(id) || id < 1) || new Set(ids).size !== ids.length) {
     throw new AppError(400, '图片顺序参数不正确');
@@ -130,6 +135,7 @@ async function reorderImages(recordId, imageIds, user) {
 
   await executeTransaction(async conn => {
     const record = await loadEditableRecord(conn, recordId, user);
+    assertVersion(record, version);
     const selected = [];
     for (const imageId of ids) {
       const image = await repository.findImageById(imageId, conn);
@@ -148,26 +154,28 @@ async function reorderImages(recordId, imageIds, user) {
     for (let index = 0; index < ids.length; index += 1) {
       await repository.updateImageOrder(conn, ids[index], index);
     }
-    const updated = await repository.updateRecordWithVersion(conn, record.id, record.version);
-    if (!updated) throw new AppError(409, '记录已被其他人更新，请刷新后重试');
+    const updated = await repository.updateRecordWithVersion(conn, record.id, version);
+    if (!updated) throw conflictError();
   });
 
-  return recordService.getRecord(recordId, user);
+  return recordService.getRecord(recordId, user, { skipViewPermission: true });
 }
 
-async function deleteImage(recordId, imageId, user) {
+async function deleteImage(recordId, imageId, versionValue, user) {
+  const version = requireVersion(versionValue);
   await executeTransaction(async conn => {
     const record = await loadEditableRecord(conn, recordId, user);
+    assertVersion(record, version);
     const image = await repository.findImageById(imageId, conn);
     if (!image || Number(image.record_id) !== Number(record.id)) {
       throw new AppError(404, '图片不存在');
     }
     await repository.softDeleteImage(image.id, conn);
-    const updated = await repository.updateRecordWithVersion(conn, record.id, record.version);
-    if (!updated) throw new AppError(409, '记录已被其他人更新，请刷新后重试');
+    const updated = await repository.updateRecordWithVersion(conn, record.id, version);
+    if (!updated) throw conflictError();
   });
 
-  return recordService.getRecord(recordId, user);
+  return recordService.getRecord(recordId, user, { skipViewPermission: true });
 }
 
 async function getPreview(imageId, user) {
@@ -177,6 +185,7 @@ async function getPreview(imageId, user) {
   const record = await repository.findRecordById(image.record_id);
   if (!record) throw new AppError(404, '选品记录不存在');
   assertStoreAccess(record, user);
+  assertRecordViewPermission(record, user);
   const filePath = resolveStoredImagePath(image);
   if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
     throw new AppError(404, '图片文件不存在');

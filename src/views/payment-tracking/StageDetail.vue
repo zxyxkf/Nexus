@@ -18,6 +18,10 @@
               <span>#{{ String(record.storeSeq || 0).padStart(3, '0') }}</span>
               <span>{{ record.store }}</span>
               <span>策划 {{ record.plannerName || '-' }}</span>
+              <SourceTaskLink
+                :source-task-id="record.sourceTaskId"
+                :source-task-no="record.sourceTaskNo"
+              />
             </div>
           </div>
         </div>
@@ -48,6 +52,7 @@
           :readonly="!isEditable"
           :can-review="record.allowedActions?.managerReview"
           @record-updated="applyImageUpdate"
+          @reload-requested="loadRecord"
         />
         <el-empty v-else description="该阶段表单即将开放" />
       </section>
@@ -114,6 +119,7 @@ import {
   savePaymentStageApi
 } from '@/api'
 import StageTimeline from '@/components/payment-tracking/StageTimeline.vue'
+import SourceTaskLink from '@/components/payment-tracking/SourceTaskLink.vue'
 import { PAYMENT_STAGE_BY_CODE } from '@/config/payment-tracking'
 import SelectionForm from './forms/SelectionForm.vue'
 import PreparationForm from './forms/PreparationForm.vue'
@@ -315,6 +321,17 @@ function goBack() {
     : '/payment-tracking/selections')
 }
 
+async function reloadOnVersionConflict(result) {
+  const responseCode = Number(result?.code)
+  const httpStatus = Number(result?.response?.status)
+  if (responseCode !== 409 && httpStatus !== 409) return false
+  if (responseCode === 409) {
+    ElMessage.warning(result.msg || '记录已被其他人更新，请刷新后重试')
+  }
+  await loadRecord()
+  return true
+}
+
 async function saveCurrentStage(options = {}) {
   saving.value = true
   try {
@@ -322,13 +339,14 @@ async function saveCurrentStage(options = {}) {
       version: record.value.version,
       data: formData.value
     })
+    if (await reloadOnVersionConflict(response)) return null
     if (response.code === 0) {
       applyRecord(response.data)
       if (!options.silent) ElMessage.success('本阶段已保存')
       return response.data
     }
   } catch (error) {
-    if (error.response?.status === 409) await loadRecord()
+    if (await reloadOnVersionConflict(error)) return null
     throw error
   } finally {
     saving.value = false
@@ -350,13 +368,14 @@ async function advanceStage() {
       version: saved.version,
       stageCode: stageCode.value
     })
+    if (await reloadOnVersionConflict(response)) return
     if (response.code === 0) {
       applyRecord(response.data)
       ElMessage.success('已进入下一阶段')
       await router.replace(`/payment-tracking/records/${saved.id}/stages/${response.data.currentStage}`)
     }
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close' && error.response?.status === 409) await loadRecord()
+    if (error !== 'cancel' && error !== 'close') await reloadOnVersionConflict(error)
   } finally {
     advancing.value = false
   }
@@ -379,12 +398,13 @@ async function endProcess() {
     const saved = await saveCurrentStage({ silent: true })
     if (!saved) return
     const response = await endPaymentProcessApi(saved.id, { version: saved.version })
+    if (await reloadOnVersionConflict(response)) return
     if (response.code === 0) {
       ElMessage.success('流程已结束')
       await router.replace('/payment-tracking/records')
     }
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close' && error.response?.status === 409) await loadRecord()
+    if (error !== 'cancel' && error !== 'close') await reloadOnVersionConflict(error)
   } finally {
     ending.value = false
   }
@@ -400,12 +420,13 @@ async function reopenStage() {
     const response = await reopenPaymentStageApi(record.value.id, stageCode.value, {
       version: record.value.version
     })
+    if (await reloadOnVersionConflict(response)) return
     if (response.code === 0) {
       applyRecord(response.data)
       ElMessage.success('历史阶段已重开')
     }
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close' && error.response?.status === 409) await loadRecord()
+    if (error !== 'cancel' && error !== 'close') await reloadOnVersionConflict(error)
   } finally {
     reopening.value = false
   }
@@ -419,13 +440,14 @@ async function restoreProcess() {
     })
     restoring.value = true
     const response = await restorePaymentProcessApi(record.value.id, { version: record.value.version })
+    if (await reloadOnVersionConflict(response)) return
     if (response.code === 0) {
       ElMessage.success('流程已恢复')
       await router.replace(`/payment-tracking/records/${record.value.id}/stages/${response.data.currentStage}`)
       applyRecord(response.data)
     }
   } catch (error) {
-    if (error !== 'cancel' && error !== 'close' && error.response?.status === 409) await loadRecord()
+    if (error !== 'cancel' && error !== 'close') await reloadOnVersionConflict(error)
   } finally {
     restoring.value = false
   }

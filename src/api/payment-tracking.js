@@ -10,20 +10,21 @@ export const advancePaymentStageApi = (id, data) => request.post(`/api/payment-t
 export const endPaymentProcessApi = (id, data) => request.post(`/api/payment-tracking/records/${id}/end`, data)
 export const restorePaymentProcessApi = (id, data) => request.post(`/api/payment-tracking/records/${id}/restore`, data)
 export const reopenPaymentStageApi = (id, stageCode, data) => request.post(`/api/payment-tracking/records/${id}/stages/${stageCode}/reopen`, data)
-export const deletePaymentRecordApi = id => request.delete(`/api/payment-tracking/records/${id}`)
+export const deletePaymentRecordApi = (id, version) => request.delete(`/api/payment-tracking/records/${id}`, { data: { version } })
 export const openPaymentFromTaskApi = taskId => request.post(`/api/payment-tracking/open/task/${taskId}`)
 export const openPaymentBatchApi = taskIds => request.post('/api/payment-tracking/open/batch', { taskIds })
 
-export function uploadPaymentImagesApi(id, category, files) {
+export function uploadPaymentImagesApi(id, category, files, version) {
   const formData = new FormData()
+  formData.append('version', String(version))
   Array.from(files || []).forEach(file => formData.append('files', file))
   return request.post(`/api/payment-tracking/records/${id}/images/${category}`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }
   })
 }
 
-export const sortPaymentImagesApi = (id, imageIds) => request.put(`/api/payment-tracking/records/${id}/images/order`, { imageIds })
-export const deletePaymentImageApi = (id, imageId) => request.delete(`/api/payment-tracking/records/${id}/images/${imageId}`)
+export const sortPaymentImagesApi = (id, imageIds, version) => request.put(`/api/payment-tracking/records/${id}/images/order`, { imageIds, version })
+export const deletePaymentImageApi = (id, imageId, version) => request.delete(`/api/payment-tracking/records/${id}/images/${imageId}`, { data: { version } })
 
 export function getPaymentImageUrl(image) {
   if (!image?.id) return ''

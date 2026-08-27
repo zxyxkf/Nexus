@@ -63,27 +63,33 @@
       <h2>图片资料</h2>
       <ImageGallery
         :record-id="record.id"
+        :version="record.version"
         :images="record.images"
         category="product_main"
         label="产品主图"
         :readonly="readonly"
         @record-updated="emit('record-updated', $event)"
+        @reload-requested="emit('reload-requested')"
       />
       <ImageGallery
         :record-id="record.id"
+        :version="record.version"
         :images="record.images"
         category="detail_screenshot"
         label="说明截图"
         :readonly="readonly"
         @record-updated="emit('record-updated', $event)"
+        @reload-requested="emit('reload-requested')"
       />
       <ImageGallery
         :record-id="record.id"
+        :version="record.version"
         :images="record.images"
         category="competitor"
         label="竞品主图"
         :readonly="readonly"
         @record-updated="emit('record-updated', $event)"
+        @reload-requested="emit('reload-requested')"
       />
     </section>
   </el-form>
@@ -100,7 +106,7 @@ const props = defineProps({
   record: { type: Object, required: true },
   readonly: Boolean
 })
-const emit = defineEmits(['record-updated'])
+const emit = defineEmits(['record-updated', 'reload-requested'])
 const formRef = ref(null)
 
 const positivePrice = (_rule, value, callback) => {

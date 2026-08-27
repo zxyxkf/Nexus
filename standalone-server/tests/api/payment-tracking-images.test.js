@@ -78,9 +78,7 @@ beforeAll(async () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         userId: byName.get(user.username).id,
-        permissions: user === users[0]
-          ? ['payment.selection.view', 'payment.open']
-          : ['payment.selection.view'],
+        permissions: ['payment.selection.view', 'payment.open'],
         deniedPermissions: []
       });
   }
@@ -112,6 +110,7 @@ it('uploads, previews, reorders and soft deletes independently stored images', a
   const productUpload = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/images/product_main`)
     .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', '1')
     .attach('files', PNG, { filename: 'one.png', contentType: 'image/png' })
     .attach('files', PNG, { filename: 'two.png', contentType: 'image/png' });
   expect(productUpload.body.code).toBe(0);
@@ -119,15 +118,25 @@ it('uploads, previews, reorders and soft deletes independently stored images', a
   expect(productImages.map(image => image.sortOrder)).toEqual([0, 1]);
   expect(countFiles(imageRoot)).toBe(2);
 
+  const staleUpload = await request(app)
+    .post(`/api/payment-tracking/records/${recordId}/images/product_main`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', '1')
+    .attach('files', PNG, { filename: 'stale.png', contentType: 'image/png' });
+  expect(staleUpload.body.code).toBe(409);
+  expect(countFiles(imageRoot)).toBe(2);
+
   const detailUpload = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/images/detail_screenshot`)
     .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', String(productUpload.body.data.version))
     .attach('files', PNG, { filename: 'detail.png', contentType: 'image/png' });
   expect(detailUpload.body.data.images.some(image => image.category === 'detail_screenshot')).toBe(true);
 
   const competitorUpload = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/images/competitor`)
     .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', String(detailUpload.body.data.version))
     .attach('files', PNG, { filename: 'competitor.png', contentType: 'image/png' });
   expect(competitorUpload.body.data.images.some(image => image.category === 'competitor')).toBe(true);
 
@@ -147,14 +156,15 @@ it('uploads, previews, reorders and soft deletes independently stored images', a
   const reordered = await request(app)
     .put(`/api/payment-tracking/records/${recordId}/images/order`)
     .set('Authorization', `Bearer ${storeAToken}`)
-    .send({ imageIds: [secondId, firstId] });
+    .send({ imageIds: [secondId, firstId], version: competitorUpload.body.data.version });
   expect(reordered.body.data.images.filter(image => image.category === 'product_main').map(image => image.id))
     .toEqual([secondId, firstId]);
 
   const filesBeforeDelete = countFiles(imageRoot);
   const deleted = await request(app)
     .delete(`/api/payment-tracking/records/${recordId}/images/${firstId}`)
-    .set('Authorization', `Bearer ${storeAToken}`);
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ version: reordered.body.data.version });
   expect(deleted.body.code).toBe(0);
   expect(deleted.body.data.images.some(image => image.id === firstId)).toBe(false);
   expect(countFiles(imageRoot)).toBe(filesBeforeDelete);
@@ -169,6 +179,7 @@ it('rejects non-images and rolls back when the configured directory is not writa
   const nonImage = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/images/product_main`)
     .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', String(before.body.data.version))
     .attach('files', Buffer.from('not an image'), { filename: 'note.txt', contentType: 'text/plain' });
   expect(nonImage.body.code).toBe(400);
 
@@ -178,6 +189,7 @@ it('rejects non-images and rolls back when the configured directory is not writa
   const failed = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/images/product_main`)
     .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', String(before.body.data.version))
     .attach('files', PNG, { filename: 'will-fail.png', contentType: 'image/png' });
   expect(failed.body.code).not.toBe(0);
 
@@ -264,6 +276,11 @@ it('opens payment tracking from task images and reports batch skip reasons', asy
     id: openedResponse.body.data.id,
     alreadyOpened: true
   });
+
+  const crossStoreDuplicate = await request(app)
+    .post(`/api/payment-tracking/open/task/${multiImageTask}`)
+    .set('Authorization', `Bearer ${storeBToken}`);
+  expect(crossStoreDuplicate.body.code).toBe(403);
 
   const batch = await request(app)
     .post('/api/payment-tracking/open/batch')

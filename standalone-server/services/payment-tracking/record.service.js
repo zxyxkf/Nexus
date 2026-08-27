@@ -9,8 +9,10 @@ const {
   assertPermission,
   assertAnyPermission,
   assertStoreAccess,
+  assertRecordViewPermission,
   buildAllowedActions
 } = require('./access');
+const { requireVersion, assertVersion, conflictError } = require('./optimistic-lock');
 
 function presentStage(stage) {
   return {
@@ -155,11 +157,12 @@ async function listRecords(query, user) {
   };
 }
 
-async function getRecord(id, user) {
+async function getRecord(id, user, options = {}) {
   assertAnyPermission(user, [PERMISSIONS.selection, PERMISSIONS.records]);
   const record = await repository.findRecordById(id);
   if (!record) throw new AppError(404, '选品记录不存在');
   assertStoreAccess(record, user);
+  if (!options.skipViewPermission) assertRecordViewPermission(record, user);
   const [stages, images] = await Promise.all([
     repository.listEnteredStages(record.id),
     repository.listImages(record.id)
@@ -205,12 +208,18 @@ async function createManualRecord(data, user) {
   return getRecord(recordId, user);
 }
 
-async function deleteRecord(id, user) {
+async function deleteRecord(id, payload, user) {
   assertPermission(user, PERMISSIONS.delete);
-  const record = await repository.findRecordById(id);
-  if (!record) throw new AppError(404, '选品记录不存在');
-  assertStoreAccess(record, user);
-  await repository.softDeleteRecord(record.id);
+  const version = requireVersion(payload?.version);
+  await executeTransaction(async conn => {
+    const record = await repository.findRecordById(id, { conn, includeDeleted: true, forUpdate: true });
+    if (!record) throw new AppError(404, '选品记录不存在');
+    assertStoreAccess(record, user);
+    if (record.deleted_at) return;
+    assertVersion(record, version);
+    const deleted = await repository.softDeleteRecord(record.id, version, conn);
+    if (!deleted) throw conflictError();
+  });
 }
 
 module.exports = {

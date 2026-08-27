@@ -5,6 +5,7 @@ const repository = require('./repository');
 const recordService = require('./record.service');
 const { STAGES, NEXT_STAGE, PERMISSIONS } = require('./constants');
 const { validateAdvance, deriveEndSnapshot } = require('./rules');
+const { conflictError, requireVersion, assertVersion } = require('./optimistic-lock');
 const {
   assertPermission,
   assertAnyPermission,
@@ -115,10 +116,6 @@ function validationError(errors) {
   return error;
 }
 
-function conflictError() {
-  return new AppError(409, '记录已被其他人更新，请刷新后重试');
-}
-
 function localDateTime(date = new Date()) {
   const pad = value => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
@@ -139,6 +136,9 @@ function normalizeValue(field, value) {
     const number = Number(value);
     if (!Number.isFinite(number) || number < 0) {
       throw validationError({ [field]: '请输入非负数字' });
+    }
+    if (field === 'sale_price' && number <= 0) {
+      throw validationError({ sale_price: '售价必须大于0' });
     }
     return number;
   }
@@ -174,16 +174,6 @@ function normalizeStageInput(stageCode, input = {}) {
     result.adjustments = normalizeAdjustments(input.adjustments);
   }
   return result;
-}
-
-function requireVersion(value) {
-  const version = Number(value);
-  if (!Number.isInteger(version) || version < 1) throw new AppError(400, '缺少有效版本号');
-  return version;
-}
-
-function assertVersion(record, version) {
-  if (Number(record.version) !== Number(version)) throw conflictError();
 }
 
 function assertInProgress(record) {
@@ -249,7 +239,7 @@ async function saveStage(recordId, stageCode, payload, user) {
     if (Number(stage.is_reopened)) await repository.lockStage(conn, record.id, stageCode);
   });
 
-  return recordService.getRecord(recordId, user);
+  return recordService.getRecord(recordId, user, { skipViewPermission: true });
 }
 
 async function advanceStage(recordId, payload, user) {
@@ -291,7 +281,7 @@ async function advanceStage(recordId, payload, user) {
     if (!updated) throw conflictError();
   });
 
-  const result = await recordService.getRecord(recordId, user);
+  const result = await recordService.getRecord(recordId, user, { skipViewPermission: true });
   if (alreadyAdvanced) result.alreadyAdvanced = true;
   return result;
 }
@@ -302,7 +292,10 @@ async function endProcess(recordId, payload, user) {
 
   await executeTransaction(async conn => {
     const record = await loadRecordForUpdate(conn, recordId, user);
-    assertInProgress(record);
+    if (record.process_status === 'ended') {
+      if (!canManageOwnerRecord(record, user)) throw new AppError(403, '只有填写人或阶段管理人可以结束流程');
+      return;
+    }
     assertVersion(record, version);
     if (!canManageOwnerRecord(record, user)) throw new AppError(403, '只有填写人或阶段管理人可以结束流程');
 
@@ -320,7 +313,7 @@ async function endProcess(recordId, payload, user) {
     if (!updated) throw conflictError();
   });
 
-  return recordService.getRecord(recordId, user);
+  return recordService.getRecord(recordId, user, { skipViewPermission: true });
 }
 
 async function restoreProcess(recordId, payload, user) {
@@ -329,6 +322,13 @@ async function restoreProcess(recordId, payload, user) {
 
   await executeTransaction(async conn => {
     const record = await loadRecordForUpdate(conn, recordId, user);
+    if (record.process_status === 'in_progress'
+      && Number(record.version) === version + 1
+      && !record.end_stage
+      && !record.ended_at) {
+      if (!canManageOwnerRecord(record, user)) throw new AppError(403, '只有填写人或阶段管理人可以恢复流程');
+      return;
+    }
     if (record.process_status !== 'ended') throw new AppError(400, '流程尚未结束');
     assertVersion(record, version);
     if (!canManageOwnerRecord(record, user)) throw new AppError(403, '只有填写人或阶段管理人可以恢复流程');
@@ -344,7 +344,7 @@ async function restoreProcess(recordId, payload, user) {
     if (!updated) throw conflictError();
   });
 
-  return recordService.getRecord(recordId, user);
+  return recordService.getRecord(recordId, user, { skipViewPermission: true });
 }
 
 async function reopenStage(recordId, stageCode, payload, user) {
@@ -366,7 +366,7 @@ async function reopenStage(recordId, stageCode, payload, user) {
     if (!updated) throw conflictError();
   });
 
-  return recordService.getRecord(recordId, user);
+  return recordService.getRecord(recordId, user, { skipViewPermission: true });
 }
 
 module.exports = {
