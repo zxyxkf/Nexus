@@ -14,7 +14,10 @@ let storeAToken;
 let storeBToken;
 let recordId;
 let imageConfigId;
+let designImageConfigId;
 let imageRoot;
+let sourceRoot;
+let storeAUserId;
 
 const suffix = Date.now();
 
@@ -26,10 +29,14 @@ async function login(username) {
 }
 
 async function updateImageRoot(value) {
+  return updateConfig(imageConfigId, value);
+}
+
+async function updateConfig(id, value) {
   const response = await request(app)
     .put('/api/config/update')
     .set('Authorization', `Bearer ${adminToken}`)
-    .send({ id: imageConfigId, configValue: value });
+    .send({ id, configValue: value });
   expect(response.body.code).toBe(0);
 }
 
@@ -64,13 +71,16 @@ beforeAll(async () => {
     .get('/api/user/list?role=operator&pageSize=100')
     .set('Authorization', `Bearer ${adminToken}`);
   const byName = new Map(list.body.data.list.map(user => [user.username, user]));
+  storeAUserId = byName.get(users[0].username).id;
   for (const user of users) {
     await request(app)
       .post('/api/user/permissions/save')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         userId: byName.get(user.username).id,
-        permissions: ['payment.selection.view'],
+        permissions: user === users[0]
+          ? ['payment.selection.view', 'payment.open']
+          : ['payment.selection.view'],
         deniedPermissions: []
       });
   }
@@ -83,8 +93,13 @@ beforeAll(async () => {
   imageConfigId = configs.body.data.find(
     config => config.config_key === 'upload.payment_tracking_images_dir'
   ).id;
+  designImageConfigId = configs.body.data.find(
+    config => config.config_key === 'upload.design_images_dir'
+  ).id;
   imageRoot = path.join(getTmpDir(), 'payment-images');
+  sourceRoot = path.join(getTmpDir(), 'task-images');
   await updateImageRoot(imageRoot);
+  await updateConfig(designImageConfigId, sourceRoot);
 
   const created = await request(app)
     .post('/api/payment-tracking/records')
@@ -172,4 +187,92 @@ it('rejects non-images and rolls back when the configured directory is not writa
   expect(after.body.data.images).toHaveLength(beforeCount);
 
   await updateImageRoot(imageRoot);
+});
+
+it('opens payment tracking from task images and reports batch skip reasons', async () => {
+  const { execute } = require('../../config/database');
+  fs.mkdirSync(sourceRoot, { recursive: true });
+
+  async function createTask(taskNo, options = {}) {
+    const [result] = await execute(
+      `INSERT INTO task_info
+         (task_no, title, status, publisher_id, publisher_name, style_number, task_group)
+       VALUES (?, ?, 'doing', ?, ?, ?, 'design')`,
+      [
+        taskNo,
+        `开启打款测试 ${taskNo}`,
+        options.publisherId ?? storeAUserId,
+        options.publisherName || '图片A店运营',
+        options.styleNumber || `${taskNo}-STYLE`
+      ]
+    );
+    const taskId = result.insertId;
+    for (const file of options.files || []) {
+      if (!file.missing) fs.writeFileSync(path.join(sourceRoot, file.name), PNG);
+      await execute(
+        `INSERT INTO task_file
+           (task_id, file_name, file_path, file_size, file_type, mime_type, uploader_id, file_category)
+         VALUES (?, ?, ?, ?, 'image', 'image/png', ?, 'work')`,
+        [taskId, file.name, `design/images/${file.name}`, PNG.length, storeAUserId]
+      );
+    }
+    return taskId;
+  }
+
+  const [admins] = await execute("SELECT id FROM sys_user WHERE username = 'admin'");
+  const multiImageTask = await createTask('PAY-OPEN-1', {
+    styleNumber: 'STYLE-100',
+    files: [{ name: 'open-1.png' }, { name: 'open-2.png' }]
+  });
+  const noImageTask = await createTask('PAY-OPEN-2');
+  const noStoreTask = await createTask('PAY-OPEN-3', {
+    publisherId: admins[0].id,
+    publisherName: '管理员',
+    files: [{ name: 'open-no-store.png' }]
+  });
+  const missingImageTask = await createTask('PAY-OPEN-4', {
+    files: [{ name: 'missing-source.png', missing: true }]
+  });
+  const goodBatchTask = await createTask('PAY-OPEN-5', {
+    files: [{ name: 'open-batch.png' }]
+  });
+
+  const [beforeRows] = await execute('SELECT status FROM task_info WHERE id = ?', [multiImageTask]);
+  const openedResponse = await request(app)
+    .post(`/api/payment-tracking/open/task/${multiImageTask}`)
+    .set('Authorization', `Bearer ${storeAToken}`);
+  expect(openedResponse.body.code).toBe(0);
+  expect(openedResponse.body.data).toMatchObject({
+    plannerId: storeAUserId,
+    store: '图片A店',
+    styleNumber: 'STYLE-100',
+    sourceTaskId: multiImageTask,
+    sourceTaskNo: 'PAY-OPEN-1'
+  });
+  expect(openedResponse.body.data.images).toHaveLength(2);
+
+  const duplicate = await request(app)
+    .post(`/api/payment-tracking/open/task/${multiImageTask}`)
+    .set('Authorization', `Bearer ${storeAToken}`);
+  expect(duplicate.body.data).toMatchObject({
+    id: openedResponse.body.data.id,
+    alreadyOpened: true
+  });
+
+  const batch = await request(app)
+    .post('/api/payment-tracking/open/batch')
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({
+      taskIds: [multiImageTask, noImageTask, noStoreTask, missingImageTask, goodBatchTask]
+    });
+  expect(batch.body.data).toMatchObject({ successCount: 1, skippedCount: 4 });
+  expect(batch.body.data.skipped.map(item => item.reason)).toEqual(expect.arrayContaining([
+    '已开启打款',
+    '没有作品图片',
+    '任务发布人未绑定店铺',
+    '图片复制失败'
+  ]));
+
+  const [afterRows] = await execute('SELECT status FROM task_info WHERE id = ?', [multiImageTask]);
+  expect(afterRows[0].status).toBe(beforeRows[0].status);
 });

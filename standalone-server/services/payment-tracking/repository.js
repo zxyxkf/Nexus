@@ -89,10 +89,11 @@ async function findRecordById(id, options = {}) {
   return rows[0] || null;
 }
 
-async function findRecordBySourceTaskId(sourceTaskId) {
-  const [rows] = await getPool().execute(
+async function findRecordBySourceTaskId(sourceTaskId, options = {}) {
+  const deletedClause = options.includeDeleted ? '' : 'AND deleted_at IS NULL';
+  const [rows] = await executor(options.conn).execute(
     `SELECT * FROM payment_selection_record
-     WHERE source_task_id = ? AND deleted_at IS NULL`,
+     WHERE source_task_id = ? ${deletedClause}`,
     [sourceTaskId]
   );
   return rows[0] || null;
