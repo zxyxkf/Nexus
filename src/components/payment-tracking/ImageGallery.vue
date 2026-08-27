@@ -25,7 +25,13 @@
     </div>
 
     <div v-if="categoryImages.length" class="image-grid">
-      <figure v-for="(image, index) in categoryImages" :key="image.id" class="image-item">
+      <figure
+        v-for="(image, index) in categoryImages"
+        :key="image.id"
+        class="image-item"
+        :draggable="Boolean(sourceTaskFile(image))"
+        @dragstart="dragSourceTaskImage($event, image)"
+      >
         <el-image
           class="gallery-image"
           :src="previewUrls[index]"
@@ -85,6 +91,8 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   deletePaymentImageApi,
   getPaymentImageUrl,
+  registerFileDragUrl,
+  setupFileDrag,
   sortPaymentImagesApi,
   uploadPaymentImagesApi
 } from '@/api'
@@ -104,7 +112,21 @@ const busy = ref(false)
 const categoryImages = computed(() => props.images
   .filter(image => image.category === props.category)
   .sort((a, b) => (a.sortOrder - b.sortOrder) || (a.id - b.id)))
-const previewUrls = computed(() => categoryImages.value.map(getPaymentImageUrl))
+const previewUrls = computed(() => categoryImages.value.map(image => {
+  const url = getPaymentImageUrl(image)
+  const file = sourceTaskFile(image)
+  return file ? registerFileDragUrl(url, file) : url
+}))
+
+function sourceTaskFile(image) {
+  if (!image?.sourceTaskFileId || !image?.originalName) return null
+  return { id: image.sourceTaskFileId, file_name: image.originalName }
+}
+
+function dragSourceTaskImage(event, image) {
+  const file = sourceTaskFile(image)
+  if (file) setupFileDrag(event, file)
+}
 
 function handleVersionConflict(response) {
   if (Number(response?.code) !== 409) return false

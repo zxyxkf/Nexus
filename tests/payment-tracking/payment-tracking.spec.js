@@ -24,6 +24,15 @@ const records = [
   {
     ...baseRecord,
     id: 101,
+    images: [{
+      id: 501,
+      category: 'product_main',
+      originalName: 'dress-main-1.png',
+      mimeType: 'image/png',
+      fileSize: 4096,
+      sortOrder: 0,
+      sourceTaskFileId: 2001
+    }],
     sourceTaskId: 201,
     sourceTaskNo: 'D202608270001',
     storeSeq: 18,
@@ -486,6 +495,46 @@ async function expectNoHorizontalPageOverflow(page) {
   }))
   expect(dimensions.pageWidth).toBeLessThanOrEqual(dimensions.viewportWidth)
 }
+
+test('联动原任务图片拖到桌面时保留原文件名', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__paymentImageDragCalls = []
+    window.electronAPI = {
+      isFileCached(fileId) {
+        window.__paymentImageDragCalls.push({ type: 'isFileCached', fileId })
+        return false
+      },
+      doFileDrag(fileId) {
+        window.__paymentImageDragCalls.push({ type: 'doFileDrag', fileId })
+        return false
+      },
+      prepareFileDrags(params) {
+        window.__paymentImageDragCalls.push({ type: 'prepareFileDrags', params })
+        return Promise.resolve({ success: true })
+      }
+    }
+  })
+
+  await page.goto('/#/payment-tracking/records/101/stages/selection')
+  const linkedImage = page.locator('.image-item').first()
+  await expect(linkedImage).toContainText('dress-main-1.png')
+
+  const dragData = await linkedImage.evaluate(element => {
+    const dataTransfer = new DataTransfer()
+    element.dispatchEvent(new DragEvent('dragstart', { bubbles: true, cancelable: true, dataTransfer }))
+    return { downloadUrl: dataTransfer.getData('DownloadURL') }
+  })
+
+  expect(dragData.downloadUrl).toContain(':dress-main-1.png:')
+  expect(dragData.downloadUrl).toContain('/api/task/download/2001')
+  await expect.poll(() => page.evaluate(() => window.__paymentImageDragCalls)).toContainEqual({
+    type: 'prepareFileDrags',
+    params: {
+      items: [{ fileId: 2001, fileName: 'dress-main-1.png' }],
+      token: 'payment-test-token'
+    }
+  })
+})
 
 test('列表只展示已进入的阶段节点并直接显示结束原因', async ({ page }, testInfo) => {
   await page.goto('/#/payment-tracking/selections')

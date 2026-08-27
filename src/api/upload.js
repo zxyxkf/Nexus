@@ -41,6 +41,11 @@ function registerDragFileUrl(url, file) {
   ensureImageDragBridge()
 }
 
+export function registerFileDragUrl(url, file) {
+  registerDragFileUrl(url, file)
+  return url
+}
+
 function findDragFileByUrl(url) {
   if (!url) return null
   return dragFileByUrl.get(url) || dragFileByUrl.get(normalizeDragUrl(url)) || null
