@@ -25,6 +25,7 @@ const exportRoutes = require('./routes/export');
 const scoreRoutes = require('./routes/score');
 const announcementRoutes = require('./routes/announcement');
 const shopRoutes = require('./routes/shop');
+const paymentTrackingRoutes = require('./routes/payment-tracking');
 
 /**
  * 创建并返回配置完成的 Express 应用
@@ -138,6 +139,7 @@ async function createApp() {
   app.use('/api/score', scoreRoutes);
 app.use('/api/announcement', announcementRoutes);
   app.use('/api/shop', shopRoutes);
+  app.use('/api/payment-tracking', paymentTrackingRoutes);
 
   // 健康检查
   app.get('/api/health', (req, res) => {
