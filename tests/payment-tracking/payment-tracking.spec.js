@@ -105,6 +105,81 @@ const preparationRecord = {
   allowedActions: { edit: true, advance: true, end: true, managerReview: false }
 }
 
+const laterStageRecords = [
+  {
+    ...baseRecord,
+    id: 105,
+    storeSeq: 22,
+    styleNumber: 'NX-260822',
+    currentStage: 'monitoring',
+    processStatus: 'in_progress',
+    stages: [stage('selection'), stage('preparation'), stage('testing'), stage('monitoring', 'active')],
+    stageData: {
+      monitoring: {
+        domesticSalesCount: 20,
+        addedReviews: 5,
+        campaignName: '超级立减',
+        concessionRate: '10%',
+        quickPeakDone: false,
+        abandoned: true,
+        abandonReason: '自然流量不足',
+        abandonAt: '2026-08-26 10:00:00',
+        adjustments: [{
+          id: 1,
+          sortOrder: 0,
+          reason: '搜索流量下降',
+          adjustedAt: '2026-08-24 09:00:00',
+          feeRatio7d: 12.5,
+          payers7d: 38,
+          totalBudget: 2600,
+          detailText: '降低低效词出价',
+          feedbackText: '点击率回升'
+        }]
+      }
+    },
+    allowedActions: { edit: true, advance: true, end: true }
+  },
+  {
+    ...baseRecord,
+    id: 106,
+    storeSeq: 23,
+    styleNumber: 'NX-260823',
+    currentStage: 'breakout',
+    processStatus: 'in_progress',
+    stages: [stage('selection'), stage('preparation'), stage('testing'), stage('monitoring'), stage('breakout', 'active')],
+    stageData: {
+      breakout: {
+        strongLiftQualified: true,
+        searchGrowthTrend: '持续上升',
+        payerTrend: '保持平稳',
+        currentBudget: 3000,
+        feeRatio7d: 11.2,
+        payers7d: 76
+      }
+    },
+    allowedActions: { edit: true, advance: true, end: true }
+  },
+  {
+    ...baseRecord,
+    id: 107,
+    storeSeq: 24,
+    styleNumber: 'NX-260824',
+    currentStage: 'summary',
+    processStatus: 'in_progress',
+    stages: [stage('selection'), stage('preparation'), stage('testing'), stage('monitoring'), stage('breakout'), stage('summary', 'active')],
+    stageData: {
+      summary: {
+        exploded: true,
+        linkMaintenance: '小爆款',
+        styleDefinition: '强动销',
+        summaryText: '',
+        notes: ''
+      }
+    },
+    allowedActions: { edit: true, advance: false, end: true }
+  }
+]
+
 async function installMocks(page) {
   await page.addInitScript(() => {
     localStorage.setItem('d_design_token', 'payment-test-token')
@@ -151,7 +226,8 @@ async function installMocks(page) {
     }
     const detailMatch = url.pathname.match(/^\/api\/payment-tracking\/records\/(\d+)$/)
     if (detailMatch && route.request().method() === 'GET') {
-      const record = [...records, preparationRecord].find(item => item.id === Number(detailMatch[1]))
+      const record = [...records, preparationRecord, ...laterStageRecords]
+        .find(item => item.id === Number(detailMatch[1]))
       await route.fulfill({
         status: record ? 200 : 404,
         json: record ? { code: 0, data: record } : { code: 404, msg: '记录不存在' }
@@ -210,4 +286,26 @@ test('阶段详情拒绝未来节点并按测款分支展示表单', async ({ pa
 
   await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 6_000 })
   await page.screenshot({ path: testInfo.outputPath('payment-preparation.png'), fullPage: true })
+})
+
+test('后续阶段按业务分支展示并使用独立总结选项', async ({ page }, testInfo) => {
+  await page.goto('/#/payment-tracking/records/105/stages/monitoring')
+  await expect(page.getByRole('heading', { name: '第12-18天数据监测' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '推广调整' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '新增调整' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: '放弃原因' })).toHaveValue('自然流量不足')
+  await expect(page.getByRole('button', { name: '进入下一阶段' })).toHaveCount(0)
+
+  await page.goto('/#/payment-tracking/records/106/stages/breakout')
+  await expect(page.getByRole('heading', { name: '第12-30天打爆' })).toBeVisible()
+  await expect(page.getByText('搜索涨幅趋势')).toBeVisible()
+  await expect(page.getByText('付款人数趋势')).toBeVisible()
+
+  await page.goto('/#/payment-tracking/records/107/stages/summary')
+  await expect(page.getByRole('heading', { name: '总结阶段：生命周期' })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: '链接维护' })).toBeVisible()
+  await expect(page.getByRole('combobox', { name: '款式定义' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '完成流程' })).toBeVisible()
+
+  await page.screenshot({ path: testInfo.outputPath('payment-summary.png'), fullPage: true })
 })

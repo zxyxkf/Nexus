@@ -5,6 +5,7 @@
         type="button"
         class="stage-node"
         :class="stageClass(stage)"
+        :title="stageLabel(stage.stageCode)"
         @click="emit('select', stage)"
       >
         <span class="stage-index">{{ index + 1 }}</span>
@@ -61,7 +62,7 @@ function stageClass(stage) {
   display: inline-flex;
   align-items: center;
   justify-content: flex-start;
-  width: 132px;
+  width: 160px;
   height: 36px;
   padding: 0 9px;
   border: 1px solid var(--dd-border, #dcdfe6);

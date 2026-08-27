@@ -337,7 +337,11 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
   const monitored = await request(app)
     .put(`/api/payment-tracking/records/${recordId}/stages/monitoring`)
     .set('Authorization', `Bearer ${storeAToken}`)
-    .send({ version: monitoring.body.data.version, data: { abandoned: false, domesticSalesCount: 10 } });
+    .send({
+      version: monitoring.body.data.version,
+      data: { abandoned: false, domesticSalesCount: 10, concessionRate: '25%以上' }
+    });
+  expect(monitored.body.data.stageData.monitoring.concessionRate).toBe('25%以上');
   const breakout = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/advance`)
     .set('Authorization', `Bearer ${storeAToken}`)

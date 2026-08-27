@@ -98,7 +98,7 @@ const BOOLEAN_FIELDS = new Set([
 const NUMBER_FIELDS = new Set([
   'cost', 'sale_price', 'review_count', 'car_clicks', 'car_ctr',
   'overall_visitors', 'search_visitors', 'buyers', 'average_ctr',
-  'domestic_sales_count', 'added_reviews', 'qa_count', 'concession_rate',
+  'domestic_sales_count', 'added_reviews', 'qa_count',
   'pit_output_day1', 'pit_output_day2', 'pit_output_day3', 'current_budget',
   'fee_ratio_7d', 'payers_7d', 'total_budget'
 ]);

@@ -77,7 +77,7 @@
             :icon="CircleClose"
             :loading="ending"
             @click="endProcess"
-          >结束流程</el-button>
+          >{{ endActionLabel }}</el-button>
           <el-button
             v-if="showReopen"
             type="warning"
@@ -118,11 +118,17 @@ import { PAYMENT_STAGE_BY_CODE } from '@/config/payment-tracking'
 import SelectionForm from './forms/SelectionForm.vue'
 import PreparationForm from './forms/PreparationForm.vue'
 import TestingForm from './forms/TestingForm.vue'
+import MonitoringForm from './forms/MonitoringForm.vue'
+import BreakoutForm from './forms/BreakoutForm.vue'
+import SummaryForm from './forms/SummaryForm.vue'
 
 const FORM_COMPONENTS = {
   selection: SelectionForm,
   preparation: PreparationForm,
-  testing: TestingForm
+  testing: TestingForm,
+  monitoring: MonitoringForm,
+  breakout: BreakoutForm,
+  summary: SummaryForm
 }
 
 const route = useRoute()
@@ -139,6 +145,7 @@ const formRef = ref(null)
 
 const stageCode = computed(() => String(route.params.stageCode || ''))
 const stageTitle = computed(() => stageLabel(stageCode.value))
+const endActionLabel = computed(() => stageCode.value === 'summary' ? '完成流程' : '结束流程')
 const currentStageEntry = computed(() => record.value?.stages?.find(stage => stage.stageCode === stageCode.value) || null)
 const currentFormComponent = computed(() => FORM_COMPONENTS[stageCode.value] || null)
 const isCurrentStage = computed(() => record.value?.currentStage === stageCode.value)
@@ -214,6 +221,53 @@ function createStageModel(data, code) {
       unqualifiedAction: stageData.unqualifiedAction ?? '',
       managerReportDate: stageData.managerReportDate ?? null,
       weiStockReported: stageData.weiStockReported ?? null
+    }
+  }
+  if (code === 'monitoring') {
+    return {
+      domesticSalesCount: stageData.domesticSalesCount ?? null,
+      addedReviews: stageData.addedReviews ?? null,
+      titleOptimizedAt: stageData.titleOptimizedAt ?? null,
+      qaCount: stageData.qaCount ?? null,
+      detailOptimizedAt: stageData.detailOptimizedAt ?? null,
+      materialSelected: stageData.materialSelected ?? null,
+      skuOptimizedAt: stageData.skuOptimizedAt ?? null,
+      campaignName: stageData.campaignName ?? '',
+      concessionRate: stageData.concessionRate ?? null,
+      quickPeakDone: stageData.quickPeakDone ?? null,
+      abandoned: stageData.abandoned ?? false,
+      abandonReason: stageData.abandonReason ?? '',
+      abandonAt: stageData.abandonAt ?? null,
+      adjustments: (stageData.adjustments || []).map(item => ({ ...item }))
+    }
+  }
+  if (code === 'breakout') {
+    return {
+      pitOutputDay1: stageData.pitOutputDay1 ?? null,
+      pitOutputDay2: stageData.pitOutputDay2 ?? null,
+      pitOutputDay3: stageData.pitOutputDay3 ?? null,
+      flashSaleAt: stageData.flashSaleAt ?? null,
+      superBreakoutAt: stageData.superBreakoutAt ?? null,
+      rapidBreakoutAt: stageData.rapidBreakoutAt ?? null,
+      strongLiftQualified: stageData.strongLiftQualified ?? null,
+      searchGrowthTrend: stageData.searchGrowthTrend ?? '',
+      payerTrend: stageData.payerTrend ?? '',
+      currentBudget: stageData.currentBudget ?? null,
+      feeRatio7d: stageData.feeRatio7d ?? null,
+      payers7d: stageData.payers7d ?? null,
+      adjustedAt: stageData.adjustedAt ?? null,
+      totalBudget: stageData.totalBudget ?? null,
+      detailText: stageData.detailText ?? '',
+      feedbackText: stageData.feedbackText ?? ''
+    }
+  }
+  if (code === 'summary') {
+    return {
+      exploded: stageData.exploded ?? null,
+      linkMaintenance: stageData.linkMaintenance ?? '',
+      styleDefinition: stageData.styleDefinition ?? '',
+      summaryText: stageData.summaryText ?? '',
+      notes: stageData.notes ?? ''
     }
   }
   return { ...stageData }
@@ -310,10 +364,17 @@ async function advanceStage() {
 
 async function endProcess() {
   try {
-    await ElMessageBox.confirm('确认结束该商品的打款流程？结束后会进入打款记录。', '结束流程', {
-      confirmButtonText: '确认结束',
-      type: 'warning'
-    })
+    await formRef.value?.validateForEnd?.()
+    await ElMessageBox.confirm(
+      stageCode.value === 'summary'
+        ? '确认完成该商品的打款流程？完成后会进入打款记录。'
+        : '确认结束该商品的打款流程？结束后会进入打款记录。',
+      endActionLabel.value,
+      {
+        confirmButtonText: stageCode.value === 'summary' ? '确认完成' : '确认结束',
+        type: 'warning'
+      }
+    )
     ending.value = true
     const saved = await saveCurrentStage({ silent: true })
     if (!saved) return
@@ -380,7 +441,6 @@ watch(
 <style scoped>
 .payment-page {
   min-width: 0;
-  padding-bottom: 72px;
 }
 
 .detail-header,
@@ -457,9 +517,6 @@ h1 {
 }
 
 .action-bar {
-  position: sticky;
-  bottom: 0;
-  z-index: 4;
   justify-content: flex-end;
   min-height: 62px;
   margin-top: 18px;
