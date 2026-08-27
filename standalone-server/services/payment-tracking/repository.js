@@ -1,5 +1,45 @@
 const { getPool } = require('../../config/database');
 
+const STAGE_TABLES = {
+  preparation: 'payment_selection_preparation',
+  testing: 'payment_selection_testing',
+  monitoring: 'payment_selection_monitoring',
+  breakout: 'payment_selection_breakout',
+  summary: 'payment_selection_summary'
+};
+
+const STAGE_FIELDS = {
+  selection: [
+    'selection_date', 'style_number', 'cost', 'sale_price', 'product_id',
+    'selection_method', 'detail_text', 'design_main_image', 'sku_le_200',
+    'listing_date', 'listing_category'
+  ],
+  preparation: ['review_count', 'new_ops_registered', 'paid_enabled', 'paid_at'],
+  testing: [
+    'car_promotion_method', 'car_clicks', 'car_ctr', 'car_qualifies',
+    'site_promotion_method', 'overall_visitors', 'search_visitors', 'buyers',
+    'average_ctr', 'potential_status', 'unqualified_action',
+    'manager_report_date', 'wei_stock_reported'
+  ],
+  monitoring: [
+    'domestic_sales_count', 'added_reviews', 'title_optimized_at', 'qa_count',
+    'detail_optimized_at', 'material_selected', 'sku_optimized_at',
+    'campaign_name', 'concession_rate', 'quick_peak_done', 'abandoned',
+    'abandon_reason', 'abandon_at'
+  ],
+  breakout: [
+    'pit_output_day1', 'pit_output_day2', 'pit_output_day3', 'flash_sale_at',
+    'super_breakout_at', 'rapid_breakout_at', 'strong_lift_qualified',
+    'search_growth_trend', 'payer_trend', 'current_budget', 'fee_ratio_7d',
+    'payers_7d', 'adjusted_at', 'total_budget', 'detail_text', 'feedback_text'
+  ],
+  summary: ['exploded', 'link_maintenance', 'style_definition', 'summary_text', 'notes']
+};
+
+function executor(conn) {
+  return conn || getPool();
+}
+
 function buildRecordWhere(filters) {
   const clauses = ['deleted_at IS NULL'];
   const params = [];
@@ -41,8 +81,9 @@ async function countRecords(filters) {
 
 async function findRecordById(id, options = {}) {
   const deletedClause = options.includeDeleted ? '' : 'AND deleted_at IS NULL';
-  const [rows] = await getPool().execute(
-    `SELECT * FROM payment_selection_record WHERE id = ? ${deletedClause}`,
+  const lockClause = options.forUpdate ? 'FOR UPDATE' : '';
+  const [rows] = await executor(options.conn).execute(
+    `SELECT * FROM payment_selection_record WHERE id = ? ${deletedClause} ${lockClause}`,
     [id]
   );
   return rows[0] || null;
@@ -106,8 +147,8 @@ async function softDeleteRecord(id) {
   return Number(result.affectedRows || 0) > 0;
 }
 
-async function listEnteredStages(recordId) {
-  const [rows] = await getPool().execute(
+async function listEnteredStages(recordId, conn) {
+  const [rows] = await executor(conn).execute(
     `SELECT * FROM payment_selection_stage
      WHERE record_id = ? ORDER BY id ASC`,
     [recordId]
@@ -123,11 +164,11 @@ async function insertInitialStage(conn, recordId) {
   );
 }
 
-async function listImages(recordId, category) {
+async function listImages(recordId, category, conn) {
   const params = [recordId];
   const categoryClause = category ? 'AND category = ?' : '';
   if (category) params.push(category);
-  const [rows] = await getPool().execute(
+  const [rows] = await executor(conn).execute(
     `SELECT * FROM payment_selection_image
      WHERE record_id = ? AND deleted_at IS NULL ${categoryClause}
      ORDER BY category ASC, sort_order ASC, id ASC`,
@@ -167,6 +208,174 @@ async function softDeleteImage(imageId) {
   return Number(result.affectedRows || 0) > 0;
 }
 
+async function findStage(recordId, stageCode, conn) {
+  const [rows] = await executor(conn).execute(
+    `SELECT * FROM payment_selection_stage
+     WHERE record_id = ? AND stage_code = ?`,
+    [recordId, stageCode]
+  );
+  return rows[0] || null;
+}
+
+async function loadStageData(recordId, stageCode, conn) {
+  const fields = STAGE_FIELDS[stageCode];
+  if (!fields) return null;
+  if (stageCode === 'selection') {
+    const [rows] = await executor(conn).execute(
+      `SELECT ${fields.join(', ')} FROM payment_selection_record WHERE id = ?`,
+      [recordId]
+    );
+    return rows[0] || null;
+  }
+
+  const table = STAGE_TABLES[stageCode];
+  const [rows] = await executor(conn).execute(
+    `SELECT ${fields.join(', ')} FROM ${table} WHERE record_id = ?`,
+    [recordId]
+  );
+  const data = rows[0] || {};
+  if (stageCode === 'monitoring') {
+    const [adjustments] = await executor(conn).execute(
+      `SELECT sort_order, reason, adjusted_at, fee_ratio_7d, payers_7d,
+              total_budget, detail_text, feedback_text
+       FROM payment_selection_adjustment
+       WHERE record_id = ? ORDER BY sort_order ASC, id ASC`,
+      [recordId]
+    );
+    data.adjustments = adjustments;
+  }
+  return data;
+}
+
+async function ensureStageDataRow(conn, recordId, stageCode) {
+  if (stageCode === 'selection') return;
+  const table = STAGE_TABLES[stageCode];
+  const [rows] = await conn.execute(`SELECT record_id FROM ${table} WHERE record_id = ?`, [recordId]);
+  if (!rows.length) {
+    await conn.execute(`INSERT INTO ${table} (record_id) VALUES (?)`, [recordId]);
+  }
+}
+
+async function replaceAdjustments(conn, recordId, adjustments) {
+  await conn.execute('DELETE FROM payment_selection_adjustment WHERE record_id = ?', [recordId]);
+  for (let index = 0; index < adjustments.length; index += 1) {
+    const item = adjustments[index] || {};
+    await conn.execute(
+      `INSERT INTO payment_selection_adjustment
+         (record_id, sort_order, reason, adjusted_at, fee_ratio_7d, payers_7d,
+          total_budget, detail_text, feedback_text)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        recordId,
+        index,
+        item.reason || '',
+        item.adjusted_at || null,
+        item.fee_ratio_7d ?? null,
+        item.payers_7d ?? null,
+        item.total_budget ?? null,
+        item.detail_text || '',
+        item.feedback_text || ''
+      ]
+    );
+  }
+}
+
+async function saveStageData(conn, recordId, stageCode, data) {
+  const fields = STAGE_FIELDS[stageCode];
+  if (!fields) throw new Error(`Unsupported stage: ${stageCode}`);
+  await ensureStageDataRow(conn, recordId, stageCode);
+
+  const suppliedFields = fields.filter(field => Object.prototype.hasOwnProperty.call(data, field));
+  if (suppliedFields.length) {
+    const table = stageCode === 'selection' ? 'payment_selection_record' : STAGE_TABLES[stageCode];
+    const idColumn = stageCode === 'selection' ? 'id' : 'record_id';
+    await conn.execute(
+      `UPDATE ${table} SET ${suppliedFields.map(field => `${field} = ?`).join(', ')}
+       WHERE ${idColumn} = ?`,
+      [...suppliedFields.map(field => data[field]), recordId]
+    );
+  }
+
+  if (stageCode === 'monitoring' && Object.prototype.hasOwnProperty.call(data, 'adjustments')) {
+    await replaceAdjustments(conn, recordId, data.adjustments || []);
+  }
+}
+
+async function updateRecordWithVersion(conn, recordId, version, fields = {}) {
+  const allowed = new Set([
+    'current_stage', 'process_status', 'end_stage', 'end_type', 'end_reason', 'ended_at'
+  ]);
+  const entries = Object.entries(fields).filter(([field]) => allowed.has(field));
+  const assignments = entries.map(([field]) => `${field} = ?`);
+  const values = entries.map(([, value]) => value);
+  const [result] = await conn.execute(
+    `UPDATE payment_selection_record
+     SET ${assignments.length ? `${assignments.join(', ')}, ` : ''}
+         version = version + 1, update_time = CURRENT_TIMESTAMP
+     WHERE id = ? AND version = ? AND deleted_at IS NULL`,
+    [...values, recordId, version]
+  );
+  return Number(result.affectedRows || 0) === 1;
+}
+
+async function markStageCompleted(conn, recordId, stageCode) {
+  await conn.execute(
+    `UPDATE payment_selection_stage
+     SET stage_status = 'completed', completed_at = CURRENT_TIMESTAMP, is_reopened = 0
+     WHERE record_id = ? AND stage_code = ?`,
+    [recordId, stageCode]
+  );
+}
+
+async function markStageEnded(conn, recordId, stageCode) {
+  await conn.execute(
+    `UPDATE payment_selection_stage
+     SET stage_status = 'ended', completed_at = CURRENT_TIMESTAMP, is_reopened = 0
+     WHERE record_id = ? AND stage_code = ?`,
+    [recordId, stageCode]
+  );
+}
+
+async function restoreCurrentStage(conn, recordId, stageCode) {
+  await conn.execute(
+    `UPDATE payment_selection_stage
+     SET stage_status = 'active', completed_at = NULL, is_reopened = 0
+     WHERE record_id = ? AND stage_code = ?`,
+    [recordId, stageCode]
+  );
+}
+
+async function insertStage(conn, recordId, stageCode) {
+  const existing = await findStage(recordId, stageCode, conn);
+  if (existing) return existing.id;
+  const [result] = await conn.execute(
+    `INSERT INTO payment_selection_stage (record_id, stage_code, stage_status)
+     VALUES (?, ?, 'active')`,
+    [recordId, stageCode]
+  );
+  return result.insertId;
+}
+
+async function reopenStage(conn, recordId, stageCode) {
+  await conn.execute(
+    'UPDATE payment_selection_stage SET is_reopened = 0 WHERE record_id = ?',
+    [recordId]
+  );
+  await conn.execute(
+    `UPDATE payment_selection_stage SET is_reopened = 1
+     WHERE record_id = ? AND stage_code = ? AND stage_status = 'completed'`,
+    [recordId, stageCode]
+  );
+}
+
+async function lockStage(conn, recordId, stageCode) {
+  await conn.execute(
+    `UPDATE payment_selection_stage SET is_reopened = 0
+     WHERE record_id = ? AND stage_code = ?`,
+    [recordId, stageCode]
+  );
+}
+
 module.exports = {
   listRecords,
   countRecords,
@@ -177,7 +386,18 @@ module.exports = {
   softDeleteRecord,
   listEnteredStages,
   insertInitialStage,
+  findStage,
+  loadStageData,
+  saveStageData,
+  updateRecordWithVersion,
+  markStageCompleted,
+  markStageEnded,
+  restoreCurrentStage,
+  insertStage,
+  reopenStage,
+  lockStage,
   listImages,
   insertImage,
-  softDeleteImage
+  softDeleteImage,
+  STAGE_FIELDS
 };

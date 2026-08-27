@@ -3,7 +3,7 @@ const { executeTransaction } = require('../../config/database');
 const { ownsPermission } = require('../../middleware/auth');
 const repository = require('./repository');
 const { PERMISSIONS } = require('./constants');
-const { calculateGrossMargin } = require('./rules');
+const { calculateGrossMargin, calculateSearchShare } = require('./rules');
 const {
   isAdmin,
   assertPermission,
@@ -36,7 +36,23 @@ function presentImage(image) {
   };
 }
 
-function presentRecord(record, stages = [], images = [], user) {
+function snakeToCamel(value) {
+  if (Array.isArray(value)) return value.map(snakeToCamel);
+  if (!value || typeof value !== 'object') return value;
+  return Object.fromEntries(Object.entries(value).map(([key, item]) => [
+    key.replace(/_([a-z0-9])/g, (_, char) => char.toUpperCase()),
+    snakeToCamel(item)
+  ]));
+}
+
+function presentRecord(record, stages = [], images = [], user, stageData = {}) {
+  const presentedStageData = snakeToCamel(stageData);
+  if (presentedStageData.testing) {
+    presentedStageData.testing.searchVisitorShare = calculateSearchShare(
+      presentedStageData.testing.searchVisitors,
+      presentedStageData.testing.overallVisitors
+    );
+  }
   return {
     id: record.id,
     store: record.store,
@@ -67,6 +83,7 @@ function presentRecord(record, stages = [], images = [], user) {
     createdAt: record.create_time,
     updatedAt: record.update_time,
     stages: stages.map(presentStage),
+    stageData: presentedStageData,
     images: images.map(presentImage),
     allowedActions: buildAllowedActions(record, user)
   };
@@ -118,7 +135,11 @@ async function getRecord(id, user) {
     repository.listEnteredStages(record.id),
     repository.listImages(record.id)
   ]);
-  return presentRecord(record, stages, images, user);
+  const entries = await Promise.all(stages.map(async stage => [
+    stage.stage_code,
+    await repository.loadStageData(record.id, stage.stage_code)
+  ]));
+  return presentRecord(record, stages, images, user, Object.fromEntries(entries));
 }
 
 function isStoreSequenceConflict(error) {

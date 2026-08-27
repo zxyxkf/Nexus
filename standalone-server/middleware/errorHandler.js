@@ -8,7 +8,7 @@ const AppError = require('../utils/AppError');
 function errorHandler(err, req, res, _next) {
   // 业务错误
   if (err instanceof AppError) {
-    return res.json({ code: err.code, msg: err.message });
+    return res.json({ code: err.code, msg: err.message, ...(err.data ? { data: err.data } : {}) });
   }
 
   // 兼容事务回调中 throw { status, msg } 的旧写法（逐步替换）
