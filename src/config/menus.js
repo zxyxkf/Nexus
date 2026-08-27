@@ -9,6 +9,7 @@ export const MENU_SECTIONS = [
   { key: 'cs_basic', label: '客服基础美工' },
   { key: 'designer', label: '美工设计师' },
   { key: 'basic_designer', label: '基础美工' },
+  { key: 'payment_tracking', label: '打款跟踪' },
   { key: 'data', label: '数据' },
   { key: 'score', label: '分值管理' },
   { key: 'overview', label: '概览' },
@@ -44,6 +45,9 @@ export const MENU_REGISTRY = [
   { group: 'basic_designer', path: '/basic/tasks/todo', icon: 'List', label: '待做任务', permission: 'basic.tasks.cs' },
   { group: 'basic_designer', path: '/basic/tasks/pending', icon: 'Select', label: '待审核任务', permission: 'basic.tasks.cs' },
 
+  { group: 'payment_tracking', path: '/payment-tracking/selections', icon: 'List', label: '选品收集', permission: 'payment.selection.view' },
+  { group: 'payment_tracking', path: '/payment-tracking/records', icon: 'Document', label: '打款记录', permission: 'payment.records.view' },
+
   { group: 'data', path: '/operator/stats', icon: 'DataLine', label: '个人统计', permission: 'stats.personal', roles: ['operator'] },
   { group: 'data', path: '/cs/stats', icon: 'DataLine', label: '个人统计', permission: 'stats.personal', roles: ['cs_agent'] },
   { group: 'data', path: '/designer/stats', icon: 'DataLine', label: '个人统计', permission: 'stats.personal', roles: ['designer'] },
@@ -72,14 +76,14 @@ export const MENU_REGISTRY = [
 ]
 
 const BUSINESS_SECTION_BY_ROLE = {
-  operator: ['operator_design', 'operator_assistant', 'cs_basic', 'designer', 'basic_designer', 'data', 'score', 'common'],
-  cs_agent: ['cs_basic', 'operator_design', 'operator_assistant', 'designer', 'basic_designer', 'data', 'score', 'common'],
-  designer: ['designer', 'operator_design', 'operator_assistant', 'cs_basic', 'basic_designer', 'data', 'score', 'common'],
-  basic_designer: ['basic_designer', 'cs_basic', 'operator_design', 'operator_assistant', 'designer', 'data', 'score', 'common'],
-  operator_assistant: ['operator_assistant', 'operator_design', 'cs_basic', 'designer', 'basic_designer', 'data', 'score', 'common']
+  operator: ['operator_design', 'operator_assistant', 'cs_basic', 'designer', 'basic_designer', 'payment_tracking', 'data', 'score', 'common'],
+  cs_agent: ['cs_basic', 'operator_design', 'operator_assistant', 'designer', 'basic_designer', 'payment_tracking', 'data', 'score', 'common'],
+  designer: ['designer', 'operator_design', 'operator_assistant', 'cs_basic', 'basic_designer', 'payment_tracking', 'data', 'score', 'common'],
+  basic_designer: ['basic_designer', 'cs_basic', 'operator_design', 'operator_assistant', 'designer', 'payment_tracking', 'data', 'score', 'common'],
+  operator_assistant: ['operator_assistant', 'operator_design', 'cs_basic', 'designer', 'basic_designer', 'payment_tracking', 'data', 'score', 'common']
 }
 
-const ADMIN_SECTION_ORDER = ['overview', 'all_tasks', 'score', 'system', 'common']
+const ADMIN_SECTION_ORDER = ['overview', 'all_tasks', 'payment_tracking', 'score', 'system', 'common']
 const GLOBAL_SECTION_ORDER = MENU_SECTIONS.map(section => section.key)
 const ADMIN_ONLY_PERMISSIONS = new Set(['admin.users'])
 const STRICT_ROLE_PERMISSIONS = new Set(['stats.personal'])

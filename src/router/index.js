@@ -194,6 +194,24 @@ const routes = [
         component: () => import('@/views/operator-assistant/Stats.vue'),
         meta: { title: '个人统计', roles: ['operator_assistant', 'admin'], permission: 'stats.personal' }
       },
+      {
+        path: 'payment-tracking/selections',
+        name: 'PaymentSelectionList',
+        component: () => import('@/views/payment-tracking/SelectionList.vue'),
+        meta: { title: '选品收集', permission: 'payment.selection.view' }
+      },
+      {
+        path: 'payment-tracking/records',
+        name: 'PaymentRecordsList',
+        component: () => import('@/views/payment-tracking/RecordsList.vue'),
+        meta: { title: '打款记录', permission: 'payment.records.view' }
+      },
+      {
+        path: 'payment-tracking/records/:id/stages/:stageCode',
+        name: 'PaymentStageDetail',
+        component: () => import('@/views/payment-tracking/StageDetail.vue'),
+        meta: { title: '选品阶段详情', permissions: ['payment.selection.view', 'payment.records.view'] }
+      },
       // 管理员端
       {
         path: 'dashboard',
@@ -327,7 +345,7 @@ router.beforeEach((to, from, next) => {
     return
   }
 
-  if (to.meta.permission && !permissionAllowed) {
+  if ((to.meta.permission || to.meta.permissions) && !permissionAllowed) {
     next(firstAllowedPath(user))
     return
   }
