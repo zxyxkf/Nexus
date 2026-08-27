@@ -7,6 +7,7 @@
 const path = require('path');
 const fs = require('fs');
 const dbEngine = require('./db-engine');
+const PAYMENT_TRACKING_TABLES = require('./payment-tracking-schema');
 
 // ===== 初始化 SQL 表（兼容 SQLite 和 MySQL） =====
 
@@ -466,6 +467,9 @@ const CREATE_TABLES_SQL = {
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
   ]
 };
+
+CREATE_TABLES_SQL.sqlite.push(...PAYMENT_TRACKING_TABLES.sqlite);
+CREATE_TABLES_SQL.mysql.push(...PAYMENT_TRACKING_TABLES.mysql);
 
 const SEED_DATA = {
   sqlite: [
