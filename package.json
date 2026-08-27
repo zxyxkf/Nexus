@@ -8,6 +8,7 @@
     "dev:full": "concurrently \"cd standalone-server && npm start\" \"cross-env VITE_FORCE_LOCAL_API=1 vite\"",
     "build": "vite build",
     "test:task-pages": "playwright test --config=playwright.task-pages.config.js",
+    "test:payment-tracking": "playwright test --config=playwright.payment-tracking.config.js",
     "electron:dev": "concurrently \"vite\" \"wait-on http://localhost:5173 && cross-env NODE_ENV=development electron .\"",
     "electron:build": "vite build && electron-builder --win --x64",
     "electron:build:dir": "vite build && electron-builder --win --x64 --dir",
