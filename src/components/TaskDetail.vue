@@ -1,12 +1,21 @@
 <template>
-  <el-dialog
-    :model-value="visible"
+  <TaskDetailOverlay
+    :visible="visible"
     :title="task?.title || '任务详情'"
-    width="75%"
-    top="3vh"
-    destroy-on-close
-    @update:model-value="$emit('close')"
+    @close="$emit('close')"
   >
+    <template #summary>
+      <span v-if="task?.designer_name">{{ task.designer_name }}</span>
+      <el-tag v-if="task" :type="statusType(task.status)" size="small">
+        {{ statusLabel(task.status) }}
+      </el-tag>
+      <span v-if="task?.submit_time">{{ formatTime(task.submit_time) }}</span>
+    </template>
+
+    <template #actions>
+      <slot name="actions" />
+    </template>
+
     <template v-if="task">
       <TaskStatusTimeline :task="task" :task-group="taskGroup" class="detail-timeline" />
 
@@ -114,12 +123,7 @@
         :records="task.reject_records || []"
       />
     </template>
-
-    <template #footer>
-      <slot name="actions" />
-      <el-button @click="$emit('close')">关闭</el-button>
-    </template>
-  </el-dialog>
+  </TaskDetailOverlay>
 
   <!-- 图片预览 -->
   <el-image-viewer
@@ -134,6 +138,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { Document } from '@element-plus/icons-vue'
+import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import RejectHistory from '@/components/RejectHistory.vue'
 import { getFileUrl, downloadFile as downloadFileUtil, setupFileDrag } from '@/api/upload'
