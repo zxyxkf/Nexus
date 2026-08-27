@@ -1,8 +1,10 @@
 const express = require('express');
-const { requireAnyPermission, requirePermission } = require('../../middleware/auth');
+const { requireAuth, requireAnyPermission, requirePermission } = require('../../middleware/auth');
 const workflowService = require('../../services/payment-tracking/workflow.service');
 
 const router = express.Router();
+
+router.use(requireAuth);
 
 router.put(
   '/records/:id/stages/:stageCode',

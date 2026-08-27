@@ -1,8 +1,10 @@
 const express = require('express');
-const { requireAnyPermission, requirePermission } = require('../../middleware/auth');
+const { requireAuth, requireAnyPermission, requirePermission } = require('../../middleware/auth');
 const recordService = require('../../services/payment-tracking/record.service');
 
 const router = express.Router();
+
+router.use(requireAuth);
 
 router.get(
   '/records',

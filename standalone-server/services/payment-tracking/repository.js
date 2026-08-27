@@ -1,4 +1,4 @@
-const { getPool } = require('../../config/database');
+const { getPool, getMode } = require('../../config/database');
 
 const STAGE_TABLES = {
   preparation: 'payment_selection_preparation',
@@ -81,7 +81,7 @@ async function countRecords(filters) {
 
 async function findRecordById(id, options = {}) {
   const deletedClause = options.includeDeleted ? '' : 'AND deleted_at IS NULL';
-  const lockClause = options.forUpdate ? 'FOR UPDATE' : '';
+  const lockClause = options.forUpdate && getMode() === 'mysql' ? 'FOR UPDATE' : '';
   const [rows] = await executor(options.conn).execute(
     `SELECT * FROM payment_selection_record WHERE id = ? ${deletedClause} ${lockClause}`,
     [id]
@@ -199,13 +199,40 @@ async function insertImage(conn, data) {
   return result.insertId;
 }
 
-async function softDeleteImage(imageId) {
-  const [result] = await getPool().execute(
+async function softDeleteImage(imageId, conn) {
+  const [result] = await executor(conn).execute(
     `UPDATE payment_selection_image SET deleted_at = CURRENT_TIMESTAMP
      WHERE id = ? AND deleted_at IS NULL`,
     [imageId]
   );
   return Number(result.affectedRows || 0) > 0;
+}
+
+async function findImageById(imageId, conn) {
+  const [rows] = await executor(conn).execute(
+    `SELECT * FROM payment_selection_image
+     WHERE id = ? AND deleted_at IS NULL`,
+    [imageId]
+  );
+  return rows[0] || null;
+}
+
+async function getNextImageSortOrder(recordId, category, conn) {
+  const [rows] = await executor(conn).execute(
+    `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order
+     FROM payment_selection_image
+     WHERE record_id = ? AND category = ? AND deleted_at IS NULL`,
+    [recordId, category]
+  );
+  return Number(rows[0]?.next_order || 0);
+}
+
+async function updateImageOrder(conn, imageId, sortOrder) {
+  await conn.execute(
+    `UPDATE payment_selection_image SET sort_order = ?
+     WHERE id = ? AND deleted_at IS NULL`,
+    [sortOrder, imageId]
+  );
 }
 
 async function findStage(recordId, stageCode, conn) {
@@ -399,5 +426,8 @@ module.exports = {
   listImages,
   insertImage,
   softDeleteImage,
+  findImageById,
+  getNextImageSortOrder,
+  updateImageOrder,
   STAGE_FIELDS
 };
