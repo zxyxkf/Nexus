@@ -189,7 +189,6 @@
       >
         <template #summary>
           <div class="detail-header-left">
-              <span class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
               <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
               <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
           </div>

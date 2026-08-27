@@ -173,7 +173,6 @@
       >
         <template #summary>
           <div class="detail-header-left">
-              <span class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
               <span style="font-size:14px;font-weight:600;">{{ currentTask.publisher_name }}</span>
               <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
           </div>

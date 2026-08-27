@@ -93,7 +93,6 @@
       <template #summary>
         <div class="detail-header-left">
             <span v-if="taskGroup === 'cs'" class="detail-number">#{{ currentTask.task_no }}</span>
-            <span v-else class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
             <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
             <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
         </div>

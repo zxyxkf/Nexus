@@ -120,7 +120,6 @@
         <template #summary>
           <div class="detail-header-left">
               <span v-if="isBasicDesigner" class="detail-number">#{{ currentTask.task_no }}</span>
-              <span v-else class="detail-project-title" :title="currentTask.title || currentTask.score_item_name || '-'">{{ currentTask.title || currentTask.score_item_name || '-' }}</span>
               <span style="font-size:14px;font-weight:600;">{{ currentTask.publisher_name }}</span>
               <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
           </div>
