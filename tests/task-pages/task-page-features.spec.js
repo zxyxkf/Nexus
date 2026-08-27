@@ -798,9 +798,7 @@ async function setCommonTaskPreferences(page, options = {}) {
   const createTimeHeader = page.locator('.el-table__header-wrapper th').filter({ hasText: '发布时间' }).first()
   await createTimeHeader.click()
   await expect(page.locator('.el-table__body-wrapper tbody tr').first()).toContainText(expectedFirstTask)
-  await expect.poll(async () => {
-    return page.evaluate(() => Object.keys(localStorage).filter(key => key.startsWith('nexus_table_columns_v2') && key.endsWith('_sort')).length)
-  }).toBeGreaterThan(0)
+  await expect.poll(async () => getCustomSortStorageCount(page)).toBeGreaterThan(0)
 
   return { widthBefore, resizeColumn, statusOption, expectedFirstTask }
 }
