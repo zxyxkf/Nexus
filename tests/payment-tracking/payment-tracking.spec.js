@@ -180,17 +180,59 @@ const laterStageRecords = [
   }
 ]
 
-async function installMocks(page) {
+const reviewTasks = [
+  {
+    id: 201,
+    task_no: 'D202608270001',
+    title: '夏季连衣裙主图',
+    status: 'doing',
+    task_group: 'design',
+    designer_name: '美工甲',
+    create_time: '2026-08-27 09:00:00',
+    payment_tracking_opened: 0,
+    files: [
+      { id: 2001, file_name: 'dress-main-1.png', file_type: 'image', file_category: 'work' },
+      { id: 2002, file_name: 'dress-main-2.png', file_type: 'image', file_category: 'work' }
+    ]
+  },
+  {
+    id: 202,
+    task_no: 'D202608270002',
+    title: '无作品图任务',
+    status: 'doing',
+    task_group: 'design',
+    designer_name: '美工乙',
+    create_time: '2026-08-27 08:00:00',
+    payment_tracking_opened: 0,
+    files: [{ id: 2003, file_name: 'source.psd', file_type: 'file', file_category: 'work' }]
+  },
+  {
+    id: 203,
+    task_no: 'D202608270003',
+    title: '已开启任务',
+    status: 'doing',
+    task_group: 'design',
+    designer_name: '美工丙',
+    create_time: '2026-08-27 07:00:00',
+    payment_tracking_opened: 1,
+    files: [{ id: 2004, file_name: 'opened.png', file_type: 'image', file_category: 'work' }]
+  }
+]
+
+async function installMocks(page, options = {}) {
+  const permissions = options.permissions || ['*']
   await page.addInitScript(() => {
     localStorage.setItem('d_design_token', 'payment-test-token')
+  })
+  await page.addInitScript(({ userPermissions }) => {
     localStorage.setItem('d_design_user', JSON.stringify({
       id: 1,
       username: 'admin',
       realName: '超级管理员',
       role: 'admin',
-      permissions: ['*']
+      permissions: userPermissions
     }))
-  })
+  }, { userPermissions: permissions })
 
   await page.route(/^https?:\/\/[^/]+\/api\//, async route => {
     const url = new URL(route.request().url())
@@ -216,6 +258,33 @@ async function installMocks(page) {
     }
     if (url.pathname === '/api/task/stats/my') {
       await route.fulfill({ json: { code: 0, data: {} } })
+      return
+    }
+    if (url.pathname === '/api/task/my-published') {
+      await route.fulfill({
+        json: { code: 0, data: { list: reviewTasks, total: reviewTasks.length, page: 1, pageSize: 15 } }
+      })
+      return
+    }
+    if (url.pathname === '/api/payment-tracking/open/batch') {
+      await route.fulfill({
+        json: {
+          code: 0,
+          data: {
+            successCount: 1,
+            skippedCount: 2,
+            created: [{ taskId: 201, recordId: 301 }],
+            skipped: [
+              { taskId: 202, taskNo: 'D202608270002', reason: '没有作品图片' },
+              { taskId: 203, taskNo: 'D202608270003', reason: '已开启打款' }
+            ]
+          }
+        }
+      })
+      return
+    }
+    if (url.pathname === '/api/payment-tracking/open/task/201') {
+      await route.fulfill({ json: { code: 0, msg: '打款已开启', data: { id: 301, sourceTaskId: 201 } } })
       return
     }
     if (url.pathname === '/api/payment-tracking/records') {
@@ -308,4 +377,36 @@ test('后续阶段按业务分支展示并使用独立总结选项', async ({ pa
   await expect(page.getByRole('button', { name: '完成流程' })).toBeVisible()
 
   await page.screenshot({ path: testInfo.outputPath('payment-summary.png'), fullPage: true })
+})
+
+test('作品审核开启打款按图片和开启状态控制并汇总批量结果', async ({ page }, testInfo) => {
+  await page.goto('/#/operator/review')
+
+  await expect(page.getByRole('button', { name: /批量开启打款/ })).toBeVisible()
+  const openButtons = page.getByRole('button', { name: '开启打款', exact: true })
+  await expect(openButtons).toHaveCount(3)
+  await expect(openButtons.nth(0)).toBeEnabled()
+  await expect(openButtons.nth(1)).toBeDisabled()
+  await expect(openButtons.nth(2)).toBeDisabled()
+
+  const singleOpenRequest = page.waitForRequest(request => (
+    request.method() === 'POST' && new URL(request.url()).pathname === '/api/payment-tracking/open/task/201'
+  ))
+  await openButtons.nth(0).click()
+  await singleOpenRequest
+
+  await page.locator('.el-table__header-wrapper .el-checkbox').click()
+  await page.getByRole('button', { name: /批量开启打款/ }).click()
+  await expect(page.getByText('成功1条，跳过2条')).toBeVisible()
+  await expect(page.getByText('D202608270002：没有作品图片')).toBeVisible()
+  await expect(page.getByText('D202608270003：已开启打款')).toBeVisible()
+  await page.screenshot({ path: testInfo.outputPath('review-payment-opening.png'), fullPage: true })
+})
+
+test('作品审核无开启打款权限时隐藏入口', async ({ page }) => {
+  await installMocks(page, { permissions: ['operator.review.design'] })
+  await page.goto('/#/operator/review')
+
+  await expect(page.getByRole('button', { name: /批量开启打款/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '开启打款', exact: true })).toHaveCount(0)
 })

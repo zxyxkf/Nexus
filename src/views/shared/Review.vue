@@ -11,6 +11,13 @@
         <el-button type="success" :disabled="selectedRows.length === 0" @click="handleBatchReview">
           批量审核通过 ({{ selectedRows.length }})
         </el-button>
+        <el-button
+          v-if="canOpenPayment"
+          type="warning"
+          :disabled="selectedRows.length === 0"
+          :loading="batchPaymentOpening"
+          @click="handleBatchOpenPayment"
+        >批量开启打款 ({{ selectedRows.length }})</el-button>
       </div>
 
       <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" :data="displayList" v-loading="loading" stripe style="width:100%" empty-text="暂无待审核任务" @selection-change="onSelectChange" @sort-change="handleSortChange">
@@ -96,9 +103,18 @@
         <el-table-column prop="create_time" label="发布时间" width="170" sortable="custom" show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="180" fixed="right">
+        <el-table-column label="操作" :width="canOpenPayment ? 260 : 180" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">查看作品</el-button>
+            <el-button
+              v-if="canOpenPayment"
+              type="warning"
+              link
+              size="small"
+              :disabled="!getWorkImages(row.files).length || Boolean(row.payment_tracking_opened)"
+              :loading="paymentOpeningIds.has(row.id)"
+              @click="handleOpenPayment(row)"
+            >开启打款</el-button>
             <el-button
               v-if="row.status === 'doing'"
               type="success" link size="small"
@@ -339,7 +355,7 @@ import { nextTick, ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Close, PictureFilled, Document, Plus } from '@element-plus/icons-vue'
-import { getMyPublishedApi, reviewTaskApi, batchReviewApi, uploadFilesApi, getFileUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getMyPublishedApi, reviewTaskApi, batchReviewApi, uploadFilesApi, getFileUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
@@ -347,6 +363,7 @@ import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import { formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
+import { hasPermission } from '@/utils/permissions'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import RejectHistory from '@/components/RejectHistory.vue'
@@ -356,6 +373,7 @@ const taskGroup = computed(() => route.meta.taskGroup || (route.meta.role === 'c
 const isCsAgent = computed(() => taskGroup.value === 'cs')
 const isOperatorTask = computed(() => taskGroup.value === 'operator')
 const designerLabel = computed(() => isCsAgent.value ? '基础美工' : isOperatorTask.value ? '运营助理' : '美工')
+const canOpenPayment = computed(() => taskGroup.value === 'design' && hasPermission('payment.open'))
 
 const loading = ref(false)
 const list = ref([])
@@ -404,6 +422,8 @@ const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
 })
 const reviewLoading = ref(false)
 const selectedRows = ref([])
+const paymentOpeningIds = ref(new Set())
+const batchPaymentOpening = ref(false)
 const rejectDialogVisible = ref(false)
 const rejectDialogReason = ref('')
 const rejectDialogResolve = ref(null)
@@ -419,6 +439,9 @@ const maxFileSizeMB = computed(() => getInt('upload.max_file_size_mb', 50))
 function onSelectChange(rows) { selectedRows.value = rows }
 
 const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList, getImagePreviewIndex } = useFileHelpers()
+function getWorkImages(files) {
+  return getWorkFiles(files).filter(file => file.file_type === 'image')
+}
 const detailRefImages = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type === 'image')
@@ -446,6 +469,59 @@ async function handleBatchReview() {
       await loadData()
     } else { ElMessage.error(res.msg) }
   } catch {}
+}
+
+async function handleOpenPayment(row) {
+  if (!getWorkImages(row.files).length || row.payment_tracking_opened) return
+  paymentOpeningIds.value = new Set([...paymentOpeningIds.value, row.id])
+  try {
+    const res = await openPaymentFromTaskApi(row.id)
+    if (res.code === 0) {
+      ElMessage.success(res.data?.alreadyOpened ? '该任务已开启打款' : '打款已开启')
+      await loadData()
+    } else {
+      ElMessage.error(res.msg || '开启打款失败')
+    }
+  } catch (error) {
+    console.error('[Review] 开启打款失败:', error)
+  } finally {
+    const nextIds = new Set(paymentOpeningIds.value)
+    nextIds.delete(row.id)
+    paymentOpeningIds.value = nextIds
+  }
+}
+
+async function handleBatchOpenPayment() {
+  if (!selectedRows.value.length) return
+  batchPaymentOpening.value = true
+  try {
+    const res = await openPaymentBatchApi(selectedRows.value.map(row => row.id))
+    if (res.code !== 0) {
+      ElMessage.error(res.msg || '批量开启打款失败')
+      return
+    }
+    const result = res.data || {}
+    const skippedDetails = (result.skipped || [])
+      .map(item => `${item.taskNo || `任务${item.taskId}`}：${item.reason}`)
+      .join('\n')
+    const summary = `成功${Number(result.successCount || 0)}条，跳过${Number(result.skippedCount || 0)}条`
+    await ElMessageBox.alert(
+      skippedDetails ? `${summary}\n\n${skippedDetails}` : summary,
+      '批量开启结果',
+      {
+        confirmButtonText: '知道了',
+        showClose: false,
+        customClass: 'payment-batch-result'
+      }
+    )
+    selectedRows.value = []
+    tableRef.value?.clearSelection?.()
+    await loadData()
+  } catch (error) {
+    console.error('[Review] 批量开启打款失败:', error)
+  } finally {
+    batchPaymentOpening.value = false
+  }
 }
 
 async function loadData(options = {}) {
@@ -612,4 +688,5 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || reviewLo
 .multiline-value { white-space: pre-wrap; word-break: break-word; }
 .reject-reason-text { color: #e63946; white-space: pre-wrap; word-break: break-word; }
 .file-download-btn { position: absolute; right: 4px; bottom: 4px; background: rgba(255, 255, 255, 0.9); border-radius: 4px; }
+:global(.payment-batch-result .el-message-box__message) { white-space: pre-line; }
 </style>

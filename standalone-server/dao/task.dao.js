@@ -357,7 +357,12 @@ async function getTaskBrief(taskId) {
 
 // ==================== 查询 ====================
 
-const TASK_SELECT = `t.*, u1.real_name as publisher_name, u1.username as publisher_username, u2.real_name as designer_name, u2.username as designer_username`;
+const TASK_SELECT = `t.*, u1.real_name as publisher_name, u1.username as publisher_username,
+  u2.real_name as designer_name, u2.username as designer_username,
+  EXISTS (
+    SELECT 1 FROM payment_selection_record ptr
+    WHERE ptr.source_task_id = t.id AND ptr.deleted_at IS NULL
+  ) AS payment_tracking_opened`;
 const TASK_JOIN = `LEFT JOIN sys_user u1 ON t.publisher_id = u1.id
                     LEFT JOIN sys_user u2 ON t.designer_id = u2.id`;
 

@@ -251,6 +251,12 @@ it('opens payment tracking from task images and reports batch skip reasons', asy
   });
   expect(openedResponse.body.data.images).toHaveLength(2);
 
+  const reviewList = await request(app)
+    .get('/api/task/my-published?taskGroup=design&status=doing&pageSize=100')
+    .set('Authorization', `Bearer ${adminToken}`);
+  const openedTask = reviewList.body.data.list.find(task => Number(task.id) === Number(multiImageTask));
+  expect(openedTask).toMatchObject({ payment_tracking_opened: 1 });
+
   const duplicate = await request(app)
     .post(`/api/payment-tracking/open/task/${multiImageTask}`)
     .set('Authorization', `Bearer ${storeAToken}`);
