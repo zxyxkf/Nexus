@@ -111,22 +111,24 @@
       </div>
 
       <!-- 任务详情 —— 内联覆盖层 -->
-      <transition name="overlay-fade">
-        <div v-if="detailVisible" class="inline-detail-overlay">
-          <div class="inline-detail-header">
-            <div class="detail-header-left">
+      <TaskDetailOverlay
+        :visible="detailVisible"
+        :title="currentTask?.title || currentTask?.score_item_name || currentTask?.task_no || '任务详情'"
+        body-class="inline-detail-body"
+        @close="detailVisible = false"
+      >
+        <template #summary>
+          <div class="detail-header-left">
               <span v-if="isBasicDesigner" class="detail-number">#{{ currentTask.task_no }}</span>
               <span v-else class="detail-project-title" :title="currentTask.title || currentTask.score_item_name || '-'">{{ currentTask.title || currentTask.score_item_name || '-' }}</span>
               <span style="font-size:14px;font-weight:600;">{{ currentTask.publisher_name }}</span>
               <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
-            </div>
-            <div class="detail-header-right">
-              <el-button type="primary" size="small" @click="acceptInDetail" :loading="acceptingId === currentTask?.id">接单</el-button>
-              <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
-            </div>
           </div>
+        </template>
+        <template #actions>
+          <el-button type="primary" size="small" @click="acceptInDetail" :loading="acceptingId === currentTask?.id">接单</el-button>
+        </template>
 
-          <div class="inline-detail-body">
             <div class="inline-detail-people">
               <div class="inline-detail-stat-card">
                 <label>发布人</label>
@@ -245,9 +247,7 @@
                 </div>
               </div>
             </template>
-          </div>
-        </div>
-      </transition>
+      </TaskDetailOverlay>
     </el-card>
   </div>
 </template>
@@ -256,7 +256,8 @@
 import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Document } from '@element-plus/icons-vue'
+import { Document } from '@element-plus/icons-vue'
+import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
 import { getTaskHallApi, acceptTaskApi, getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'

@@ -391,14 +391,49 @@ for (const pageCase of pageCases) {
 test('detail overlays preserve task detail and file affordances', async ({ page }) => {
   await loginAs(page, users.designer)
   await page.goto('/#/designer/tasks')
-  await page.getByRole('button', { name: '详情' }).first().click()
+  const acceptedRow = page.locator('.el-table__body tr').filter({ hasText: 'T-ACCEPTED' })
+  await acceptedRow.getByRole('button', { name: '详情' }).click()
 
-  const overlay = page.locator('.inline-detail-overlay')
+  const overlay = page.locator('.task-detail-overlay')
   await expect(overlay).toBeVisible()
+  await expect(overlay.locator('.task-detail-header')).toBeVisible()
+  await expect(overlay.locator('.task-detail-body')).toHaveCSS('overflow-y', 'auto')
+  await expect(overlay.getByRole('button', { name: '上传作品', exact: true })).toBeVisible()
   await expect(overlay.getByText('任务信息')).toBeVisible()
   await expect(overlay.getByRole('heading', { name: /参考图/ })).toBeVisible()
   await expect(overlay.getByRole('heading', { name: /作品图片/ })).toBeVisible()
 })
+
+const taskDetailCases = [
+  { name: 'designer', path: '/designer/tasks', user: users.designer, taskNo: 'T-ACCEPTED', action: '上传作品' },
+  { name: 'basic designer', path: '/basic/tasks', user: users.basic, taskNo: 'T-DOING' },
+  { name: 'operator assistant', path: '/operator-assistant/tasks', user: users.assistant, taskNo: 'T-REJECTED', action: '重新上传' },
+  { name: 'operator published', path: '/operator/op-tasks', user: users.operator, taskNo: 'T-OP-DRAFT', action: '编辑' },
+  { name: 'shared published', path: '/operator/tasks', user: users.operator, taskNo: 'T-ACCEPTED', action: '撤回' },
+  { name: 'task hall', path: '/operator-assistant/hall', user: users.assistant, taskNo: 'T-WAIT', action: '接单' },
+  { name: 'admin all tasks', path: '/admin/tasks/operator', user: users.admin, taskNo: 'T-REJECTED' }
+]
+
+for (const detailCase of taskDetailCases) {
+  test(`${detailCase.name} detail uses the shared overlay and preserves its action`, async ({ page }) => {
+    await loginAs(page, detailCase.user)
+    await page.goto(`/#${detailCase.path}`)
+    const taskRow = page.locator('.el-table__body tr').filter({ hasText: detailCase.taskNo })
+    await taskRow.getByRole('button', { name: '详情', exact: true }).click()
+
+    const overlay = page.locator('.task-detail-overlay')
+    await expect(overlay).toBeVisible()
+    await expect(overlay.locator('.task-detail-body')).toHaveCSS('overflow-y', 'auto')
+    if (detailCase.action) {
+      await expect(overlay.getByRole('button', { name: detailCase.action, exact: true })).toBeVisible()
+    }
+    if (detailCase.name === 'basic designer') {
+      await expect(overlay.getByRole('button', { name: '开启打款', exact: true })).toHaveCount(0)
+    }
+    await overlay.getByRole('button', { name: '关闭', exact: true }).click()
+    await expect(overlay).toHaveCount(0)
+  })
+}
 
 test('table and detail file drag writes browser download data', async ({ page }) => {
   await loginAs(page, users.designer)
@@ -408,7 +443,7 @@ test('table and detail file drag writes browser download data', async ({ page })
   expectBrowserDragData(tableDragData)
 
   await page.getByRole('button', { name: '详情' }).first().click()
-  const overlay = page.locator('.inline-detail-overlay')
+  const overlay = page.locator('.task-detail-overlay')
   await expect(overlay).toBeVisible()
 
   const detailDragData = await dispatchDragStart(overlay.locator('[draggable="true"]').first())

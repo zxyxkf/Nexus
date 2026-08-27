@@ -84,21 +84,21 @@
       </div>
 
     <!-- 任务详情 —— 内联覆盖层 -->
-    <transition name="overlay-fade">
-      <div v-if="detailVisible" class="inline-detail-overlay">
-        <div class="inline-detail-header">
-          <div class="detail-header-left">
+    <TaskDetailOverlay
+      :visible="detailVisible"
+      :title="currentTask?.title || currentTask?.task_no || '任务详情'"
+      body-class="inline-detail-body"
+      @close="detailVisible = false"
+    >
+      <template #summary>
+        <div class="detail-header-left">
             <span v-if="taskGroup === 'cs'" class="detail-number">#{{ currentTask.task_no }}</span>
             <span v-else class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
             <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
             <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
-          </div>
-          <div class="detail-header-right">
-            <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
-          </div>
         </div>
+      </template>
 
-        <div class="inline-detail-body">
           <TaskStatusTimeline :task="currentTask" :task-group="taskGroup" />
           <TaskTransferTimeline v-if="taskGroup === 'cs'" :records="currentTask.transfer_records || []" />
           <div class="inline-detail-people">
@@ -234,9 +234,7 @@
             </div>
           </template>
           <RejectHistory v-if="taskGroup === 'cs'" :records="currentTask.reject_records || []" />
-        </div>
-      </div>
-    </transition>
+    </TaskDetailOverlay>
     </el-card>
   </div>
 </template>
@@ -245,10 +243,11 @@
 import { ref, reactive, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Delete, Document } from '@element-plus/icons-vue'
+import { Delete, Document } from '@element-plus/icons-vue'
 import { getAllTasksApi, getTaskPublisherListApi, getTaskDesignerListApi, getFileUrl, saveFileToDisk, deleteTaskApi, batchDeleteApi, batchDownloadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'
 import RejectHistory from '@/components/RejectHistory.vue'

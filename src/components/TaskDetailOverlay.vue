@@ -23,7 +23,7 @@
             </div>
           </header>
 
-          <div ref="bodyRef" class="task-detail-body">
+          <div ref="bodyRef" class="task-detail-body" :class="bodyClass">
             <slot />
           </div>
         </section>
@@ -38,7 +38,8 @@ import { Close } from '@element-plus/icons-vue'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
-  title: { type: String, default: '任务详情' }
+  title: { type: String, default: '任务详情' },
+  bodyClass: { type: [String, Array, Object], default: '' }
 })
 
 const emit = defineEmits(['close'])
@@ -138,6 +139,40 @@ watch(() => props.visible, async (visible) => {
   min-width: 0;
   color: var(--dd-text-secondary, #606266);
   font-size: 13px;
+}
+
+.task-detail-summary :deep(.detail-header-left) {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  min-width: 0;
+}
+
+.task-detail-summary :deep(.detail-number) {
+  color: var(--dd-text-muted, #909399);
+  font-family: var(--dd-font-mono, monospace);
+  font-size: 20px;
+  font-weight: 700;
+}
+
+.task-detail-summary :deep(.detail-project-title) {
+  min-width: 0;
+  max-width: min(520px, 42vw);
+  overflow: hidden;
+  color: #e63946;
+  font-size: 16px;
+  font-weight: 700;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.task-detail-summary :deep(.detail-header-time) {
+  padding: 4px 10px;
+  color: var(--dd-text-secondary, #606266);
+  font-family: var(--dd-font-mono, monospace);
+  font-size: 13px;
+  background: var(--dd-border-light, #ebeef5);
+  border-radius: 6px;
 }
 
 .task-detail-actions {

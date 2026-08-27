@@ -5,7 +5,7 @@ function isVisible(element) {
 }
 
 function getActiveDetailOverlay() {
-  const overlays = Array.from(document.querySelectorAll('.inline-detail-overlay')).filter(isVisible)
+  const overlays = Array.from(document.querySelectorAll('.inline-detail-overlay, .task-detail-overlay')).filter(isVisible)
   return overlays[overlays.length - 1] || null
 }
 
@@ -15,7 +15,7 @@ function hasActiveUiOverlay() {
 }
 
 function closeDetail(overlay) {
-  const closeButton = overlay?.querySelector('.inline-detail-header .detail-header-right .el-button.is-circle')
+  const closeButton = overlay?.querySelector('[aria-label="关闭"], .inline-detail-header .detail-header-right .el-button.is-circle')
   if (closeButton instanceof HTMLElement) {
     closeButton.click()
   }

@@ -181,25 +181,27 @@
       </div>
 
       <!-- 任务详情 —— 内联覆盖层 -->
-      <transition name="overlay-fade">
-        <div v-if="detailVisible" class="inline-detail-overlay">
-          <div class="inline-detail-header">
-            <div class="detail-header-left">
+      <TaskDetailOverlay
+        :visible="detailVisible"
+        :title="currentTask?.title || '任务详情'"
+        body-class="inline-detail-body"
+        @close="detailVisible = false"
+      >
+        <template #summary>
+          <div class="detail-header-left">
               <span class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
               <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
               <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
-            </div>
-            <div class="detail-header-right">
-              <el-button
-                v-if="currentTask.status === 'accepted' || currentTask.status === 'rejected'"
-                type="warning"
-                @click="openUpload(currentTask)"
-              >{{ currentTask.status === 'rejected' ? '重新上传' : '上传作品' }}</el-button>
-              <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
-            </div>
           </div>
+        </template>
+        <template #actions>
+          <el-button
+            v-if="currentTask.status === 'accepted' || currentTask.status === 'rejected'"
+            type="warning"
+            @click="openUpload(currentTask)"
+          >{{ currentTask.status === 'rejected' ? '重新上传' : '上传作品' }}</el-button>
+        </template>
 
-          <div class="inline-detail-body">
             <TaskStatusTimeline :task="currentTask" task-group="design" />
             <div class="inline-detail-people">
               <div class="inline-detail-stat-card">
@@ -294,9 +296,7 @@
                 </div>
               </div>
             </template>
-          </div>
-        </div>
-      </transition>
+      </TaskDetailOverlay>
     </el-card>
 
     <!-- 上传作品对话框 -->
@@ -339,7 +339,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Document, Search } from '@element-plus/icons-vue'
+import { Document, Search } from '@element-plus/icons-vue'
 import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, undoSubmitApi, getFileUrl, setupFileDrag, preloadFilesForDrag, getPublisherListApi, getScoreItemsApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
@@ -351,6 +351,7 @@ import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
 import InlineWorkUpload from '@/components/InlineWorkUpload.vue'
 
 const route = useRoute()

@@ -167,23 +167,25 @@
       </div>
 
       <!-- 运营任务详情 —— 内联覆盖层 -->
-      <transition name="overlay-fade">
-        <div v-if="detailVisible" class="inline-detail-overlay">
-          <div class="inline-detail-header">
-            <div class="detail-header-left">
+      <TaskDetailOverlay
+        :visible="detailVisible"
+        :title="currentTask?.title || currentTask?.task_no || '任务详情'"
+        body-class="inline-detail-body"
+        @close="detailVisible = false"
+      >
+        <template #summary>
+          <div class="detail-header-left">
               <span class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
               <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
               <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
-            </div>
-            <div class="detail-header-right">
-              <el-button v-if="(currentTask.status === 'wait' || currentTask.status === 'accepted')" type="warning" size="small" @click="handleWithdraw(currentTask)">撤回</el-button>
-              <el-button v-if="currentTask.status === 'draft'" type="success" size="small" @click="openEditDialog(currentTask)">编辑</el-button>
-              <el-button v-if="currentTask.designer_id && currentTask.status === 'accepted'" type="warning" size="small" @click="urgeTask(currentTask)">催促</el-button>
-              <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
-            </div>
           </div>
+        </template>
+        <template #actions>
+          <el-button v-if="(currentTask.status === 'wait' || currentTask.status === 'accepted')" type="warning" size="small" @click="handleWithdraw(currentTask)">撤回</el-button>
+          <el-button v-if="currentTask.status === 'draft'" type="success" size="small" @click="openEditDialog(currentTask)">编辑</el-button>
+          <el-button v-if="currentTask.designer_id && currentTask.status === 'accepted'" type="warning" size="small" @click="urgeTask(currentTask)">催促</el-button>
+        </template>
 
-          <div class="inline-detail-body">
             <TaskStatusTimeline :task="currentTask" task-group="operator" />
             <div class="inline-detail-people">
               <div class="inline-detail-stat-card">
@@ -283,9 +285,7 @@
                 </div>
               </div>
             </div>
-          </div>
-        </div>
-      </transition>
+      </TaskDetailOverlay>
     </el-card>
 
     <!-- 编辑草稿对话框 -->
@@ -341,7 +341,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Document, Plus } from '@element-plus/icons-vue'
+import { Document, Plus } from '@element-plus/icons-vue'
 import { getMyPublishedApi, urgeTaskApi, getFileUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag, getOperatorAssistantListApi, getScoreItemsApi, getPublisherListApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
@@ -352,6 +352,7 @@ import { useTaskDetail } from '@/composables/useTaskDetail'
 import { getUser } from '@/utils/auth'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
 
 const route = useRoute()
 const router = useRouter()

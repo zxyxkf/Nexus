@@ -202,26 +202,28 @@
       </div>
 
       <!-- 任务详情 —— 内联覆盖层 -->
-      <transition name="overlay-fade">
-        <div v-if="detailVisible" class="inline-detail-overlay">
-          <div class="inline-detail-header">
-            <div class="detail-header-left">
+      <TaskDetailOverlay
+        :visible="detailVisible"
+        :title="currentTask?.title || currentTask?.task_no || '任务详情'"
+        body-class="inline-detail-body"
+        @close="detailVisible = false"
+      >
+        <template #summary>
+          <div class="detail-header-left">
               <span v-if="isCsAgent" class="detail-number">#{{ currentTask.task_no }}</span>
               <span v-else class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
               <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
               <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
-            </div>
-            <div class="detail-header-right">
-              <el-button v-if="(currentTask.status === 'wait' || currentTask.status === 'accepted')" type="warning" size="small" @click="handleWithdraw(currentTask)">撤回</el-button>
-              <el-button v-if="currentTask.status === 'draft'" type="success" size="small" @click="openEditDialog(currentTask)">编辑</el-button>
-              <el-button v-if="isCsAgent && currentTask.status === 'finished'" type="danger" size="small" @click="openReopenDialog(currentTask)">重开</el-button>
-              <el-button v-if="canUpdateCsTaskNo && currentTask.status === 'finished'" type="primary" size="small" @click="openTaskNoDialog(currentTask)">改编号</el-button>
-              <el-button v-if="currentTask.designer_id && currentTask.status === 'accepted'" type="warning" size="small" @click="urgeTask(currentTask)">催促</el-button>
-              <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
-            </div>
           </div>
+        </template>
+        <template #actions>
+          <el-button v-if="(currentTask.status === 'wait' || currentTask.status === 'accepted')" type="warning" size="small" @click="handleWithdraw(currentTask)">撤回</el-button>
+          <el-button v-if="currentTask.status === 'draft'" type="success" size="small" @click="openEditDialog(currentTask)">编辑</el-button>
+          <el-button v-if="isCsAgent && currentTask.status === 'finished'" type="danger" size="small" @click="openReopenDialog(currentTask)">重开</el-button>
+          <el-button v-if="canUpdateCsTaskNo && currentTask.status === 'finished'" type="primary" size="small" @click="openTaskNoDialog(currentTask)">改编号</el-button>
+          <el-button v-if="currentTask.designer_id && currentTask.status === 'accepted'" type="warning" size="small" @click="urgeTask(currentTask)">催促</el-button>
+        </template>
 
-          <div class="inline-detail-body">
             <TaskStatusTimeline :task="currentTask" :task-group="taskGroup" />
             <TaskTransferTimeline v-if="isCsAgent" :records="currentTask.transfer_records || []" />
             <div class="inline-detail-people">
@@ -369,9 +371,7 @@
               </div>
             </div>
             <RejectHistory v-if="isCsAgent" :records="currentTask.reject_records || []" />
-          </div>
-        </div>
-      </transition>
+      </TaskDetailOverlay>
     </el-card>
 
     <!-- 编辑草稿任务对话框 -->
@@ -447,7 +447,7 @@
 import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, Document, Search, Plus } from '@element-plus/icons-vue'
+import { Document, Search, Plus } from '@element-plus/icons-vue'
 import { getMyPublishedApi, urgeTaskApi, getFileUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, reopenFinishedCsTaskApi, updateCsTaskNoApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { getScoreItemsApi } from '@/api'
 import { getBasicDesignerListApi, getDesignerListApi, getOperatorAssistantListApi, getPublisherListApi } from '@/api'
@@ -460,6 +460,7 @@ import { useTaskDetail } from '@/composables/useTaskDetail'
 import { hasPermission } from '@/utils/permissions'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import RejectHistory from '@/components/RejectHistory.vue'
 
