@@ -119,21 +119,23 @@
       </el-dialog>
 
       <!-- 任务详情覆盖层 -->
-      <transition name="overlay-fade">
-        <div v-if="detailVisible" class="inline-detail-overlay">
-          <div class="inline-detail-header">
-            <div class="detail-header-left">
+      <TaskDetailOverlay
+        :visible="detailVisible"
+        :title="currentTask?.title || currentTask?.task_no || '任务详情'"
+        body-class="inline-detail-body"
+        @close="detailVisible = false"
+      >
+        <template #summary>
+          <div class="detail-header-left">
               <span class="detail-number">#{{ currentTask.task_no }}</span>
               <span style="font-size:14px;font-weight:600;">{{ currentTask.designer_name }}</span>
-            </div>
-            <div class="detail-header-right">
-              <el-button type="success" size="small" @click="handleApprove(currentTask)" :loading="actionLoading === currentTask?.id">通过</el-button>
-              <el-button type="danger" size="small" @click="handleReject(currentTask)">不通过</el-button>
-              <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
-            </div>
           </div>
+        </template>
+        <template #actions>
+          <el-button type="success" size="small" @click="handleApprove(currentTask)" :loading="actionLoading === currentTask?.id">通过</el-button>
+          <el-button type="danger" size="small" @click="handleReject(currentTask)">不通过</el-button>
+        </template>
 
-          <div class="inline-detail-body">
             <TaskTransferTimeline :records="currentTask.transfer_records || []" />
             <div class="inline-detail-people">
               <div class="inline-detail-stat-card">
@@ -217,9 +219,7 @@
               </div>
             </template>
             <RejectHistory :records="currentTask.reject_records || []" />
-          </div>
-        </div>
-      </transition>
+      </TaskDetailOverlay>
     </el-card>
   </div>
 </template>
@@ -227,7 +227,8 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Close, Document } from '@element-plus/icons-vue'
+import { Document } from '@element-plus/icons-vue'
+import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
 import { getScoreReviewListApi, approveScoreReviewApi, rejectScoreReviewApi } from '@/api/score'
 import { getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { getBasicDesignerListApi, getPublisherListApi } from '@/api'

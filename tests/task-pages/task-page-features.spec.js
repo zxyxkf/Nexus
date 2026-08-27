@@ -435,6 +435,47 @@ for (const detailCase of taskDetailCases) {
   })
 }
 
+test('review detail actions stay isolated by page and role', async ({ page }) => {
+  await loginAs(page, { ...users.operator, permissions: ['*'] })
+  await page.goto('/#/operator/review')
+  const designRow = page.locator('.el-table__body tr').filter({ hasText: 'T-DESIGN-DOING' })
+  await designRow.getByRole('button', { name: '查看作品', exact: true }).click()
+  let overlay = page.locator('.task-detail-overlay')
+  await expect(overlay.getByRole('button', { name: '通过', exact: true })).toBeVisible()
+  await expect(overlay.getByRole('button', { name: '驳回', exact: true })).toBeVisible()
+  await expect(overlay.getByRole('button', { name: '开启打款', exact: true })).toBeVisible()
+  await overlay.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await loginAs(page, users.cs)
+  await page.goto('/#/cs/review')
+  await page.getByRole('button', { name: '查看作品', exact: true }).first().click()
+  overlay = page.locator('.task-detail-overlay')
+  await expect(overlay).toBeVisible()
+  await expect(overlay.getByRole('button', { name: '开启打款', exact: true })).toHaveCount(0)
+  await overlay.getByRole('button', { name: '关闭', exact: true }).click()
+
+  const isolatedCases = [
+    { path: '/operator/op-review', user: users.operator, entry: '查看任务', taskNo: 'T-OP-DOING', action: '通过' },
+    { path: '/basic/score-review', user: users.basic, entry: '详情', action: '不通过' },
+    { path: '/basic/review-records', user: users.basic, entry: '查看作品' }
+  ]
+  for (const reviewCase of isolatedCases) {
+    await loginAs(page, reviewCase.user)
+    await page.goto(`/#${reviewCase.path}`)
+    const reviewScope = reviewCase.taskNo
+      ? page.locator('.el-table__body tr').filter({ hasText: reviewCase.taskNo })
+      : page
+    await reviewScope.getByRole('button', { name: reviewCase.entry, exact: true }).first().click()
+    overlay = page.locator('.task-detail-overlay')
+    await expect(overlay).toBeVisible()
+    if (reviewCase.action) {
+      await expect(overlay.getByRole('button', { name: reviewCase.action, exact: true })).toBeVisible()
+    }
+    await expect(overlay.getByRole('button', { name: '开启打款', exact: true })).toHaveCount(0)
+    await overlay.getByRole('button', { name: '关闭', exact: true }).click()
+  }
+})
+
 test('table and detail file drag writes browser download data', async ({ page }) => {
   await loginAs(page, users.designer)
   await page.goto('/#/designer/tasks')

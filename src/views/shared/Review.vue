@@ -142,23 +142,33 @@
       </div>
 
       <!-- 作品查看 —— 内联覆盖层 -->
-    <transition name="overlay-fade">
-      <div v-if="detailVisible" class="inline-detail-overlay">
-        <div class="inline-detail-header">
-          <div class="detail-header-left">
+    <TaskDetailOverlay
+      :visible="detailVisible"
+      :title="currentTask?.title || currentTask?.task_no || '任务详情'"
+      body-class="inline-detail-body"
+      @close="detailVisible = false"
+    >
+      <template #summary>
+        <div class="detail-header-left">
             <span v-if="isCsAgent" class="detail-number">#{{ currentTask.task_no }}</span>
             <span v-else class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
             <span style="font-size:14px;font-weight:600;">{{ currentTask.designer_name }}</span>
             <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
-          </div>
-          <div class="detail-header-right">
-            <el-button v-if="currentTask.status === 'doing'" type="success" size="small" @click="doReview('pass')" :loading="reviewLoading">通过</el-button>
-            <el-button v-if="currentTask.status === 'doing'" type="danger" size="small" @click="doReview('reject')" :loading="reviewLoading">驳回</el-button>
-            <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
-          </div>
         </div>
+      </template>
+      <template #actions>
+        <el-button v-if="currentTask.status === 'doing'" type="success" size="small" @click="doReview('pass')" :loading="reviewLoading">通过</el-button>
+        <el-button v-if="currentTask.status === 'doing'" type="danger" size="small" @click="doReview('reject')" :loading="reviewLoading">驳回</el-button>
+        <el-button
+          v-if="canOpenPayment"
+          type="warning"
+          size="small"
+          :disabled="!getWorkImages(currentTask.files).length || Boolean(currentTask.payment_tracking_opened)"
+          :loading="paymentOpeningIds.has(currentTask.id)"
+          @click="handleOpenPayment(currentTask)"
+        >开启打款</el-button>
+      </template>
 
-        <div class="inline-detail-body">
           <TaskStatusTimeline :task="currentTask" :task-group="taskGroup" />
           <TaskTransferTimeline v-if="isCsAgent" :records="currentTask.transfer_records || []" />
           <div class="inline-detail-people">
@@ -298,9 +308,7 @@
             </div>
           </div>
           <RejectHistory v-if="isCsAgent" :records="currentTask.reject_records || []" />
-        </div>
-      </div>
-    </transition>
+    </TaskDetailOverlay>
     </el-card>
 
     <el-dialog
@@ -354,7 +362,7 @@
 import { nextTick, ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, PictureFilled, Document, Plus } from '@element-plus/icons-vue'
+import { PictureFilled, Document, Plus } from '@element-plus/icons-vue'
 import { getMyPublishedApi, reviewTaskApi, batchReviewApi, uploadFilesApi, getFileUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
@@ -365,6 +373,7 @@ import { formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScore
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import { hasPermission } from '@/utils/permissions'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import RejectHistory from '@/components/RejectHistory.vue'
 

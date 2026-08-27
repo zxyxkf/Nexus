@@ -144,20 +144,20 @@
       </div>
 
       <!-- 任务详情覆盖层 -->
-      <transition name="overlay-fade">
-        <div v-if="detailVisible" class="inline-detail-overlay">
-          <div class="inline-detail-header">
-            <div class="detail-header-left">
+      <TaskDetailOverlay
+        :visible="detailVisible"
+        :title="currentTask?.title || currentTask?.task_no || '任务详情'"
+        body-class="inline-detail-body"
+        @close="detailVisible = false"
+      >
+        <template #summary>
+          <div class="detail-header-left">
               <span class="detail-number">#{{ currentTask.task_no }}</span>
               <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
               <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
-            </div>
-            <div class="detail-header-right">
-              <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
-            </div>
           </div>
+        </template>
 
-          <div class="inline-detail-body">
             <TaskStatusTimeline :task="currentTask" task-group="cs" />
             <TaskTransferTimeline :records="currentTask.transfer_records || []" />
             <div class="inline-detail-people">
@@ -262,22 +262,21 @@
               </div>
             </div>
             <RejectHistory :records="currentTask.reject_records || []" />
-          </div>
-        </div>
-      </transition>
+      </TaskDetailOverlay>
     </el-card>
   </div>
 </template>
 
 <script setup>
 import { ref, computed, onMounted } from 'vue'
-import { Close, Document } from '@element-plus/icons-vue'
+import { Document } from '@element-plus/icons-vue'
 import { getScoreReviewRecordsApi } from '@/api/score'
 import { getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { getBasicDesignerListApi, getPublisherListApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreReviewTime, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
 import Pagination from '@/components/Pagination.vue'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import RejectHistory from '@/components/RejectHistory.vue'
 import { useFileHelpers } from '@/composables/useFileHelpers'

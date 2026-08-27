@@ -132,22 +132,24 @@
       </div>
 
     <!-- 任务审核详情 —— 内联覆盖层 -->
-    <transition name="overlay-fade">
-      <div v-if="detailVisible" class="inline-detail-overlay">
-        <div class="inline-detail-header">
-          <div class="detail-header-left">
+    <TaskDetailOverlay
+      :visible="detailVisible"
+      :title="currentTask?.title || currentTask?.task_no || '任务详情'"
+      body-class="inline-detail-body"
+      @close="detailVisible = false"
+    >
+      <template #summary>
+        <div class="detail-header-left">
             <span class="detail-project-title" :title="currentTask.title || '-'">{{ currentTask.title || '-' }}</span>
             <span style="font-size:14px;font-weight:600;">{{ currentTask.designer_name }}</span>
             <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
-          </div>
-          <div class="detail-header-right">
-            <el-button v-if="currentTask.status === 'doing'" type="success" size="small" @click="doReview('pass')" :loading="reviewLoading">通过</el-button>
-            <el-button v-if="currentTask.status === 'doing'" type="danger" size="small" @click="doReview('reject')" :loading="reviewLoading">驳回</el-button>
-            <el-button circle @click="detailVisible = false"><el-icon><Close /></el-icon></el-button>
-          </div>
         </div>
+      </template>
+      <template #actions>
+        <el-button v-if="currentTask.status === 'doing'" type="success" size="small" @click="doReview('pass')" :loading="reviewLoading">通过</el-button>
+        <el-button v-if="currentTask.status === 'doing'" type="danger" size="small" @click="doReview('reject')" :loading="reviewLoading">驳回</el-button>
+      </template>
 
-        <div class="inline-detail-body">
           <TaskStatusTimeline :task="currentTask" task-group="operator" />
           <div class="inline-detail-people">
             <div class="inline-detail-stat-card">
@@ -240,9 +242,7 @@
               </div>
             </div>
           </div>
-        </div>
-      </div>
-    </transition>
+    </TaskDetailOverlay>
     </el-card>
   </div>
 </template>
@@ -250,7 +250,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Close, PictureFilled, Document } from '@element-plus/icons-vue'
+import { PictureFilled, Document } from '@element-plus/icons-vue'
 import { getMyPublishedApi, reviewTaskApi, batchReviewApi, getFileUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
@@ -258,6 +258,7 @@ import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import { formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
+import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
 
 const loading = ref(false)
 const list = ref([])
