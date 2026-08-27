@@ -843,6 +843,7 @@ function generateConfigSeed(mode) {
     ['upload.cs_attachments_dir', '/app/host-uploads/cs/attachments', 'upload', '客服+基础美工附件存储目录', 1],
     ['upload.operator_images_dir', '/app/host-uploads/operator/images', 'upload', '运营+运营助理图片存储目录', 1],
     ['upload.operator_attachments_dir', '/app/host-uploads/operator/attachments', 'upload', '运营+运营助理附件存储目录', 1],
+    ['upload.payment_tracking_images_dir', '/app/host-uploads/payment-tracking/images', 'upload', '打款跟踪图片存储目录', 1],
   ];
   return configs.map(([key, value, group, desc, editable]) =>
     `${insert} sys_config (config_key, config_value, config_group, config_desc, editable) VALUES ('${key}', '${value}', '${group}', '${desc}', ${editable})`

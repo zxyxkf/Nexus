@@ -27,6 +27,8 @@ const PERMISSIONS = [
   { code: 'score.review.basic', name: '基础美工分值审核', type: 'page', group: '分值管理' },
   { code: 'score.records.basic', name: '基础美工审核记录', type: 'page', group: '分值管理' },
   { code: 'notification.center', name: '通知中心', type: 'page', group: '通用' },
+  { code: 'payment.selection.view', name: '选品收集', type: 'page', group: '打款跟踪' },
+  { code: 'payment.records.view', name: '打款记录', type: 'page', group: '打款跟踪' },
 
   { code: 'task.create.design', name: '创建美工任务', type: 'action', group: '任务操作' },
   { code: 'task.create.operator', name: '创建运营助理任务', type: 'action', group: '任务操作' },
@@ -41,7 +43,11 @@ const PERMISSIONS = [
   { code: 'task.upload.work', name: '上传作品/凭证', type: 'action', group: '任务操作' },
   { code: 'task.download.file', name: '下载任务文件', type: 'action', group: '任务操作' },
   { code: 'task.export', name: '导出任务报表', type: 'action', group: '导出' },
-  { code: 'dashboard.export', name: '导出仪表盘报表', type: 'action', group: '导出' }
+  { code: 'dashboard.export', name: '导出仪表盘报表', type: 'action', group: '导出' },
+  { code: 'payment.open', name: '开启打款', type: 'action', group: '打款跟踪' },
+  { code: 'payment.manager_review', name: '店长审核准备工作', type: 'action', group: '打款跟踪' },
+  { code: 'payment.stage_reopen', name: '阶段重开与流程恢复', type: 'action', group: '打款跟踪' },
+  { code: 'payment.delete', name: '删除选品记录', type: 'action', group: '打款跟踪' }
 ];
 
 const ROLE_DEFAULTS = {

@@ -50,6 +50,15 @@ describe('GET /api/config/list', () => {
       expect(res.body.data.every(c => c.config_group === 'upload')).toBe(true);
     }
   });
+
+  it('seeds the editable payment tracking image directory', async () => {
+    const res = await request(app)
+      .get('/api/config/list?group=upload')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const config = res.body.data.find(item => item.config_key === 'upload.payment_tracking_images_dir');
+    expect(config).toMatchObject({ editable: 1, config_group: 'upload' });
+    expect(config.config_value).toContain('payment-tracking');
+  });
 });
 
 describe('GET /api/config/get-value', () => {

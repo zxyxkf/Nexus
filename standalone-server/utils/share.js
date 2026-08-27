@@ -24,6 +24,7 @@ const DEFAULT_CONFIG = {
   cs_attachments_dir: process.env.CS_ATTACHMENT_DIR || path.join(HOST_UPLOAD_ROOT, 'cs', 'attachments'),
   operator_images_dir: process.env.OPERATOR_IMAGE_DIR || path.join(HOST_UPLOAD_ROOT, 'operator', 'images'),
   operator_attachments_dir: process.env.OPERATOR_ATTACHMENT_DIR || path.join(HOST_UPLOAD_ROOT, 'operator', 'attachments'),
+  payment_tracking_images_dir: process.env.PAYMENT_TRACKING_IMAGE_DIR || path.join(HOST_UPLOAD_ROOT, 'payment-tracking', 'images'),
 };
 
 let storageConfig = { ...DEFAULT_CONFIG };
@@ -57,6 +58,7 @@ async function initStorageConfig(pool) {
     'upload.cs_attachments_dir',
     'upload.operator_images_dir',
     'upload.operator_attachments_dir',
+    'upload.payment_tracking_images_dir',
   ];
   const propMap = {
     'upload.design_images_dir': 'design_images_dir',
@@ -65,6 +67,7 @@ async function initStorageConfig(pool) {
     'upload.cs_attachments_dir': 'cs_attachments_dir',
     'upload.operator_images_dir': 'operator_images_dir',
     'upload.operator_attachments_dir': 'operator_attachments_dir',
+    'upload.payment_tracking_images_dir': 'payment_tracking_images_dir',
   };
 
   for (const key of keys) {
@@ -120,6 +123,12 @@ function getStorageDir(group, type) {
   if (!dir) {
     throw new Error(`未配置存储目录: ${key}`);
   }
+  ensureDir(dir);
+  return dir;
+}
+
+function getPaymentTrackingImageDir() {
+  const dir = storageConfig.payment_tracking_images_dir || DEFAULT_CONFIG.payment_tracking_images_dir;
   ensureDir(dir);
   return dir;
 }
@@ -228,6 +237,7 @@ function getMaxFileCount() {
 module.exports = {
   initStorageConfig,
   getStorageDir,
+  getPaymentTrackingImageDir,
   resolvePath,
   saveImage,
   saveAttachment,
