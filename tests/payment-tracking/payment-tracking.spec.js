@@ -28,7 +28,22 @@ const records = [
     styleNumber: 'NX-260818',
     currentStage: 'selection',
     processStatus: 'in_progress',
-    stages: [stage('selection', 'active')]
+    stages: [stage('selection', 'active')],
+    stageData: {
+      selection: {
+        selectionDate: '2026-08-20',
+        styleNumber: 'NX-260818',
+        cost: 39,
+        salePrice: 99,
+        productId: '889900',
+        selectionMethod: '方式五：跟款',
+        detailText: '',
+        designMainImage: false,
+        skuLe200: true,
+        listingDate: '2026-08-21',
+        listingCategory: '女装'
+      }
+    }
   },
   {
     ...baseRecord,
@@ -37,7 +52,25 @@ const records = [
     styleNumber: 'NX-260819',
     currentStage: 'testing',
     processStatus: 'in_progress',
-    stages: [stage('selection'), stage('preparation'), stage('testing', 'active')]
+    stages: [stage('selection'), stage('preparation'), stage('testing', 'active')],
+    stageData: {
+      testing: {
+        carPromotionMethod: '标准推广',
+        carClicks: 320,
+        carCtr: 4.8,
+        carQualifies: true,
+        sitePromotionMethod: '全站推广',
+        overallVisitors: 2600,
+        searchVisitors: 780,
+        searchVisitorShare: 0.3,
+        buyers: 86,
+        averageCtr: 5.2,
+        potentialStatus: '不符合',
+        unqualifiedAction: '直接关闭',
+        managerReportDate: null,
+        weiStockReported: false
+      }
+    }
   },
   {
     ...baseRecord,
@@ -52,6 +85,25 @@ const records = [
     allowedActions: { restore: true, delete: true }
   }
 ]
+
+const preparationRecord = {
+  ...baseRecord,
+  id: 104,
+  storeSeq: 21,
+  styleNumber: 'NX-260821',
+  currentStage: 'preparation',
+  processStatus: 'in_progress',
+  stages: [stage('selection'), stage('preparation', 'active')],
+  stageData: {
+    preparation: {
+      reviewCount: 12,
+      newOpsRegistered: true,
+      paidEnabled: null,
+      paidAt: null
+    }
+  },
+  allowedActions: { edit: true, advance: true, end: true, managerReview: false }
+}
 
 async function installMocks(page) {
   await page.addInitScript(() => {
@@ -83,10 +135,27 @@ async function installMocks(page) {
       await route.fulfill({ json: { code: 0, data: { list: [], total: 0 } } })
       return
     }
+    if (url.pathname === '/api/config/list') {
+      await route.fulfill({ json: { code: 0, data: [] } })
+      return
+    }
+    if (url.pathname === '/api/task/stats/my') {
+      await route.fulfill({ json: { code: 0, data: {} } })
+      return
+    }
     if (url.pathname === '/api/payment-tracking/records') {
       const status = url.searchParams.get('processStatus') || url.searchParams.get('status')
       const list = records.filter(record => record.processStatus === status)
       await route.fulfill({ json: { code: 0, data: { list, total: list.length, page: 1, pageSize: 20 } } })
+      return
+    }
+    const detailMatch = url.pathname.match(/^\/api\/payment-tracking\/records\/(\d+)$/)
+    if (detailMatch && route.request().method() === 'GET') {
+      const record = [...records, preparationRecord].find(item => item.id === Number(detailMatch[1]))
+      await route.fulfill({
+        status: record ? 200 : 404,
+        json: record ? { code: 0, data: record } : { code: 404, msg: '记录不存在' }
+      })
       return
     }
     await route.fulfill({ status: 404, json: { code: 404, msg: '未配置测试接口' } })
@@ -115,4 +184,30 @@ test('列表只展示已进入的阶段节点并直接显示结束原因', async
   await expect(endedCard).not.toContainText('第12-18天数据监测')
 
   await page.screenshot({ path: testInfo.outputPath('payment-records.png'), fullPage: true })
+})
+
+test('阶段详情拒绝未来节点并按测款分支展示表单', async ({ page }, testInfo) => {
+  await page.goto('/#/payment-tracking/records/101/stages/testing')
+  await expect(page).toHaveURL(/#\/payment-tracking\/selections$/)
+
+  await page.goto('/#/payment-tracking/records/101/stages/selection')
+  await expect(page.getByRole('heading', { name: '信息及选品' })).toBeVisible()
+  await expect(page.getByRole('textbox', { name: '毛利' })).toHaveValue('60.61%')
+  await expect(page.locator('.el-checkbox').filter({ hasText: '通过并设计主图' })).toBeVisible()
+
+  await page.goto('/#/payment-tracking/records/102/stages/testing')
+  await expect(page.getByRole('heading', { name: '第7-11天测款' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '直通车测点率' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '全站推广' })).toBeVisible()
+  await expect(page.getByText('不符合后续操作')).toBeVisible()
+  await expect(page.getByRole('button', { name: '进入下一阶段' })).toHaveCount(0)
+
+  await page.goto('/#/payment-tracking/records/104/stages/preparation')
+  await expect(page.getByRole('heading', { name: '第1-6天准备工作' })).toBeVisible()
+  await expect(page.getByText('仅店长审核权限可修改')).toBeVisible()
+  const paidReview = page.locator('.el-form-item').filter({ hasText: '确认开启付费' })
+  await expect(paidReview.locator('.el-radio').first()).toHaveClass(/is-disabled/)
+
+  await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 6_000 })
+  await page.screenshot({ path: testInfo.outputPath('payment-preparation.png'), fullPage: true })
 })
