@@ -41,14 +41,15 @@
             </el-tag>
           </template>
         </el-table-column>
-        <el-table-column label="店铺/组长" width="120" show-overflow-tooltip>
+        <el-table-column label="店铺/身份" width="180" show-overflow-tooltip>
           <template #default="{ row }">
             <template v-if="row.role === 'basic_designer'">
               <el-tag v-if="row.is_team_lead" type="warning" size="small">组长</el-tag>
               <span v-else>-</span>
             </template>
-            <template v-else-if="row.role === 'operator'">
+            <template v-else-if="['operator', 'operator_assistant'].includes(row.role)">
               <span>{{ row.store || '-' }}</span>
+              <el-tag v-if="row.is_store_manager" type="success" size="small" style="margin-left:6px;">店长</el-tag>
             </template>
             <span v-else>-</span>
           </template>
@@ -114,7 +115,7 @@
           <el-input v-model="form.realName" placeholder="请输入真实姓名" />
         </el-form-item>
         <el-form-item label="角色" prop="role">
-          <el-select v-model="form.role" style="width:100%;">
+          <el-select v-model="form.role" style="width:100%;" @change="handleRoleChange">
             <el-option label="运营专员" value="operator" />
             <el-option label="美工设计师" value="designer" />
             <el-option label="客服专员" value="cs_agent" />
@@ -124,10 +125,13 @@
             <el-option label="超级管理员" value="admin" />
           </el-select>
         </el-form-item>
-        <el-form-item label="店铺" prop="store" v-if="form.role === 'operator'">
+        <el-form-item label="店铺" prop="store" v-if="isStoreRole(form.role)">
           <el-select v-model="form.store" placeholder="请选择店铺" style="width:100%;">
             <el-option v-for="s in shopList" :key="s.id" :label="s.name" :value="s.name" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="是否为店长" v-if="isStoreRole(form.role)">
+          <el-switch v-model="form.isStoreManager" active-text="是" inactive-text="否" />
         </el-form-item>
         <el-form-item label="设为组长" v-if="form.role === 'basic_designer'">
           <el-switch v-model="form.isTeamLead" active-text="是" inactive-text="否" />
@@ -314,6 +318,7 @@ const form = reactive({
   role: 'operator',
   store: '',
   isTeamLead: false,
+  isStoreManager: false,
   email: '',
   phone: '',
   remark: ''
@@ -323,7 +328,20 @@ const rules = {
   username: [{ required: true, message: '请输入用户名', trigger: 'blur' }],
   password: [{ required: true, message: '请输入密码', trigger: 'blur' }, { min: 6, message: '密码不少于6位', trigger: 'blur' }],
   realName: [{ required: true, message: '请输入姓名', trigger: 'blur' }],
-  role: [{ required: true, message: '请选择角色', trigger: 'change' }]
+  role: [{ required: true, message: '请选择角色', trigger: 'change' }],
+  store: [{ required: true, message: '请选择店铺', trigger: 'change' }]
+}
+
+function isStoreRole(role) {
+  return role === 'operator' || role === 'operator_assistant'
+}
+
+function handleRoleChange(role) {
+  if (!isStoreRole(role)) {
+    form.store = ''
+    form.isStoreManager = false
+  }
+  if (role !== 'basic_designer') form.isTeamLead = false
 }
 
 function roleLabel(r) {
@@ -419,6 +437,7 @@ function openCreate() {
   form.role = 'operator'
   form.store = ''
   form.isTeamLead = false
+  form.isStoreManager = false
   form.email = ''
   form.phone = ''
   form.remark = ''
@@ -435,6 +454,7 @@ function openEdit(row) {
   form.role = row.role
   form.store = row.store || ''
   form.isTeamLead = !!row.is_team_lead
+  form.isStoreManager = !!row.is_store_manager
   form.email = row.email || ''
   form.phone = row.phone || ''
   form.remark = row.remark || ''
@@ -454,8 +474,9 @@ async function handleSubmit() {
         id: editId.value,
         realName: form.realName,
         role: form.role,
-        store: form.role === 'operator' ? form.store : undefined,
+        store: isStoreRole(form.role) ? form.store : undefined,
         isTeamLead: form.isTeamLead ? 1 : 0,
+        isStoreManager: form.isStoreManager ? 1 : 0,
         email: form.email || undefined,
         phone: form.phone || undefined,
         remark: form.remark || undefined
@@ -466,8 +487,9 @@ async function handleSubmit() {
         password: form.password,
         realName: form.realName,
         role: form.role,
-        store: form.role === 'operator' ? form.store : undefined,
+        store: isStoreRole(form.role) ? form.store : undefined,
         isTeamLead: form.isTeamLead ? 1 : 0,
+        isStoreManager: form.isStoreManager ? 1 : 0,
         email: form.email || undefined,
         phone: form.phone || undefined,
         remark: form.remark || undefined

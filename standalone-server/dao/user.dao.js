@@ -35,7 +35,7 @@ async function getUserList({ page, pageSize, role, status, keyword, sortField, s
   );
 
   const [rows] = await pool.execute(
-    `SELECT u.id, u.username, u.real_name, u.role, u.store, u.is_team_lead, u.status, u.email, u.phone, u.remark,
+    `SELECT u.id, u.username, u.real_name, u.role, u.store, u.is_team_lead, u.is_store_manager, u.status, u.email, u.phone, u.remark,
             u.last_login_time, u.create_time, u.update_time
      FROM sys_user u ${whereSql}
      ORDER BY ${orderColumn} ${direction}, u.id ${direction}
@@ -70,7 +70,7 @@ async function findById(id) {
 async function findFullById(id) {
   const pool = getPool();
   const [rows] = await pool.execute(
-    `SELECT id, username, real_name, role, store, is_team_lead, status FROM sys_user WHERE id = ?`,
+    `SELECT id, username, real_name, role, store, is_team_lead, is_store_manager, status FROM sys_user WHERE id = ?`,
     [id]
   );
   return rows[0] || null;
@@ -78,21 +78,21 @@ async function findFullById(id) {
 
 // ==================== 写入 ====================
 
-async function createUser({ username, hashedPwd, realName, role, store, isTeamLead, email, phone, remark }) {
+async function createUser({ username, hashedPwd, realName, role, store, isTeamLead, isStoreManager, email, phone, remark }) {
   const pool = getPool();
   await pool.execute(
-    `INSERT INTO sys_user (username, password, real_name, role, store, is_team_lead, email, phone, remark)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-    [username, hashedPwd, realName, role, store || '', isTeamLead ? 1 : 0, email || null, phone || null, remark || null]
+    `INSERT INTO sys_user (username, password, real_name, role, store, is_team_lead, is_store_manager, email, phone, remark)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [username, hashedPwd, realName, role, store || '', isTeamLead ? 1 : 0, isStoreManager ? 1 : 0, email || null, phone || null, remark || null]
   );
 }
 
-async function updateUser({ id, realName, role, store, isTeamLead, email, phone, remark, status }) {
+async function updateUser({ id, realName, role, store, isTeamLead, isStoreManager, email, phone, remark, status }) {
   const pool = getPool();
   await pool.execute(
-    `UPDATE sys_user SET real_name = ?, role = ?, store = ?, is_team_lead = ?, email = ?, phone = ?, remark = ?, status = ?
+    `UPDATE sys_user SET real_name = ?, role = ?, store = ?, is_team_lead = ?, is_store_manager = ?, email = ?, phone = ?, remark = ?, status = ?
      WHERE id = ?`,
-    [realName, role, store || '', isTeamLead ? 1 : 0, email || null, phone || null, remark || null, status !== undefined ? status : 1, id]
+    [realName, role, store || '', isTeamLead ? 1 : 0, isStoreManager ? 1 : 0, email || null, phone || null, remark || null, status !== undefined ? status : 1, id]
   );
 }
 

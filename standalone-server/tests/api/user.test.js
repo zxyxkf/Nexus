@@ -141,6 +141,105 @@ describe('用户 CRUD 流程', () => {
   });
 });
 
+describe('店铺与店长身份', () => {
+  const createdUserIds = [];
+
+  afterAll(async () => {
+    for (const id of createdUserIds) {
+      await request(app)
+        .post('/api/user/delete')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ id });
+    }
+  });
+
+  it('运营助理必须选择店铺并可设置为店长', async () => {
+    const username = `assistant_manager_${Date.now()}`;
+    const createRes = await request(app)
+      .post('/api/user/create')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username,
+        password: 'test123456',
+        realName: '运营助理店长',
+        role: 'operator_assistant',
+        store: '测试店铺A',
+        isStoreManager: 1
+      });
+
+    expect(createRes.body.code).toBe(0);
+
+    const listRes = await request(app)
+      .get('/api/user/list?role=operator_assistant')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const user = listRes.body.data.list.find(item => item.username === username);
+    expect(user).toMatchObject({
+      role: 'operator_assistant',
+      store: '测试店铺A',
+      is_store_manager: 1
+    });
+    createdUserIds.push(user.id);
+  });
+
+  it.each(['operator', 'operator_assistant'])('%s 创建时缺少店铺会被拒绝', async (role) => {
+    const res = await request(app)
+      .post('/api/user/create')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username: `missing_store_${role}_${Date.now()}`,
+        password: 'test123456',
+        realName: '缺少店铺',
+        role,
+        isStoreManager: 1
+      });
+
+    expect(res.body.code).toBe(400);
+  });
+
+  it('切换到非店铺角色时清空店铺和店长身份', async () => {
+    const username = `operator_to_designer_${Date.now()}`;
+    await request(app)
+      .post('/api/user/create')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        username,
+        password: 'test123456',
+        realName: '待切换角色用户',
+        role: 'operator',
+        store: '测试店铺B',
+        isStoreManager: 1
+      });
+
+    const beforeList = await request(app)
+      .get('/api/user/list?role=operator')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const created = beforeList.body.data.list.find(item => item.username === username);
+    expect(created).toBeDefined();
+    createdUserIds.push(created.id);
+
+    const updateRes = await request(app)
+      .put('/api/user/update')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        id: created.id,
+        realName: created.real_name,
+        role: 'designer',
+        store: '不应保留的店铺',
+        isStoreManager: 1,
+        status: 1
+      });
+    expect(updateRes.body.code).toBe(0);
+
+    const afterList = await request(app)
+      .get('/api/user/list?role=designer')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(afterList.body.data.list.find(item => item.id === created.id)).toMatchObject({
+      store: '',
+      is_store_manager: 0
+    });
+  });
+});
+
 describe('GET /api/user/designers', () => {
   it('返回美工列表', async () => {
     const res = await request(app)

@@ -48,6 +48,7 @@ function buildUserFromDecoded(decoded) {
     realName: decoded.realName,
     store: decoded.store || '',
     isTeamLead: decoded.isTeamLead || 0,
+    isStoreManager: decoded.isStoreManager || 0,
     permissions: Array.isArray(decoded.permissions) ? decoded.permissions : [],
     hasPermissionClaim
   };

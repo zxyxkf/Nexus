@@ -34,6 +34,9 @@ export interface User {
   username: string
   real_name: string
   role: UserRole
+  store?: string
+  isTeamLead?: number
+  isStoreManager?: number
   status: number
   email?: string
   phone?: string

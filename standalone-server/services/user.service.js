@@ -9,7 +9,20 @@ const { attachOnlineStatus } = require('../utils/online');
 const { canViewAllTaskGroup } = require('../utils/task-permissions');
 
 const VALID_ROLES = ['admin', 'sub_admin', 'operator', 'designer', 'cs_agent', 'basic_designer', 'operator_assistant'];
+const STORE_ROLES = new Set(['operator', 'operator_assistant']);
 const DEFAULT_PASSWORD = '123456';
+
+function normalizeStoreIdentity(role, store, isStoreManager) {
+  const isStoreRole = STORE_ROLES.has(role);
+  const normalizedStore = isStoreRole ? String(store || '').trim() : '';
+  if (isStoreRole && !normalizedStore) {
+    throw new AppError(400, '运营和运营助理必须选择店铺');
+  }
+  return {
+    store: normalizedStore,
+    isStoreManager: isStoreRole && (isStoreManager === true || Number(isStoreManager) === 1) ? 1 : 0
+  };
+}
 
 // ==================== 查询 ====================
 
@@ -123,16 +136,14 @@ async function getTaskDesignerList(taskGroup, user) {
 
 // ==================== 创建 ====================
 
-async function createUser({ username, password, realName, role, store, isTeamLead, email, phone, remark }) {
+async function createUser({ username, password, realName, role, store, isTeamLead, isStoreManager, email, phone, remark }) {
   if (!username || !password || !realName || !role) {
     throw new AppError(400, '用户名、密码、姓名、角色不能为空');
   }
   if (!VALID_ROLES.includes(role)) {
     throw new AppError(400, '角色值无效');
   }
-  if (role === 'operator' && !store) {
-    throw new AppError(400, '运营角色必须选择店铺');
-  }
+  const storeIdentity = normalizeStoreIdentity(role, store, isStoreManager);
   if (password.length < 6) {
     throw new AppError(400, '密码长度不能少于6位');
   }
@@ -143,17 +154,41 @@ async function createUser({ username, password, realName, role, store, isTeamLea
   }
 
   const hashedPwd = bcrypt.hashSync(password, 10);
-  await userDao.createUser({ username, hashedPwd, realName, role, store, isTeamLead, email, phone, remark });
+  await userDao.createUser({
+    username,
+    hashedPwd,
+    realName,
+    role,
+    store: storeIdentity.store,
+    isTeamLead,
+    isStoreManager: storeIdentity.isStoreManager,
+    email,
+    phone,
+    remark
+  });
 }
 
 // ==================== 更新 ====================
 
-async function updateUser({ id, realName, role, store, isTeamLead, email, phone, remark, status }, currentUserId) {
+async function updateUser({ id, realName, role, store, isTeamLead, isStoreManager, email, phone, remark, status }, currentUserId) {
   if (!id) throw new AppError(400, '用户ID不能为空');
   if (Number(id) === Number(currentUserId) && role) {
     throw new AppError(400, '不能修改自己的角色');
   }
-  await userDao.updateUser({ id, realName, role, store, isTeamLead, email, phone, remark, status });
+  if (!VALID_ROLES.includes(role)) throw new AppError(400, '角色值无效');
+  const storeIdentity = normalizeStoreIdentity(role, store, isStoreManager);
+  await userDao.updateUser({
+    id,
+    realName,
+    role,
+    store: storeIdentity.store,
+    isTeamLead,
+    isStoreManager: storeIdentity.isStoreManager,
+    email,
+    phone,
+    remark,
+    status
+  });
 }
 
 // ==================== 密码 ====================

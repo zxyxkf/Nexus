@@ -37,7 +37,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
 
     const pool = getPool();
     const [rows] = await pool.execute(
-      `SELECT id, username, password, real_name, role, status, store, is_team_lead FROM sys_user WHERE username = ?`,
+      `SELECT id, username, password, real_name, role, status, store, is_team_lead, is_store_manager FROM sys_user WHERE username = ?`,
       [username]
     );
 
@@ -85,6 +85,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
       realName: user.real_name,
       store: user.store || '',
       isTeamLead: user.is_team_lead || 0,
+      isStoreManager: user.is_store_manager || 0,
       permissions
     });
     const refreshToken = generateRefreshToken();
@@ -126,6 +127,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
           role: user.role,
           store: user.store || '',
           isTeamLead: user.is_team_lead || 0,
+          isStoreManager: user.is_store_manager || 0,
           permissions
         }
       }
@@ -150,7 +152,7 @@ router.post('/refresh', async (req, res, next) => {
 
     // 查 DB：token 存在 + 未撤销 + 未过期
     const [rows] = await pool.execute(
-      `SELECT rt.id, rt.user_id, rt.expires_at, u.username, u.real_name, u.role, u.status, u.store, u.is_team_lead
+      `SELECT rt.id, rt.user_id, rt.expires_at, u.username, u.real_name, u.role, u.status, u.store, u.is_team_lead, u.is_store_manager
        FROM sys_refresh_token rt
        JOIN sys_user u ON u.id = rt.user_id
        WHERE rt.token = ? AND rt.revoked = 0`,
@@ -188,6 +190,7 @@ router.post('/refresh', async (req, res, next) => {
       realName: record.real_name,
       store: record.store || '',
       isTeamLead: record.is_team_lead || 0,
+      isStoreManager: record.is_store_manager || 0,
       permissions
     });
 
@@ -203,6 +206,7 @@ router.post('/refresh', async (req, res, next) => {
           role: record.role,
           store: record.store || '',
           isTeamLead: record.is_team_lead || 0,
+          isStoreManager: record.is_store_manager || 0,
           permissions
         }
       }

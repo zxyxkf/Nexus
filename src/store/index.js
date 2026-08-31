@@ -26,8 +26,8 @@ export const useUserStore = defineStore('user', {
     isDesigner: (state) => state.userInfo?.role === 'designer',
     isBasicDesigner: (state) => state.userInfo?.role === 'basic_designer',
     isBasicDesignerLead: (state) => state.userInfo?.role === 'basic_designer' && !!state.userInfo?.isTeamLead,
-    isOperatorAssistant: (state) => state.userInfo?.role === 'operator_assistant'
-    ,
+    isOperatorAssistant: (state) => state.userInfo?.role === 'operator_assistant',
+    isStoreManager: (state) => ['admin', 'sub_admin'].includes(state.userInfo?.role) || !!state.userInfo?.isStoreManager,
     hasPermission: (state) => (permission) => {
       if (!permission) return true
       return checkPermission(permission, state.userInfo)

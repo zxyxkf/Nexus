@@ -6,10 +6,42 @@ const request = require('supertest');
 const { setupApp } = require('./helpers/setup');
 
 let app;
+let adminToken;
+let storeManagerUserId;
+const storeManagerUsername = `auth_store_manager_${Date.now()}`;
 
 beforeAll(async () => {
   app = await setupApp();
+  const loginRes = await request(app)
+    .post('/api/auth/login')
+    .send({ username: 'admin', password: 'admin123' });
+  adminToken = loginRes.body.data.token;
+
+  await request(app)
+    .post('/api/user/create')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      username: storeManagerUsername,
+      password: 'test123456',
+      realName: '认证店长测试',
+      role: 'operator_assistant',
+      store: '认证测试店铺',
+      isStoreManager: 1
+    });
+
+  const listRes = await request(app)
+    .get('/api/user/list?role=operator_assistant')
+    .set('Authorization', `Bearer ${adminToken}`);
+  storeManagerUserId = listRes.body.data.list.find(user => user.username === storeManagerUsername)?.id;
 }, 30000);
+
+afterAll(async () => {
+  if (!storeManagerUserId) return;
+  await request(app)
+    .post('/api/user/delete')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ id: storeManagerUserId });
+});
 
 describe('POST /api/auth/login', () => {
   it('缺少用户名返回业务错误码 400', async () => {
@@ -49,6 +81,28 @@ describe('POST /api/auth/login', () => {
     expect(res.body.data.token).toBeDefined();
     expect(res.body.data.user.username).toBe('admin');
     expect(res.body.data.user.role).toBe('admin');
+  });
+
+  it('登录和刷新 token 都返回店铺与店长身份', async () => {
+    const loginRes = await request(app)
+      .post('/api/auth/login')
+      .send({ username: storeManagerUsername, password: 'test123456' });
+
+    expect(loginRes.body.code).toBe(0);
+    expect(loginRes.body.data.user).toMatchObject({
+      store: '认证测试店铺',
+      isStoreManager: 1
+    });
+
+    const refreshRes = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: loginRes.body.data.refreshToken });
+
+    expect(refreshRes.body.code).toBe(0);
+    expect(refreshRes.body.data.user).toMatchObject({
+      store: '认证测试店铺',
+      isStoreManager: 1
+    });
   });
 });
 

@@ -257,6 +257,92 @@ describe('完整状态流转（大厅接单模式）', () => {
   });
 });
 
+describe('运营助理店铺字段不影响原任务流程', () => {
+  const assistantIds = [];
+  let taskId;
+
+  afterAll(async () => {
+    if (taskId) {
+      await request(app)
+        .post('/api/task/delete')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ taskId });
+    }
+    for (const id of assistantIds) {
+      await request(app)
+        .post('/api/user/delete')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ id });
+    }
+  });
+
+  it('不同店铺的运营助理仍可看到并接取同一运营任务', async () => {
+    const suffix = Date.now();
+    const assistants = [
+      { username: `assistant_store_a_${suffix}`, realName: 'A店运营助理', store: '测试店铺A' },
+      { username: `assistant_store_b_${suffix}`, realName: 'B店运营助理', store: '测试店铺B' }
+    ];
+
+    for (const assistant of assistants) {
+      const createRes = await request(app)
+        .post('/api/user/create')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({
+          username: assistant.username,
+          password: 'test123456',
+          realName: assistant.realName,
+          role: 'operator_assistant',
+          store: assistant.store
+        });
+      expect(createRes.body.code).toBe(0);
+    }
+
+    const listRes = await request(app)
+      .get('/api/user/list?role=operator_assistant&pageSize=100')
+      .set('Authorization', `Bearer ${adminToken}`);
+    for (const assistant of assistants) {
+      const user = listRes.body.data.list.find(item => item.username === assistant.username);
+      expect(user).toBeDefined();
+      assistantIds.push(user.id);
+      const loginRes = await request(app)
+        .post('/api/auth/login')
+        .send({ username: assistant.username, password: 'test123456' });
+      assistant.token = loginRes.body.data.token;
+    }
+
+    const createTaskRes = await request(app)
+      .post('/api/task/create')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({
+        title: '跨店铺运营助理大厅任务',
+        taskGroup: 'operator',
+        priority: 1,
+        shopName: '测试店铺'
+      });
+    expect(createTaskRes.body.code).toBe(0);
+    taskId = createTaskRes.body.data.id;
+
+    for (const assistant of assistants) {
+      const hallRes = await request(app)
+        .get('/api/task/hall?taskGroup=operator&pageSize=100')
+        .set('Authorization', `Bearer ${assistant.token}`);
+      expect(hallRes.body.code).toBe(0);
+      expect(hallRes.body.data.list.some(task => Number(task.id) === Number(taskId))).toBe(true);
+    }
+
+    const acceptRes = await request(app)
+      .post('/api/task/accept')
+      .set('Authorization', `Bearer ${assistants[1].token}`)
+      .send({ taskId });
+    expect(acceptRes.body.code).toBe(0);
+
+    const acceptedRes = await request(app)
+      .get('/api/task/my-accepted?taskGroup=operator&pageSize=100')
+      .set('Authorization', `Bearer ${assistants[1].token}`);
+    expect(acceptedRes.body.data.list.some(task => Number(task.id) === Number(taskId))).toBe(true);
+  });
+});
+
 describe('内联上传辅助能力', () => {
   let pathOnlyTaskId;
 
@@ -439,7 +525,13 @@ describe('任务查询', () => {
       const createRes = await request(app)
         .post('/api/user/create')
         .set('Authorization', `Bearer ${adminToken}`)
-        .send({ username, password: 'test123456', realName, role });
+        .send({
+          username,
+          password: 'test123456',
+          realName,
+          role,
+          store: role === 'operator_assistant' ? '权限测试店铺' : undefined
+        });
       expect(createRes.body.code).toBe(0);
 
       const listRes = await request(app)
