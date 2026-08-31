@@ -1,62 +1,56 @@
 <template>
   <el-form ref="formRef" :model="model" :rules="rules" label-position="top" class="stage-form">
-    <div class="testing-grid">
-      <section class="form-section testing-section">
-        <h2>直通车测点率</h2>
-        <el-form-item label="推广方式">
-          <el-input v-model="model.carPromotionMethod" :disabled="readonly" maxlength="100" />
-        </el-form-item>
-        <div class="field-pair">
-          <el-form-item label="点击量">
-            <el-input-number v-model="model.carClicks" :min="0" :precision="0" :controls="false" :disabled="readonly" />
-          </el-form-item>
-          <el-form-item label="点击率">
-            <div class="number-with-unit">
-              <el-input-number v-model="model.carCtr" :min="0" :precision="2" :controls="false" :disabled="readonly" />
-              <span>%</span>
-            </div>
-          </el-form-item>
-        </div>
-        <el-form-item label="是否符合直通车测试标准">
-          <el-radio-group v-model="model.carQualifies" :disabled="readonly">
+    <section class="form-section">
+      <div class="section-heading">
+        <h2>店长付费确认</h2>
+        <span v-if="!canReview" class="permission-hint">仅店长审核权限可修改</span>
+      </div>
+      <div class="form-grid">
+        <el-form-item label="确认开启付费" prop="paidEnabled">
+          <el-radio-group v-model="model.paidEnabled" :disabled="readonly || !canReview">
             <el-radio :value="true">是</el-radio>
             <el-radio :value="false">否</el-radio>
           </el-radio-group>
         </el-form-item>
-      </section>
-
-      <section class="form-section testing-section">
-        <h2>全站推广</h2>
-        <el-form-item label="推广方式">
-          <el-input v-model="model.sitePromotionMethod" :disabled="readonly" maxlength="100" />
+        <el-form-item label="付费时间" prop="paidAt">
+          <el-date-picker
+            v-model="model.paidAt"
+            type="datetime"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            :disabled="readonly || !canReview"
+            placeholder="请选择付费时间"
+          />
         </el-form-item>
-        <div class="field-pair">
-          <el-form-item label="整体访客数">
-            <el-input-number v-model="model.overallVisitors" :min="0" :precision="0" :controls="false" :disabled="readonly" />
-          </el-form-item>
-          <el-form-item label="搜索访客数">
-            <el-input-number v-model="model.searchVisitors" :min="0" :precision="0" :controls="false" :disabled="readonly" />
-          </el-form-item>
-          <el-form-item label="搜索访客占比">
-            <el-input :model-value="searchShareText" disabled />
-          </el-form-item>
-          <el-form-item label="付款人数">
-            <el-input-number v-model="model.buyers" :min="0" :precision="0" :controls="false" :disabled="readonly" />
-          </el-form-item>
-          <el-form-item label="平均点击率">
-            <div class="number-with-unit">
-              <el-input-number v-model="model.averageCtr" :min="0" :precision="2" :controls="false" :disabled="readonly" />
-              <span>%</span>
-            </div>
-          </el-form-item>
-        </div>
-      </section>
-    </div>
+      </div>
+    </section>
 
-    <section class="form-section result-section">
+    <section class="form-section">
+      <h2>推广信息</h2>
+      <div class="form-grid">
+        <el-form-item label="推广方式" prop="promotionMethod" class="span-2">
+          <el-select
+            v-model="model.promotionMethod"
+            clearable
+            filterable
+            :disabled="readonly"
+            :loading="promotionLoading"
+            placeholder="请选择推广方式"
+          >
+            <el-option
+              v-for="item in promotionOptions"
+              :key="item.id || item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
+        </el-form-item>
+      </div>
+    </section>
+
+    <section class="form-section">
       <h2>潜力款判断</h2>
-      <div class="result-grid">
-        <el-form-item label="是否符合潜力款" prop="potentialStatus">
+      <div class="form-grid">
+        <el-form-item label="是否符合潜力款" prop="potentialStatus" class="span-2">
           <el-radio-group v-model="model.potentialStatus" :disabled="readonly">
             <el-radio value="符合潜力款标准">符合潜力款标准</el-radio>
             <el-radio value="不符合">不符合</el-radio>
@@ -78,18 +72,72 @@
         </el-form-item>
       </div>
     </section>
+
+    <section class="form-section image-section">
+      <h2>潜力款判断图片</h2>
+      <ImageGallery
+        :record-id="record.id"
+        :version="record.version"
+        :images="record.images"
+        category="potential_judgment"
+        label="潜力款判断图片"
+        :readonly="readonly"
+        @record-updated="emit('record-updated', $event)"
+        @reload-requested="emit('reload-requested')"
+      />
+    </section>
   </el-form>
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
+import ImageGallery from '@/components/payment-tracking/ImageGallery.vue'
+import { listPaymentPromotionMethodsApi } from '@/api'
 import { UNQUALIFIED_ACTIONS } from '@/config/payment-tracking'
 
 const model = defineModel({ type: Object, required: true })
-defineProps({ readonly: Boolean })
+const props = defineProps({
+  record: { type: Object, required: true },
+  readonly: Boolean,
+  canReview: Boolean
+})
+const emit = defineEmits(['record-updated', 'reload-requested'])
 const formRef = ref(null)
+const promotionMethods = ref([])
+const promotionLoading = ref(false)
+
+const promotionOptions = computed(() => {
+  const options = promotionMethods.value
+    .filter(item => item && (item.active === undefined || Number(item.active) === 1))
+    .map(item => ({ id: item.id, value: item.name, label: item.name }))
+  const current = String(model.value.promotionMethod || '').trim()
+  if (current && !options.some(item => item.value === current)) {
+    options.unshift({ id: `legacy-${current}`, value: current, label: `${current}（历史方式）` })
+  }
+  return options
+})
+
+async function loadPromotionMethods() {
+  promotionLoading.value = true
+  try {
+    const response = await listPaymentPromotionMethodsApi()
+    const rows = Array.isArray(response?.data) ? response.data : response?.data?.list
+    if (Array.isArray(rows)) promotionMethods.value = rows
+  } catch (error) {
+    console.error('[PaymentTracking] 加载推广方式失败:', error)
+  } finally {
+    promotionLoading.value = false
+  }
+}
 
 const rules = {
+  paidEnabled: [{
+    validator: (_rule, value, callback) => value === true
+      ? callback()
+      : callback(new Error('店长必须确认开启付费')),
+    trigger: 'change'
+  }],
+  paidAt: [{ required: true, message: '请选择付费时间', trigger: 'change' }],
   potentialStatus: [{
     validator: (_rule, value, callback) => value === '符合潜力款标准'
       ? callback()
@@ -98,89 +146,101 @@ const rules = {
   }]
 }
 
-const searchShareText = computed(() => {
-  const total = Number(model.value.overallVisitors)
-  const search = Number(model.value.searchVisitors)
-  if (!Number.isFinite(total) || total <= 0 || !Number.isFinite(search)) return '-'
-  return `${((search / total) * 100).toFixed(2)}%`
-})
-
 async function validateForAdvance() {
   await formRef.value.validate()
   return true
 }
 
 defineExpose({ validateForAdvance })
+onMounted(loadPromotionMethods)
 </script>
 
 <style scoped>
-.testing-grid {
+.stage-form {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 24px;
+  gap: 16px;
+  min-width: 0;
 }
 
 .form-section {
   min-width: 0;
-  padding: 20px 0;
-  border-top: 1px solid var(--dd-border-light, #e4e7ed);
+  padding: 20px;
+  border: 1px solid var(--dd-border-light, #dfe4ec);
+  border-radius: 6px;
+  background: #fff;
 }
 
-.testing-section {
-  padding-top: 4px;
-  border-top: 0;
+.section-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
 }
 
 h2 {
-  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 18px;
+  color: #253047;
   font-size: 16px;
 }
 
-.field-pair,
-.result-grid {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 0 16px;
+h2::before {
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+  background: #409eff;
+  content: '';
 }
 
-.result-section {
-  margin-top: 4px;
-}
-
-.result-grid {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
-.number-with-unit {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 28px;
-  align-items: center;
-  width: 100%;
-}
-
-.number-with-unit span {
-  text-align: right;
+.permission-hint {
+  margin-bottom: 18px;
   color: var(--dd-text-secondary, #909399);
+  font-size: 12px;
 }
 
-:deep(.el-input-number),
+.form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 20px;
+}
+
+.span-2 {
+  grid-column: span 2;
+}
+
+.image-section h2 {
+  margin-bottom: 14px;
+}
+
 :deep(.el-date-editor.el-input),
 :deep(.el-select) {
   width: 100%;
 }
 
-@media (max-width: 1100px) {
-  .testing-grid,
-  .result-grid {
+:deep(.el-form-item) {
+  margin-bottom: 18px;
+}
+
+:deep(.el-form-item__label) {
+  color: #4b5565;
+  font-weight: 600;
+}
+
+@media (max-width: 900px) {
+  .form-grid {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 
 @media (max-width: 640px) {
-  .testing-grid,
-  .field-pair,
-  .result-grid {
+  .form-grid {
     grid-template-columns: 1fr;
+  }
+
+  .span-2 {
+    grid-column: auto;
   }
 }
 </style>

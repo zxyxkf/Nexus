@@ -5,15 +5,6 @@
         <strong>{{ label }}</strong>
         <span>{{ categoryImages.length }} 张</span>
       </div>
-      <el-button
-        v-if="!readonly"
-        type="primary"
-        plain
-        size="small"
-        :icon="Upload"
-        :loading="busy"
-        @click="fileInput?.click()"
-      >上传图片</el-button>
       <input
         ref="fileInput"
         class="file-input"
@@ -23,6 +14,21 @@
         @change="uploadFiles"
       />
     </div>
+
+    <button
+      v-if="!readonly"
+      type="button"
+      class="image-gallery-dropzone"
+      :class="{ 'is-busy': busy }"
+      :disabled="busy"
+      @click="fileInput?.click()"
+      @dragover.prevent
+      @drop.prevent="handleDrop"
+    >
+      <el-icon :size="22"><Upload /></el-icon>
+      <span>拖拽图片到此处，或点击上传</span>
+      <small>支持 JPG、PNG、WEBP 等图片格式</small>
+    </button>
 
     <div v-if="categoryImages.length" class="image-grid">
       <figure
@@ -103,6 +109,8 @@ const props = defineProps({
   images: { type: Array, default: () => [] },
   category: { type: String, required: true },
   label: { type: String, required: true },
+  ownerId: { type: [Number, String], default: null },
+  beforeUpload: { type: Function, default: null },
   readonly: Boolean
 })
 
@@ -110,7 +118,12 @@ const emit = defineEmits(['record-updated', 'reload-requested'])
 const fileInput = ref(null)
 const busy = ref(false)
 const categoryImages = computed(() => props.images
-  .filter(image => image.category === props.category)
+  .filter(image => {
+    if (image.category !== props.category) return false
+    if (props.category !== 'adjustment_feedback') return true
+    if (props.ownerId === null || props.ownerId === undefined || props.ownerId === '') return false
+    return Number(image.adjustmentId) === Number(props.ownerId)
+  })
   .sort((a, b) => (a.sortOrder - b.sortOrder) || (a.id - b.id)))
 const previewUrls = computed(() => categoryImages.value.map(image => {
   const url = getPaymentImageUrl(image)
@@ -138,10 +151,32 @@ function handleVersionConflict(response) {
 async function uploadFiles(event) {
   const files = Array.from(event.target.files || [])
   event.target.value = ''
+  await uploadFileList(files)
+}
+
+async function handleDrop(event) {
+  await uploadFileList(Array.from(event.dataTransfer?.files || []))
+}
+
+async function uploadFileList(files) {
   if (!files.length) return
   busy.value = true
   try {
-    const response = await uploadPaymentImagesApi(props.recordId, props.category, files, props.version)
+    let version = props.version
+    let ownerId = props.ownerId
+    if (props.beforeUpload) {
+      const prepared = await props.beforeUpload()
+      if (!prepared) return
+      version = prepared.version
+      ownerId = prepared.ownerId ?? ownerId
+    }
+    const response = await uploadPaymentImagesApi(
+      props.recordId,
+      props.category,
+      files,
+      version,
+      ownerId
+    )
     if (handleVersionConflict(response)) return
     if (response.code === 0) {
       emit('record-updated', response.data)
@@ -219,6 +254,46 @@ async function removeImage(image) {
 
 .file-input {
   display: none;
+}
+
+.image-gallery-dropzone {
+  display: flex;
+  width: 100%;
+  min-height: 86px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  margin-bottom: 12px;
+  padding: 14px 16px;
+  border: 1px dashed #b9c3d2;
+  border-radius: 6px;
+  background: #f8fafc;
+  color: #526174;
+  cursor: pointer;
+  transition: border-color 0.15s ease, background-color 0.15s ease;
+}
+
+.image-gallery-dropzone:hover:not(:disabled),
+.image-gallery-dropzone:focus-visible:not(:disabled) {
+  border-color: #409eff;
+  background: #f0f7ff;
+  outline: none;
+}
+
+.image-gallery-dropzone span {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.image-gallery-dropzone small {
+  color: #909399;
+  font-size: 12px;
+}
+
+.image-gallery-dropzone.is-busy {
+  cursor: wait;
+  opacity: 0.7;
 }
 
 .image-grid {

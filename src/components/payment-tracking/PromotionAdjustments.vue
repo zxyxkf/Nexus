@@ -11,8 +11,8 @@
     <el-collapse v-if="model.length" v-model="activeNames">
       <el-collapse-item
         v-for="(item, index) in model"
-        :key="item.id || `new-${index}`"
-        :name="index"
+        :key="item.clientKey"
+        :name="item.clientKey"
       >
         <template #title>
           <div class="adjustment-title">
@@ -34,27 +34,28 @@
               :disabled="readonly"
             />
           </el-form-item>
-          <el-form-item label="当前费比（7天）">
-            <div class="number-with-unit">
-              <el-input-number v-model="item.feeRatio7d" :min="0" :precision="2" :controls="false" :disabled="readonly" />
-              <span>%</span>
-            </div>
-          </el-form-item>
-          <el-form-item label="当前付款人数（7天）">
-            <el-input-number v-model="item.payers7d" :min="0" :precision="0" :controls="false" :disabled="readonly" />
-          </el-form-item>
-          <el-form-item label="总预算">
-            <el-input-number v-model="item.totalBudget" :min="0" :precision="2" :controls="false" :disabled="readonly" />
-          </el-form-item>
-          <el-form-item label="投产 / 调整细节" class="span-2">
+          <el-form-item label="操作概述" class="span-2">
             <el-input v-model="item.detailText" type="textarea" :rows="3" :disabled="readonly" maxlength="2000" />
           </el-form-item>
-          <el-form-item label="3-5天后数据反馈" class="span-2">
+          <el-form-item label="备注" class="span-2">
             <el-input v-model="item.feedbackText" type="textarea" :rows="3" :disabled="readonly" maxlength="2000" />
           </el-form-item>
         </div>
 
-        <div v-if="!readonly && !item.id" class="adjustment-actions">
+        <ImageGallery
+          :record-id="record.id"
+          :version="record.version"
+          :images="record.images"
+          category="adjustment_feedback"
+          label="数据反馈"
+          :owner-id="item.id"
+          :before-upload="item.id ? null : () => prepareUpload(item.clientKey)"
+          :readonly="readonly"
+          @record-updated="emit('record-updated', $event)"
+          @reload-requested="emit('reload-requested')"
+        />
+
+        <div v-if="!readonly" class="adjustment-actions">
           <el-button type="danger" plain size="small" :icon="Delete" @click="removeAdjustment(index)">删除本次调整</el-button>
         </div>
       </el-collapse-item>
@@ -66,30 +67,38 @@
 <script setup>
 import { ref } from 'vue'
 import { Delete, Plus } from '@element-plus/icons-vue'
+import ImageGallery from './ImageGallery.vue'
 
 const model = defineModel({ type: Array, required: true })
-defineProps({ readonly: Boolean })
+defineProps({
+  record: { type: Object, required: true },
+  readonly: Boolean,
+  prepareUpload: { type: Function, required: true }
+})
+const emit = defineEmits(['record-updated', 'reload-requested'])
 const activeNames = ref([])
 
+function newClientKey() {
+  if (globalThis.crypto?.randomUUID) return globalThis.crypto.randomUUID()
+  return `adjustment-${Date.now()}-${Math.random().toString(16).slice(2)}`
+}
+
 function addAdjustment() {
-  const index = model.value.length
+  const clientKey = newClientKey()
   model.value.push({
-    sortOrder: index,
+    id: null,
+    clientKey,
     reason: '',
     adjustedAt: null,
-    feeRatio7d: null,
-    payers7d: null,
-    totalBudget: null,
     detailText: '',
     feedbackText: ''
   })
-  activeNames.value = [...new Set([...activeNames.value, index])]
+  activeNames.value = [...new Set([...activeNames.value, clientKey])]
 }
 
 function removeAdjustment(index) {
-  model.value.splice(index, 1)
-  model.value.forEach((item, itemIndex) => { item.sortOrder = itemIndex })
-  activeNames.value = activeNames.value.filter(name => name !== index)
+  const [removed] = model.value.splice(index, 1)
+  activeNames.value = activeNames.value.filter(name => name !== removed?.clientKey)
 }
 </script>
 
@@ -143,7 +152,7 @@ h2 {
 
 .adjustment-fields {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 0 16px;
   padding: 6px 2px 0;
 }
@@ -152,20 +161,9 @@ h2 {
   grid-column: span 2;
 }
 
-.number-with-unit {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 24px;
-  align-items: center;
-  width: 100%;
-}
-
-.number-with-unit span {
-  text-align: right;
-  color: var(--dd-text-secondary, #909399);
-}
-
 .adjustment-actions {
   justify-content: flex-end;
+  padding-top: 12px;
   padding-bottom: 12px;
 }
 
@@ -178,15 +176,8 @@ h2 {
   border-radius: 6px;
 }
 
-:deep(.el-input-number),
 :deep(.el-date-editor.el-input) {
   width: 100%;
-}
-
-@media (max-width: 900px) {
-  .adjustment-fields {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
 }
 
 @media (max-width: 640px) {

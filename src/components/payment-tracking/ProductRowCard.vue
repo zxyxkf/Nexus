@@ -46,6 +46,7 @@
           :stages="record.stages"
           :current-stage="record.currentStage"
           :end-stage="record.endStage"
+          :link-status="record.linkStatus"
           :readonly="record.processStatus === 'ended'"
           @select="emit('select-stage', $event)"
         />

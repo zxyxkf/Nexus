@@ -17,7 +17,8 @@
               <strong>{{ record.styleNumber || '未填写货号' }}</strong>
               <span>#{{ String(record.storeSeq || 0).padStart(3, '0') }}</span>
               <span>{{ record.store }}</span>
-              <span>策划 {{ record.plannerName || '-' }}</span>
+              <span>{{ record.plannerName || '-' }}</span>
+              <span>毛利 {{ grossMarginText }}</span>
               <SourceTaskLink
                 :source-task-id="record.sourceTaskId"
                 :source-task-no="record.sourceTaskNo"
@@ -30,6 +31,20 @@
             历史阶段需重开后才能修改
           </span>
           <div class="action-buttons">
+            <el-tooltip
+              v-if="supportsLinkStatus"
+              :disabled="!linkStatusBlocked"
+              content="链接状态已填写在其他阶段，请先重开原阶段并清空"
+              placement="top"
+            >
+              <span class="tooltip-button-wrap">
+                <el-button
+                  :icon="Link"
+                  :disabled="linkStatusBlocked"
+                  @click="linkStatusDialogVisible = true"
+                >链接状态</el-button>
+              </span>
+            </el-tooltip>
             <el-button
               v-if="isEditable"
               :icon="Check"
@@ -74,6 +89,7 @@
           :stages="record.stages"
           :current-stage="record.currentStage"
           :end-stage="record.endStage"
+          :link-status="record.linkStatus"
           :readonly="record.processStatus === 'ended'"
           @select="openStage($event.stageCode)"
         />
@@ -92,12 +108,20 @@
           v-model="formData"
           :record="record"
           :readonly="!isEditable"
-          :can-review="record.allowedActions?.managerReview"
+          v-bind="currentFormProps"
           @record-updated="applyImageUpdate"
           @reload-requested="loadRecord"
         />
         <el-empty v-else description="该阶段表单即将开放" />
       </section>
+
+      <StageLinkStatusDialog
+        v-model="linkStatusDialogVisible"
+        :status="linkStatusForCurrentStage"
+        :readonly="!isEditable"
+        :saving="linkStatusSaving"
+        @save="saveLinkStatus"
+      />
 
     </template>
 
@@ -108,7 +132,7 @@
 <script setup>
 import { computed, ref, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ArrowLeft, Check, CircleClose, RefreshRight, Right } from '@element-plus/icons-vue'
+import { ArrowLeft, Check, CircleClose, Link, RefreshRight, Right } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   advancePaymentStageApi,
@@ -116,24 +140,22 @@ import {
   getPaymentRecordApi,
   reopenPaymentStageApi,
   restorePaymentProcessApi,
+  savePaymentLinkStatusApi,
   savePaymentStageApi
 } from '@/api'
+import StageLinkStatusDialog from '@/components/payment-tracking/StageLinkStatusDialog.vue'
 import StageTimeline from '@/components/payment-tracking/StageTimeline.vue'
 import SourceTaskLink from '@/components/payment-tracking/SourceTaskLink.vue'
 import { PAYMENT_STAGE_BY_CODE } from '@/config/payment-tracking'
 import SelectionForm from './forms/SelectionForm.vue'
-import PreparationForm from './forms/PreparationForm.vue'
 import TestingForm from './forms/TestingForm.vue'
 import MonitoringForm from './forms/MonitoringForm.vue'
-import BreakoutForm from './forms/BreakoutForm.vue'
 import SummaryForm from './forms/SummaryForm.vue'
 
 const FORM_COMPONENTS = {
   selection: SelectionForm,
-  preparation: PreparationForm,
   testing: TestingForm,
   monitoring: MonitoringForm,
-  breakout: BreakoutForm,
   summary: SummaryForm
 }
 
@@ -145,15 +167,44 @@ const advancing = ref(false)
 const ending = ref(false)
 const reopening = ref(false)
 const restoring = ref(false)
+const linkStatusSaving = ref(false)
+const linkStatusDialogVisible = ref(false)
 const record = ref(null)
 const formData = ref({})
 const formRef = ref(null)
 
 const stageCode = computed(() => String(route.params.stageCode || ''))
 const stageTitle = computed(() => stageLabel(stageCode.value))
+const grossMarginText = computed(() => {
+  const value = record.value?.grossMargin
+  if (value !== null && value !== undefined && Number.isFinite(Number(value))) {
+    return `${(Number(value) * 100).toFixed(2)}%`
+  }
+  const cost = Number(record.value?.cost)
+  const salePrice = Number(record.value?.salePrice)
+  if (!Number.isFinite(cost) || cost < 0 || !Number.isFinite(salePrice) || salePrice <= 0) return '-'
+  return `${(((salePrice - cost) / salePrice) * 100).toFixed(2)}%`
+})
 const endActionLabel = computed(() => stageCode.value === 'summary' ? '完成流程' : '结束流程')
 const currentStageEntry = computed(() => record.value?.stages?.find(stage => stage.stageCode === stageCode.value) || null)
 const currentFormComponent = computed(() => FORM_COMPONENTS[stageCode.value] || null)
+const currentFormProps = computed(() => {
+  if (stageCode.value === 'testing') {
+    return { canReview: Boolean(record.value?.allowedActions?.managerReview) }
+  }
+  if (stageCode.value === 'monitoring') {
+    return { prepareAdjustmentUpload }
+  }
+  return {}
+})
+const supportsLinkStatus = computed(() => ['testing', 'monitoring'].includes(stageCode.value))
+const linkStatusBlocked = computed(() => Boolean(
+  record.value?.linkStatus?.stageCode
+  && record.value.linkStatus.stageCode !== stageCode.value
+))
+const linkStatusForCurrentStage = computed(() => (
+  record.value?.linkStatus?.stageCode === stageCode.value ? record.value.linkStatus : null
+))
 const isCurrentStage = computed(() => record.value?.currentStage === stageCode.value)
 const isEditable = computed(() => Boolean(
   record.value?.processStatus === 'in_progress'
@@ -162,7 +213,7 @@ const isEditable = computed(() => Boolean(
 ))
 const canAdvanceByBranch = computed(() => {
   if (stageCode.value === 'testing') return formData.value.potentialStatus === '符合潜力款标准'
-  if (stageCode.value === 'monitoring') return formData.value.abandoned !== true
+  if (stageCode.value === 'monitoring') return formData.value.linkStatus === 'keep_breaking'
   return true
 })
 const showAdvance = computed(() => Boolean(
@@ -173,7 +224,10 @@ const showAdvance = computed(() => Boolean(
   && canAdvanceByBranch.value
 ))
 const showEnd = computed(() => Boolean(
-  isEditable.value && isCurrentStage.value && record.value?.allowedActions?.end
+  isEditable.value
+  && isCurrentStage.value
+  && record.value?.allowedActions?.end
+  && (stageCode.value !== 'monitoring' || formData.value.linkStatus === 'protect_roi')
 ))
 const showReopen = computed(() => Boolean(
   record.value?.processStatus === 'in_progress'
@@ -198,31 +252,15 @@ function createStageModel(data, code) {
       productId: stageData.productId ?? data.productId ?? '',
       selectionMethod: stageData.selectionMethod ?? data.selectionMethod ?? '',
       detailText: stageData.detailText ?? data.detailText ?? '',
-      designMainImage: Boolean(stageData.designMainImage ?? data.designMainImage),
-      skuLe200: stageData.skuLe200 ?? data.skuLe200 ?? null,
       listingDate: stageData.listingDate ?? data.listingDate ?? null,
       listingCategory: stageData.listingCategory ?? data.listingCategory ?? ''
     }
   }
-  if (code === 'preparation') {
-    return {
-      reviewCount: stageData.reviewCount ?? null,
-      newOpsRegistered: stageData.newOpsRegistered ?? null,
-      paidEnabled: stageData.paidEnabled ?? null,
-      paidAt: stageData.paidAt ?? null
-    }
-  }
   if (code === 'testing') {
     return {
-      carPromotionMethod: stageData.carPromotionMethod ?? '',
-      carClicks: stageData.carClicks ?? null,
-      carCtr: stageData.carCtr ?? null,
-      carQualifies: stageData.carQualifies ?? null,
-      sitePromotionMethod: stageData.sitePromotionMethod ?? '',
-      overallVisitors: stageData.overallVisitors ?? null,
-      searchVisitors: stageData.searchVisitors ?? null,
-      buyers: stageData.buyers ?? null,
-      averageCtr: stageData.averageCtr ?? null,
+      paidEnabled: stageData.paidEnabled ?? null,
+      paidAt: stageData.paidAt ?? null,
+      promotionMethod: stageData.promotionMethod ?? '',
       potentialStatus: stageData.potentialStatus ?? '',
       unqualifiedAction: stageData.unqualifiedAction ?? '',
       managerReportDate: stageData.managerReportDate ?? null,
@@ -231,40 +269,12 @@ function createStageModel(data, code) {
   }
   if (code === 'monitoring') {
     return {
-      domesticSalesCount: stageData.domesticSalesCount ?? null,
-      addedReviews: stageData.addedReviews ?? null,
-      titleOptimizedAt: stageData.titleOptimizedAt ?? null,
-      qaCount: stageData.qaCount ?? null,
-      detailOptimizedAt: stageData.detailOptimizedAt ?? null,
-      materialSelected: stageData.materialSelected ?? null,
-      skuOptimizedAt: stageData.skuOptimizedAt ?? null,
-      campaignName: stageData.campaignName ?? '',
-      concessionRate: stageData.concessionRate ?? null,
-      quickPeakDone: stageData.quickPeakDone ?? null,
-      abandoned: stageData.abandoned ?? false,
-      abandonReason: stageData.abandonReason ?? '',
-      abandonAt: stageData.abandonAt ?? null,
-      adjustments: (stageData.adjustments || []).map(item => ({ ...item }))
-    }
-  }
-  if (code === 'breakout') {
-    return {
-      pitOutputDay1: stageData.pitOutputDay1 ?? null,
-      pitOutputDay2: stageData.pitOutputDay2 ?? null,
-      pitOutputDay3: stageData.pitOutputDay3 ?? null,
-      flashSaleAt: stageData.flashSaleAt ?? null,
-      superBreakoutAt: stageData.superBreakoutAt ?? null,
-      rapidBreakoutAt: stageData.rapidBreakoutAt ?? null,
-      strongLiftQualified: stageData.strongLiftQualified ?? null,
-      searchGrowthTrend: stageData.searchGrowthTrend ?? '',
-      payerTrend: stageData.payerTrend ?? '',
-      currentBudget: stageData.currentBudget ?? null,
-      feeRatio7d: stageData.feeRatio7d ?? null,
-      payers7d: stageData.payers7d ?? null,
-      adjustedAt: stageData.adjustedAt ?? null,
-      totalBudget: stageData.totalBudget ?? null,
-      detailText: stageData.detailText ?? '',
-      feedbackText: stageData.feedbackText ?? ''
+      linkOptimized: stageData.linkOptimized ?? null,
+      linkStatus: stageData.linkStatus ?? '',
+      adjustments: (stageData.adjustments || []).map((item, index) => ({
+        ...item,
+        clientKey: item.clientKey || `legacy-${item.id || index}`
+      }))
     }
   }
   if (code === 'summary') {
@@ -352,6 +362,40 @@ async function saveCurrentStage(options = {}) {
     saving.value = false
   }
   return null
+}
+
+async function prepareAdjustmentUpload(clientKey) {
+  const saved = await saveCurrentStage({ silent: true })
+  if (!saved) return null
+  const adjustment = saved.stageData?.monitoring?.adjustments?.find(
+    item => item.clientKey === clientKey
+  )
+  if (!adjustment?.id) {
+    ElMessage.error('推广调整保存失败，请重试')
+    return null
+  }
+  return { ownerId: adjustment.id, version: saved.version }
+}
+
+async function saveLinkStatus(payload) {
+  linkStatusSaving.value = true
+  try {
+    const response = await savePaymentLinkStatusApi(record.value.id, stageCode.value, {
+      version: record.value.version,
+      ...payload
+    })
+    if (await reloadOnVersionConflict(response)) return
+    if (response.code === 0) {
+      applyRecord(response.data)
+      linkStatusDialogVisible.value = false
+      ElMessage.success(payload.clear ? '链接状态已清空' : '链接状态已保存')
+    }
+  } catch (error) {
+    if (await reloadOnVersionConflict(error)) return
+    throw error
+  } finally {
+    linkStatusSaving.value = false
+  }
 }
 
 async function advanceStage() {
@@ -478,6 +522,10 @@ watch(
 .action-buttons {
   display: flex;
   align-items: center;
+}
+
+.tooltip-button-wrap {
+  display: inline-flex;
 }
 
 .detail-header {

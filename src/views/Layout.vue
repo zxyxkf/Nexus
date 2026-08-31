@@ -54,7 +54,7 @@
           <span class="nav-text">{{ isCollapse ? '展开菜单' : '折叠菜单' }}</span>
         </div>
         <div class="sidebar-version">
-          <span class="version-text">v15.2.6</span>
+          <span class="version-text">v{{ appVersion }}</span>
           <span class="version-dot">·</span>
           <span class="version-text">企业版</span>
         </div>
@@ -297,6 +297,7 @@ import QuickActions from '@/components/QuickActions.vue'
 import { initNotificationToast, destroyNotificationToast } from '@/composables/useNotificationToast'
 import { openTask } from '@/utils/task-navigation'
 
+const appVersion = import.meta.env.VITE_APP_VERSION
 const route = useRoute()
 const router = useRouter()
 const userStore = useUserStore()
@@ -1054,6 +1055,34 @@ async function changePassword() {
   height: calc(100vh - 60px);
   position: relative;
   z-index: 1;
+}
+
+@media (max-width: 900px) {
+  .layout-header {
+    padding: 0 10px;
+  }
+
+  .header-left,
+  .header-right {
+    gap: 6px;
+  }
+
+  .custom-breadcrumb,
+  .header-clock,
+  .header-divider,
+  .role-tag,
+  .user-name,
+  .user-arrow {
+    display: none;
+  }
+
+  .header-right :deep(.global-task-search) {
+    width: clamp(132px, 24vw, 180px);
+  }
+
+  .user-dropdown {
+    padding: 4px;
+  }
 }
 
 /* ===== 页面过渡动画 ===== */

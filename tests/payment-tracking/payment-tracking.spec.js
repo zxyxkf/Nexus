@@ -33,15 +33,13 @@ const records = [
     stages: [stage('selection', 'active')],
     stageData: {
       selection: {
-        selectionDate: '2026-08-20',
+        selectionDate: '2026-08-27 09:00:00',
         styleNumber: 'NX-260818',
         cost: 39,
         salePrice: 99,
         productId: '889900',
         selectionMethod: '方式五：跟款',
         detailText: '',
-        designMainImage: false,
-        skuLe200: true,
         listingDate: '2026-08-21',
         listingCategory: '女装'
       }
@@ -54,24 +52,27 @@ const records = [
     styleNumber: 'NX-260819',
     currentStage: 'testing',
     processStatus: 'in_progress',
-    stages: [stage('selection'), stage('preparation'), stage('testing', 'active')],
+    stages: [stage('selection'), stage('testing', 'active')],
     stageData: {
       testing: {
-        carPromotionMethod: '标准推广',
-        carClicks: 320,
-        carCtr: 4.8,
-        carQualifies: true,
-        sitePromotionMethod: '全站推广',
-        overallVisitors: 2600,
-        searchVisitors: 780,
-        searchVisitorShare: 0.3,
-        buyers: 86,
-        averageCtr: 5.2,
+        paidEnabled: true,
+        paidAt: '2026-08-23 10:00:00',
+        promotionMethod: '直通车',
         potentialStatus: '不符合',
         unqualifiedAction: '直接关闭',
         managerReportDate: null,
         weiStockReported: false
       }
+    },
+    linkStatus: {
+      stageCode: 'testing',
+      flashSaleRegistered: true,
+      flashSaleGroup: 'new_product_cold_start',
+      rapidOrderEntered: true,
+      newProductOperationRegistered: false,
+      newProductPeak: null,
+      productBurst: null,
+      productBurstMode: ''
     }
   },
   {
@@ -83,7 +84,7 @@ const records = [
     processStatus: 'ended',
     endStage: 'testing',
     endReason: '已结束（未达潜力款）：直接关闭',
-    stages: [stage('selection'), stage('preparation'), stage('testing', 'ended')],
+    stages: [stage('selection'), stage('testing', 'ended')],
     allowedActions: { restore: true, delete: true }
   }
 ]
@@ -104,20 +105,23 @@ const linkedImageRecord = {
   }]
 }
 
-const preparationRecord = {
+const testingReviewRecord = {
   ...baseRecord,
   id: 104,
   storeSeq: 21,
   styleNumber: 'NX-260821',
-  currentStage: 'preparation',
+  currentStage: 'testing',
   processStatus: 'in_progress',
-  stages: [stage('selection'), stage('preparation', 'active')],
+  stages: [stage('selection'), stage('testing', 'active')],
   stageData: {
-    preparation: {
-      reviewCount: 12,
-      newOpsRegistered: true,
+    testing: {
       paidEnabled: null,
-      paidAt: null
+      paidAt: null,
+      promotionMethod: '',
+      potentialStatus: '符合潜力款标准',
+      unqualifiedAction: '',
+      managerReportDate: null,
+      weiStockReported: null
     }
   },
   allowedActions: { edit: true, advance: true, end: true, managerReview: false }
@@ -131,29 +135,44 @@ const laterStageRecords = [
     styleNumber: 'NX-260822',
     currentStage: 'monitoring',
     processStatus: 'in_progress',
-    stages: [stage('selection'), stage('preparation'), stage('testing'), stage('monitoring', 'active')],
+    stages: [stage('selection'), stage('testing'), stage('monitoring', 'active')],
     stageData: {
       monitoring: {
-        domesticSalesCount: 20,
-        addedReviews: 5,
-        campaignName: '超级立减',
-        concessionRate: '10%',
-        quickPeakDone: false,
-        abandoned: true,
-        abandonReason: '自然流量不足',
-        abandonAt: '2026-08-26 10:00:00',
-        adjustments: [{
-          id: 1,
-          sortOrder: 0,
-          reason: '搜索流量下降',
-          adjustedAt: '2026-08-24 09:00:00',
-          feeRatio7d: 12.5,
-          payers7d: 38,
-          totalBudget: 2600,
-          detailText: '降低低效词出价',
-          feedbackText: '点击率回升'
-        }]
+        linkOptimized: true,
+        linkStatus: 'protect_roi',
+        adjustments: [
+          {
+            id: 1,
+            clientKey: 'adjustment-one',
+            reason: '搜索流量下降',
+            adjustedAt: '2026-08-24 09:00:00',
+            detailText: '降低低效词出价',
+            feedbackText: '点击率回升'
+          },
+          {
+            id: 2,
+            clientKey: 'adjustment-two',
+            reason: '扩大有效流量',
+            adjustedAt: '2026-08-25 09:00:00',
+            detailText: '提高优质词出价',
+            feedbackText: '付款人数提升'
+          }
+        ]
       }
+    },
+    images: [
+      { id: 601, category: 'adjustment_feedback', adjustmentId: 1, originalName: 'feedback-one.png', sortOrder: 0 },
+      { id: 602, category: 'adjustment_feedback', adjustmentId: 2, originalName: 'feedback-two.png', sortOrder: 0 }
+    ],
+    linkStatus: {
+      stageCode: 'monitoring',
+      flashSaleRegistered: true,
+      flashSaleGroup: 'potential_breakout',
+      rapidOrderEntered: true,
+      newProductOperationRegistered: true,
+      newProductPeak: true,
+      productBurst: true,
+      productBurstMode: 'super_breakout'
     },
     allowedActions: { edit: true, advance: true, end: true }
   },
@@ -162,18 +181,25 @@ const laterStageRecords = [
     id: 106,
     storeSeq: 23,
     styleNumber: 'NX-260823',
-    currentStage: 'breakout',
+    currentStage: 'monitoring',
     processStatus: 'in_progress',
-    stages: [stage('selection'), stage('preparation'), stage('testing'), stage('monitoring'), stage('breakout', 'active')],
+    stages: [stage('selection'), stage('testing'), stage('monitoring', 'active')],
     stageData: {
-      breakout: {
-        strongLiftQualified: true,
-        searchGrowthTrend: '持续上升',
-        payerTrend: '保持平稳',
-        currentBudget: 3000,
-        feeRatio7d: 11.2,
-        payers7d: 76
+      monitoring: {
+        linkOptimized: false,
+        linkStatus: 'keep_breaking',
+        adjustments: []
       }
+    },
+    linkStatus: {
+      stageCode: 'testing',
+      flashSaleRegistered: false,
+      flashSaleGroup: '',
+      rapidOrderEntered: null,
+      newProductOperationRegistered: true,
+      newProductPeak: false,
+      productBurst: false,
+      productBurstMode: ''
     },
     allowedActions: { edit: true, advance: true, end: true }
   },
@@ -184,7 +210,7 @@ const laterStageRecords = [
     styleNumber: 'NX-260824',
     currentStage: 'summary',
     processStatus: 'in_progress',
-    stages: [stage('selection'), stage('preparation'), stage('testing'), stage('monitoring'), stage('breakout'), stage('summary', 'active')],
+    stages: [stage('selection'), stage('testing'), stage('monitoring'), stage('summary', 'active')],
     stageData: {
       summary: {
         exploded: true,
@@ -198,20 +224,23 @@ const laterStageRecords = [
   }
 ]
 
-const advancePreparationRecord = {
+const advanceTestingRecord = {
   ...baseRecord,
   id: 108,
   storeSeq: 25,
   styleNumber: 'NX-260825',
-  currentStage: 'preparation',
+  currentStage: 'testing',
   processStatus: 'in_progress',
-  stages: [stage('selection'), stage('preparation', 'active')],
+  stages: [stage('selection'), stage('testing', 'active')],
   stageData: {
-    preparation: {
-      reviewCount: 16,
-      newOpsRegistered: true,
+    testing: {
       paidEnabled: true,
-      paidAt: '2026-08-27 10:00:00'
+      paidAt: '2026-08-27 10:00:00',
+      promotionMethod: '直通车',
+      potentialStatus: '符合潜力款标准',
+      unqualifiedAction: '',
+      managerReportDate: null,
+      weiStockReported: null
     }
   },
   allowedActions: { edit: true, advance: true, end: true, managerReview: true }
@@ -238,41 +267,37 @@ const invalidSelectionRecord = {
       productId: '',
       selectionMethod: '',
       detailText: '',
-      designMainImage: false,
-      skuLe200: null,
       listingDate: null,
       listingCategory: ''
     }
   }
 }
 
-const invalidBreakoutRecord = {
+const invalidMonitoringRecord = {
   ...baseRecord,
   id: 110,
   storeSeq: 27,
   styleNumber: 'NX-260826',
-  currentStage: 'breakout',
+  currentStage: 'monitoring',
   processStatus: 'in_progress',
-  stages: [stage('selection'), stage('preparation'), stage('testing'), stage('monitoring'), stage('breakout', 'active')],
-  stageData: { breakout: { strongLiftQualified: null } },
+  stages: [stage('selection'), stage('testing'), stage('monitoring', 'active')],
+  stageData: { monitoring: { linkOptimized: null, linkStatus: '', adjustments: [] } },
   allowedActions: { edit: true, advance: true, end: true }
 }
 
 const allDetailRecords = [
   ...records,
   linkedImageRecord,
-  preparationRecord,
+  testingReviewRecord,
   ...laterStageRecords,
-  advancePreparationRecord,
+  advanceTestingRecord,
   invalidSelectionRecord,
-  invalidBreakoutRecord
+  invalidMonitoringRecord
 ]
 const nextStageByCode = {
-  selection: 'preparation',
-  preparation: 'testing',
+  selection: 'testing',
   testing: 'monitoring',
-  monitoring: 'breakout',
-  breakout: 'summary'
+  monitoring: 'summary'
 }
 
 const reviewTasks = [
@@ -284,8 +309,10 @@ const reviewTasks = [
     task_group: 'design',
     designer_name: '美工甲',
     create_time: '2026-08-27 09:00:00',
-    payment_tracking_opened: 0,
+    payment_tracking_opened: '0',
     files: [
+      { id: 2005, file_name: 'dress-reference.png', file_type: 'image', file_category: 'reference' },
+      { id: 2006, file_name: 'dress-brief.pdf', file_type: 'file', file_category: 'reference', file_size: 1234 },
       { id: 2001, file_name: 'dress-main-1.png', file_type: 'image', file_category: 'work' },
       { id: 2002, file_name: 'dress-main-2.png', file_type: 'image', file_category: 'work' }
     ]
@@ -298,7 +325,7 @@ const reviewTasks = [
     task_group: 'design',
     designer_name: '美工乙',
     create_time: '2026-08-27 08:00:00',
-    payment_tracking_opened: 0,
+    payment_tracking_opened: '0',
     files: [{ id: 2003, file_name: 'source.psd', file_type: 'file', file_category: 'work' }]
   },
   {
@@ -309,7 +336,7 @@ const reviewTasks = [
     task_group: 'design',
     designer_name: '美工丙',
     create_time: '2026-08-27 07:00:00',
-    payment_tracking_opened: 1,
+    payment_tracking_opened: '1',
     files: [{ id: 2004, file_name: 'opened.png', file_type: 'image', file_category: 'work' }]
   }
 ]
@@ -334,6 +361,20 @@ async function installMocks(page, options = {}) {
 
   await page.route(/^https?:\/\/[^/]+\/api\//, async route => {
     const url = new URL(route.request().url())
+    if (/^\/api\/task\/preview\/\d+$/.test(url.pathname)) {
+      await route.fulfill({
+        contentType: 'image/png',
+        body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
+      })
+      return
+    }
+    if (/^\/api\/payment-tracking\/images\/\d+\/preview$/.test(url.pathname)) {
+      await route.fulfill({
+        contentType: 'image/png',
+        body: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mNk+A8AAQUBAScY42YAAAAASUVORK5CYII=', 'base64')
+      })
+      return
+    }
     if (url.pathname === '/api/health') {
       await route.fulfill({ json: { code: 0, data: { status: 'ok' } } })
       return
@@ -352,6 +393,20 @@ async function installMocks(page, options = {}) {
     }
     if (url.pathname === '/api/config/list') {
       await route.fulfill({ json: { code: 0, data: [] } })
+      return
+    }
+    if (url.pathname === '/api/payment-tracking/categories') {
+      await route.fulfill({ json: { code: 0, data: [{ id: 1, name: '女装', active: 1 }] } })
+      return
+    }
+    if (url.pathname === '/api/payment-tracking/promotion-methods') {
+      await route.fulfill({
+        json: { code: 0, data: [
+          { id: 1, name: '直通车', active: 1 },
+          { id: 2, name: '全站推广', active: 1 },
+          { id: 3, name: '关键词推广', active: 1 }
+        ] }
+      })
       return
     }
     if (url.pathname === '/api/task/stats/my') {
@@ -401,6 +456,46 @@ async function installMocks(page, options = {}) {
       await route.fulfill({ json: { code: 0, data: { list, total: list.length, page: 1, pageSize: 20 } } })
       return
     }
+    const linkStatusMatch = url.pathname.match(/^\/api\/payment-tracking\/records\/(\d+)\/stages\/([^/]+)\/link-status$/)
+    if (linkStatusMatch && route.request().method() === 'PUT') {
+      const id = Number(linkStatusMatch[1])
+      const stageCode = linkStatusMatch[2]
+      const current = getMockRecord(id)
+      const payload = route.request().postDataJSON()
+      const updated = {
+        ...current,
+        version: Number(current.version || 0) + 1,
+        linkStatus: payload.clear ? null : { stageCode, ...payload.data }
+      }
+      recordOverrides.set(id, updated)
+      await route.fulfill({ json: { code: 0, data: updated } })
+      return
+    }
+    const imageUploadMatch = url.pathname.match(/^\/api\/payment-tracking\/records\/(\d+)\/images\/([^/]+)$/)
+    if (imageUploadMatch && route.request().method() === 'POST') {
+      const id = Number(imageUploadMatch[1])
+      const category = imageUploadMatch[2]
+      const current = getMockRecord(id)
+      const multipart = route.request().postData() || ''
+      const adjustmentId = Number(multipart.match(/name="adjustmentId"\r?\n\r?\n(\d+)/)?.[1]) || null
+      const updated = {
+        ...current,
+        version: Number(current.version || 0) + 1,
+        images: [
+          ...(current.images || []),
+          {
+            id: 700 + (current.images || []).length,
+            category,
+            adjustmentId,
+            originalName: 'uploaded-feedback.png',
+            sortOrder: 0
+          }
+        ]
+      }
+      recordOverrides.set(id, updated)
+      await route.fulfill({ json: { code: 0, data: updated } })
+      return
+    }
     const stageSaveMatch = url.pathname.match(/^\/api\/payment-tracking\/records\/(\d+)\/stages\/([^/]+)$/)
     if (stageSaveMatch && route.request().method() === 'PUT') {
       const id = Number(stageSaveMatch[1])
@@ -413,7 +508,7 @@ async function installMocks(page, options = {}) {
           version: Number(current.version || 0) + 1,
           stageData: {
             ...current.stageData,
-            [stageCode]: { ...current.stageData?.[stageCode], reviewCount: 99 }
+            [stageCode]: { ...current.stageData?.[stageCode], promotionMethod: '关键词推广' }
           }
         })
         await route.fulfill({ json: { code: 409, msg: '记录已被其他人更新，请刷新后重试' } })
@@ -422,7 +517,18 @@ async function installMocks(page, options = {}) {
       const updated = {
         ...current,
         version: Number(current.version || 0) + 1,
-        stageData: { ...current.stageData, [stageCode]: payload.data }
+        stageData: {
+          ...current.stageData,
+          [stageCode]: {
+            ...payload.data,
+            ...(stageCode === 'monitoring' ? {
+              adjustments: (payload.data.adjustments || []).map((item, index) => ({
+                ...item,
+                id: item.id || 100 + index
+              }))
+            } : {})
+          }
+        }
       }
       recordOverrides.set(id, updated)
       await route.fulfill({ json: { code: 0, data: updated } })
@@ -544,7 +650,35 @@ test('联动原任务图片拖到桌面时保留原文件名', async ({ page }) 
   })
 })
 
-test('列表只展示已进入的阶段节点并直接显示结束原因', async ({ page }, testInfo) => {
+test('来源任务详情保留原浏览器下载方式', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.__sourceDownloadCalls = []
+    window.open = (...args) => {
+      window.__sourceDownloadCalls.push({ type: 'browser', args })
+      return null
+    }
+    window.electronAPI = {
+      previewImage({ fileId }) {
+        return `/api/task/preview/${fileId}`
+      },
+      downloadFile(params) {
+        window.__sourceDownloadCalls.push({ type: 'electron', params })
+        return Promise.resolve({ success: true })
+      }
+    }
+  })
+
+  await page.goto('/#/payment-tracking/selections')
+  await page.locator('.product-row-card').first().getByRole('button', { name: 'D202608270001' }).click()
+  const sourceTaskDetail = page.getByRole('dialog', { name: '夏季连衣裙主图' })
+  await sourceTaskDetail.locator('.task-detail-image').first().getByRole('button', { name: '下载', exact: true }).click()
+
+  const calls = await page.evaluate(() => window.__sourceDownloadCalls)
+  expect(calls.filter(call => call.type === 'electron')).toHaveLength(0)
+  expect(calls.filter(call => call.type === 'browser')).toHaveLength(1)
+})
+
+test('四节点时间线只展示已进入的阶段并直接显示结束原因', async ({ page }, testInfo) => {
   await page.goto('/#/payment-tracking/selections')
 
   const activeCards = page.locator('.product-row-card')
@@ -557,15 +691,32 @@ test('列表只展示已进入的阶段节点并直接显示结束原因', async
   await expect(sourceTaskDetail).toHaveClass(/task-detail-overlay/)
   await expect(sourceTaskDetail.locator('.task-detail-body')).toHaveCSS('overflow-y', 'auto')
   await expect(sourceTaskDetail.locator('.task-detail-header')).toBeVisible()
-  await sourceTaskDetail.getByRole('button', { name: '关闭', exact: true }).click()
-  await expect(activeCards.nth(1).locator('.stage-node')).toHaveCount(3)
-  await expect(activeCards.nth(1)).not.toContainText('第12-18天数据监测')
+  const sourceLabels = await sourceTaskDetail.locator('.task-detail-descriptions .el-descriptions__label').allTextContents()
+  for (const label of ['任务编号', '状态', '分值', '数量', '执行人', '创建时间']) {
+    expect(sourceLabels).toContain(label)
+  }
+  await expect(sourceTaskDetail.locator('.task-detail-title-row .el-tag')).toHaveText('作图中')
+  await expect(sourceTaskDetail.getByText('1.2 KB', { exact: true })).toBeVisible()
+  await expect(sourceTaskDetail.getByRole('heading', { name: /作品图片/ })).toBeVisible()
+
+  await sourceTaskDetail.locator('.task-detail-image__preview img').first().click()
+  const imageViewer = page.locator('.el-image-viewer__wrapper')
+  const viewerImage = imageViewer.locator('.el-image-viewer__img')
+  await expect(imageViewer).toBeVisible()
+  await expect(viewerImage).toHaveAttribute('src', /\/api\/task\/preview\/2005/)
+  await imageViewer.locator('.el-image-viewer__next').click()
+  await expect(viewerImage).toHaveAttribute('src', /\/api\/task\/preview\/2001/)
+  await imageViewer.locator('.el-image-viewer__mask').click({ position: { x: 5, y: 5 }, force: true })
+  await expect(imageViewer).toHaveCount(0)
+  await expect(activeCards.nth(1).locator('.stage-node')).toHaveCount(2)
+  await expect(activeCards.nth(1)).not.toContainText('第1-6天准备工作')
+  await expect(activeCards.nth(1)).not.toContainText('第12-30天打爆')
 
   await page.goto('/#/payment-tracking/records')
   const endedCard = page.locator('.product-row-card')
   await expect(endedCard).toHaveCount(1)
-  await expect(endedCard.locator('.stage-node')).toHaveCount(3)
-  await expect(endedCard).toContainText('结束于：第7-11天测款')
+  await expect(endedCard.locator('.stage-node')).toHaveCount(2)
+  await expect(endedCard).toContainText('结束于：第二阶段')
   await expect(endedCard).toContainText('已结束（未达潜力款）：直接关闭')
   await expect(endedCard).not.toContainText('第12-18天数据监测')
   await expectNoHorizontalPageOverflow(page)
@@ -582,14 +733,18 @@ test('列表只展示已进入的阶段节点并直接显示结束原因', async
   await expect(page.getByText('暂无已结束的打款记录')).toBeVisible()
 })
 
-test('阶段详情拒绝未来节点并按测款分支展示表单', async ({ page }, testInfo) => {
+test('选品时间与未来节点按四阶段流程展示', async ({ page }, testInfo) => {
   await page.goto('/#/payment-tracking/records/101/stages/testing')
   await expect(page).toHaveURL(/#\/payment-tracking\/selections$/)
 
   await page.goto('/#/payment-tracking/records/101/stages/selection')
   await expect(page.getByRole('heading', { name: '信息及选品' })).toBeVisible()
-  await expect(page.getByRole('textbox', { name: '毛利' })).toHaveValue('60.61%')
-  await expect(page.locator('.el-checkbox').filter({ hasText: '通过并设计主图' })).toBeVisible()
+  await expect(page.locator('.record-meta')).toContainText('毛利 60.61%')
+  await expect(page.getByRole('textbox', { name: '毛利' })).toHaveCount(0)
+  await expect(page.getByText('通过并设计主图')).toHaveCount(0)
+  await expect(page.getByText('SKU 数是否不超过 200')).toHaveCount(0)
+  const sourceSelectionDate = page.locator('.el-form-item').filter({ hasText: '选品日期' }).locator('input')
+  await expect(sourceSelectionDate).toBeDisabled()
   const stageHeaderActions = page.locator('.stage-header-actions')
   await expect(stageHeaderActions.getByRole('button', { name: '保存本阶段' })).toBeVisible()
   await expect(stageHeaderActions.getByRole('button', { name: '进入下一阶段' })).toBeVisible()
@@ -611,51 +766,83 @@ test('阶段详情拒绝未来节点并按测款分支展示表单', async ({ pa
   await expectNoHorizontalPageOverflow(page)
   await page.screenshot({ path: testInfo.outputPath('payment-selection.png'), fullPage: true })
 
+  await page.goto('/#/payment-tracking/records/109/stages/selection')
+  const manualSelectionDate = page.locator('.el-form-item').filter({ hasText: '选品日期' }).locator('input')
+  await expect(manualSelectionDate).toBeEnabled()
+
   await page.goto('/#/payment-tracking/records/102/stages/testing')
-  await expect(page.getByRole('heading', { name: '第7-11天测款' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '直通车测点率' })).toBeVisible()
-  await expect(page.getByRole('heading', { name: '全站推广' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '第二阶段' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '店长付费确认' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '推广信息' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '潜力款判断', exact: true })).toBeVisible()
+  await expect(page.getByText('潜力款判断图片', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('直通车测点率')).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '全站推广', exact: true })).toHaveCount(0)
   await expect(page.getByText('不符合后续操作')).toBeVisible()
   await expect(page.getByRole('button', { name: '进入下一阶段' })).toHaveCount(0)
   await expectNoHorizontalPageOverflow(page)
   await page.screenshot({ path: testInfo.outputPath('payment-testing.png'), fullPage: true })
 
-  await page.goto('/#/payment-tracking/records/104/stages/preparation')
-  await expect(page.getByRole('heading', { name: '第1-6天准备工作' })).toBeVisible()
+  await page.goto('/#/payment-tracking/records/104/stages/testing')
+  await expect(page.getByRole('heading', { name: '第二阶段' })).toBeVisible()
   await expect(page.getByText('仅店长审核权限可修改')).toBeVisible()
   const paidReview = page.locator('.el-form-item').filter({ hasText: '确认开启付费' })
   await expect(paidReview.locator('.el-radio').first()).toHaveClass(/is-disabled/)
 
   await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 6_000 })
-  await page.screenshot({ path: testInfo.outputPath('payment-preparation.png'), fullPage: true })
+  await page.screenshot({ path: testInfo.outputPath('payment-testing-readonly-review.png'), fullPage: true })
 })
 
-test('后续阶段按业务分支展示并使用独立总结选项', async ({ page }, testInfo) => {
+test('第三阶段按链接状态分支并隔离每次数据反馈', async ({ page }, testInfo) => {
   await page.goto('/#/payment-tracking/records/105/stages/monitoring')
-  await expect(page.getByRole('heading', { name: '第12-18天数据监测' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '第三阶段' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '链接优化' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '链接状态' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '推广调整' })).toBeVisible()
   await expect(page.getByRole('button', { name: '新增调整' })).toBeVisible()
-  await expect(page.getByRole('textbox', { name: '放弃原因' })).toHaveValue('自然流量不足')
+  await expect(page.getByText('当前费比（7天）')).toHaveCount(0)
+  await expect(page.getByText('当前付款人数（7天）')).toHaveCount(0)
+  await expect(page.getByText('总预算', { exact: true })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '进入下一阶段' })).toHaveCount(0)
+
+  const adjustmentItems = page.locator('.promotion-adjustments .el-collapse-item')
+  await expect(adjustmentItems).toHaveCount(2)
+  await adjustmentItems.nth(0).locator('.el-collapse-item__header').click()
+  await adjustmentItems.nth(1).locator('.el-collapse-item__header').click()
+  await expect(adjustmentItems.nth(0)).toContainText('feedback-one.png')
+  await expect(adjustmentItems.nth(0)).not.toContainText('feedback-two.png')
+  await expect(adjustmentItems.nth(1)).toContainText('feedback-two.png')
+  await expect(adjustmentItems.nth(1)).not.toContainText('feedback-one.png')
+
   await page.getByRole('button', { name: '新增调整' }).click()
-  await expect(page.getByText('第 2 次调整')).toBeVisible()
-  await page.getByRole('button', { name: '删除本次调整' }).click()
-  await expect(page.getByText('第 2 次调整')).toHaveCount(0)
+  await expect(page.getByText('第 3 次调整')).toBeVisible()
+  const newAdjustment = adjustmentItems.nth(2)
+  const stageSave = page.waitForRequest(request => (
+    request.method() === 'PUT'
+    && new URL(request.url()).pathname === '/api/payment-tracking/records/105/stages/monitoring'
+  ))
+  const imageUpload = page.waitForRequest(request => (
+    request.method() === 'POST'
+    && new URL(request.url()).pathname === '/api/payment-tracking/records/105/images/adjustment_feedback'
+  ))
+  await newAdjustment.locator('input[type="file"]').setInputFiles({
+    name: 'feedback-upload.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('image-data')
+  })
+  await stageSave
+  const uploadRequest = await imageUpload
+  expect(uploadRequest.postData()).toContain('name="adjustmentId"')
+  await expect(newAdjustment).toContainText('uploaded-feedback.png')
   await expectNoHorizontalPageOverflow(page)
   await page.screenshot({ path: testInfo.outputPath('payment-monitoring.png'), fullPage: true })
 
-  await page.goto('/#/payment-tracking/records/106/stages/breakout')
-  await expect(page.getByRole('heading', { name: '第12-30天打爆' })).toBeVisible()
-  await expect(page.getByText('搜索涨幅趋势')).toBeVisible()
-  await expect(page.getByText('付款人数趋势')).toBeVisible()
-  const strongLiftField = page.locator('.el-form-item').filter({ hasText: '是否符合强拉升标准' })
-  await strongLiftField.getByText('否', { exact: true }).click()
-  await expect(page.getByText('搜索涨幅趋势')).toHaveCount(0)
-  await strongLiftField.getByText('是', { exact: true }).click()
-  await expect(page.getByText('搜索涨幅趋势')).toBeVisible()
+  await page.goto('/#/payment-tracking/records/106/stages/monitoring')
+  await expect(page.getByRole('button', { name: '进入下一阶段' })).toBeVisible()
+  await expect(page.getByRole('button', { name: '结束流程' })).toHaveCount(0)
 
   await page.goto('/#/payment-tracking/records/107/stages/summary')
-  await expect(page.getByRole('heading', { name: '总结阶段：生命周期' })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '总结阶段' })).toBeVisible()
   await expect(page.getByRole('combobox', { name: '链接维护' })).toBeVisible()
   await expect(page.getByRole('combobox', { name: '款式定义' })).toBeVisible()
   await expect(page.getByRole('button', { name: '完成流程' })).toBeVisible()
@@ -675,12 +862,12 @@ test('后续阶段按业务分支展示并使用独立总结选项', async ({ pa
   await expect(page).toHaveURL(/#\/payment-tracking\/records$/)
 })
 
-test('有效准备工作可以保存并进入测款阶段', async ({ page }) => {
-  await page.goto('/#/payment-tracking/records/108/stages/preparation')
-  await expect(page.getByRole('heading', { name: '第1-6天准备工作' })).toBeVisible()
+test('有效第二阶段可以保存并进入第三阶段', async ({ page }) => {
+  await page.goto('/#/payment-tracking/records/108/stages/testing')
+  await expect(page.getByRole('heading', { name: '第二阶段' })).toBeVisible()
 
   const saveRequest = page.waitForRequest(request => (
-    request.method() === 'PUT' && new URL(request.url()).pathname === '/api/payment-tracking/records/108/stages/preparation'
+    request.method() === 'PUT' && new URL(request.url()).pathname === '/api/payment-tracking/records/108/stages/testing'
   ))
   const advanceRequest = page.waitForRequest(request => (
     request.method() === 'POST' && new URL(request.url()).pathname === '/api/payment-tracking/records/108/advance'
@@ -689,19 +876,19 @@ test('有效准备工作可以保存并进入测款阶段', async ({ page }) => 
   await page.getByRole('button', { name: '确认进入' }).click()
   await saveRequest
   await advanceRequest
-  await expect(page).toHaveURL(/#\/payment-tracking\/records\/108\/stages\/testing$/)
+  await expect(page).toHaveURL(/#\/payment-tracking\/records\/108\/stages\/monitoring$/)
 })
 
 test('保存遇到版本冲突时刷新服务器最新记录', async ({ page }) => {
   await installMocks(page, { stageSaveConflictId: 108 })
-  await page.goto('/#/payment-tracking/records/108/stages/preparation')
+  await page.goto('/#/payment-tracking/records/108/stages/testing')
 
-  const reviewCount = page.getByRole('spinbutton', { name: '评价数量' })
-  await expect(reviewCount).toHaveValue('16')
+  const promotionMethod = page.locator('.el-form-item').filter({ hasText: '推广方式' })
+  await expect(promotionMethod).toContainText('直通车')
   await page.getByRole('button', { name: '保存本阶段' }).click()
 
   await expect(page.getByText('记录已被其他人更新，请刷新后重试', { exact: true })).toBeVisible()
-  await expect(reviewCount).toHaveValue('99')
+  await expect(promotionMethod).toContainText('关键词推广')
 })
 
 test('各阶段关键必填条件会阻止无效推进或结束', async ({ page }) => {
@@ -714,7 +901,6 @@ test('各阶段关键必填条件会阻止无效推进或结束', async ({ page 
     '售价必须大于 0',
     '请填写产品 ID',
     '请选择选品方式',
-    '请选择 SKU 数是否不超过 200',
     '请选择上架日期',
     '请填写上架类目'
   ]) {
@@ -725,18 +911,82 @@ test('各阶段关键必填条件会阻止无效推进或结束', async ({ page 
   await page.getByRole('button', { name: '进入下一阶段' }).click()
   await expect(page.getByText('至少上传一张产品主图', { exact: true })).toBeVisible()
 
-  await page.goto('/#/payment-tracking/records/104/stages/preparation')
+  await page.goto('/#/payment-tracking/records/104/stages/testing')
   await page.getByRole('button', { name: '进入下一阶段' }).click()
   await expect(page.getByText('店长必须确认开启付费', { exact: true })).toBeVisible()
 
-  await page.goto('/#/payment-tracking/records/105/stages/monitoring')
-  await page.getByRole('textbox', { name: '放弃原因' }).fill('')
-  await page.getByRole('button', { name: '结束流程' }).click()
-  await expect(page.getByText('请填写放弃原因', { exact: true })).toBeVisible()
+  await page.goto('/#/payment-tracking/records/110/stages/monitoring')
+  await expect(page.getByRole('button', { name: '进入下一阶段' })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '结束流程' })).toHaveCount(0)
+})
 
-  await page.goto('/#/payment-tracking/records/110/stages/breakout')
-  await page.getByRole('button', { name: '进入下一阶段' }).click()
-  await expect(page.getByText('请选择是否符合强拉升标准', { exact: true })).toBeVisible()
+test('链接状态弹窗保存、清空与状态框只影响所属阶段', async ({ page }) => {
+  await page.goto('/#/payment-tracking/records/105/stages/monitoring')
+
+  const timeline = page.locator('.stage-timeline')
+  const monitoringNode = timeline.locator('.stage-column').filter({ hasText: '第三阶段' })
+  await expect(monitoringNode.locator('.link-status-frame')).toHaveCount(4)
+  await expect(monitoringNode.locator('.link-status-frame.active')).toHaveCount(4)
+  await expect(timeline.locator('.stage-column').filter({ hasText: '第二阶段' }).locator('.link-status-row')).toHaveCount(0)
+
+  const actions = page.locator('.action-buttons')
+  const buttonNames = await actions.getByRole('button').allTextContents()
+  expect(buttonNames.indexOf('链接状态')).toBeLessThan(buttonNames.indexOf('保存本阶段'))
+  await actions.getByRole('button', { name: '链接状态' }).click()
+
+  const dialog = page.getByRole('dialog', { name: '链接状态' })
+  await expect(dialog).toBeVisible()
+  await expect(dialog.getByText('是否进入极速爆单')).toBeVisible()
+  await expect(dialog.getByText('新品运营是否冲顶')).toBeVisible()
+  await expect(dialog.getByText('商品速爆类型')).toBeVisible()
+
+  const clearRequest = page.waitForRequest(request => (
+    request.method() === 'PUT'
+    && new URL(request.url()).pathname === '/api/payment-tracking/records/105/stages/monitoring/link-status'
+  ))
+  await dialog.getByRole('button', { name: '清空' }).click()
+  await expect(dialog.getByText('保存后生效')).toBeVisible()
+  await dialog.getByRole('button', { name: '保存' }).click()
+  const request = await clearRequest
+  expect(request.postDataJSON()).toMatchObject({ clear: true })
+  await expect(monitoringNode.locator('.link-status-row')).toHaveCount(0)
+
+  await page.goto('/#/payment-tracking/records/102/stages/testing')
+  const testingFrames = page.locator('.stage-column').filter({ hasText: '第二阶段' }).locator('.link-status-frame')
+  await expect(testingFrames).toHaveCount(4)
+  await expect(page.locator('.stage-column').filter({ hasText: '第二阶段' }).locator('.link-status-frame.active')).toHaveCount(2)
+
+  await page.goto('/#/payment-tracking/records/106/stages/monitoring')
+  await expect(page.locator('.action-buttons').getByRole('button', { name: '链接状态' })).toBeDisabled()
+  await expect(page.locator('.stage-column').filter({ hasText: '第二阶段' }).locator('.link-status-row')).toBeVisible()
+  await expect(page.locator('.stage-column').filter({ hasText: '第三阶段' }).locator('.link-status-row')).toHaveCount(0)
+})
+
+test('四阶段页面在桌面与窄窗口保持可用布局', async ({ page }, testInfo) => {
+  for (const viewport of [
+    { width: 1440, height: 900, name: 'desktop' },
+    { width: 820, height: 900, name: 'narrow' }
+  ]) {
+    await page.setViewportSize({ width: viewport.width, height: viewport.height })
+    await page.goto('/#/payment-tracking/records/105/stages/monitoring')
+    await expect(page.getByRole('heading', { name: '第三阶段' })).toBeVisible()
+    await expectNoHorizontalPageOverflow(page)
+
+    await page.locator('.action-buttons').getByRole('button', { name: '链接状态' }).click()
+    const dialog = page.getByRole('dialog', { name: '链接状态' })
+    await expect(dialog).toBeVisible()
+    await dialog.evaluate(async element => {
+      await Promise.all(element.getAnimations({ subtree: true }).map(animation => animation.finished.catch(() => {})))
+    })
+    await expect(dialog.locator('.dialog-scroll')).toHaveCSS('overflow-y', 'auto')
+    const bounds = await dialog.locator('.el-dialog').boundingBox()
+    expect(bounds.x).toBeGreaterThanOrEqual(0)
+    expect(bounds.y).toBeGreaterThanOrEqual(0)
+    expect(bounds.x + bounds.width).toBeLessThanOrEqual(viewport.width)
+    expect(bounds.y + bounds.height).toBeLessThanOrEqual(viewport.height)
+    await page.screenshot({ path: testInfo.outputPath(`payment-${viewport.name}.png`), fullPage: true })
+    await dialog.getByRole('button', { name: '取消' }).click()
+  }
 })
 
 test('作品审核开启打款按图片和开启状态控制并汇总批量结果', async ({ page }, testInfo) => {
@@ -769,4 +1019,10 @@ test('作品审核无开启打款权限时隐藏入口', async ({ page }) => {
 
   await expect(page.getByRole('button', { name: /批量开启打款/ })).toHaveCount(0)
   await expect(page.getByRole('button', { name: '开启打款', exact: true })).toHaveCount(0)
+})
+test('selection image galleries expose upload dropzones and delete controls', async ({ page }) => {
+  await page.goto('/#/payment-tracking/records/111/stages/selection')
+
+  await expect(page.locator('.image-gallery-dropzone')).toHaveCount(3)
+  await expect(page.locator('.image-gallery').first().getByRole('button', { name: '删除图片', exact: true })).toBeVisible()
 })

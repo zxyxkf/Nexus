@@ -15,9 +15,12 @@ export const deletePaymentRecordApi = (id, version) => request.delete(`/api/paym
 export const openPaymentFromTaskApi = taskId => request.post(`/api/payment-tracking/open/task/${taskId}`)
 export const openPaymentBatchApi = taskIds => request.post('/api/payment-tracking/open/batch', { taskIds })
 
-export function uploadPaymentImagesApi(id, category, files, version) {
+export function uploadPaymentImagesApi(id, category, files, version, adjustmentId = null) {
   const formData = new FormData()
   formData.append('version', String(version))
+  if (adjustmentId !== null && adjustmentId !== undefined && adjustmentId !== '') {
+    formData.append('adjustmentId', String(adjustmentId))
+  }
   Array.from(files || []).forEach(file => formData.append('files', file))
   return request.post(`/api/payment-tracking/records/${id}/images/${category}`, formData, {
     headers: { 'Content-Type': 'multipart/form-data' }

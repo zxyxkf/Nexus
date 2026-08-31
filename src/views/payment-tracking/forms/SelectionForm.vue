@@ -3,14 +3,22 @@
     <section class="form-section">
       <h2>基础信息</h2>
       <div class="form-grid">
-        <el-form-item label="店铺序号">
-          <el-input :model-value="`#${String(record.storeSeq || 0).padStart(3, '0')}`" disabled />
-        </el-form-item>
-        <el-form-item label="策划人">
-          <el-input :model-value="record.plannerName || '-'" disabled />
-        </el-form-item>
         <el-form-item label="选品日期" prop="selectionDate">
-          <el-date-picker v-model="model.selectionDate" type="date" value-format="YYYY-MM-DD" :disabled="readonly" />
+          <el-date-picker
+            v-if="record.sourceTaskId"
+            v-model="model.selectionDate"
+            type="datetime"
+            value-format="YYYY-MM-DD HH:mm:ss"
+            format="YYYY-MM-DD HH:mm:ss"
+            disabled
+          />
+          <el-date-picker
+            v-else
+            v-model="model.selectionDate"
+            type="date"
+            value-format="YYYY-MM-DD"
+            :disabled="readonly"
+          />
         </el-form-item>
         <el-form-item label="货号" prop="styleNumber">
           <el-input v-model="model.styleNumber" :disabled="readonly" maxlength="100" />
@@ -20,9 +28,6 @@
         </el-form-item>
         <el-form-item label="售价" prop="salePrice">
           <el-input-number v-model="model.salePrice" :min="0" :precision="2" :controls="false" :disabled="readonly" />
-        </el-form-item>
-        <el-form-item label="毛利">
-          <el-input :model-value="grossMarginText" disabled />
         </el-form-item>
         <el-form-item label="产品 ID" prop="productId">
           <el-input v-model="model.productId" :disabled="readonly" maxlength="100" />
@@ -42,16 +47,20 @@
           <el-date-picker v-model="model.listingDate" type="date" value-format="YYYY-MM-DD" :disabled="readonly" />
         </el-form-item>
         <el-form-item label="上架类目" prop="listingCategory">
-          <el-input v-model="model.listingCategory" :disabled="readonly" maxlength="100" />
-        </el-form-item>
-        <el-form-item label="通过并设计主图">
-          <el-checkbox v-model="model.designMainImage" :disabled="readonly">通过并设计主图</el-checkbox>
-        </el-form-item>
-        <el-form-item label="SKU 数是否不超过 200" prop="skuLe200">
-          <el-radio-group v-model="model.skuLe200" :disabled="readonly">
-            <el-radio :value="true">是</el-radio>
-            <el-radio :value="false">否</el-radio>
-          </el-radio-group>
+          <el-select
+            v-model="model.listingCategory"
+            :disabled="readonly"
+            :loading="categoryLoading"
+            filterable
+            placeholder="请选择上架类目"
+          >
+            <el-option
+              v-for="item in categoryOptions"
+              :key="item.id || item.value"
+              :label="item.label"
+              :value="item.value"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="详细说明" class="span-2">
           <el-input v-model="model.detailText" type="textarea" :rows="4" :disabled="readonly" maxlength="2000" show-word-limit />
@@ -96,10 +105,11 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import ImageGallery from '@/components/payment-tracking/ImageGallery.vue'
 import { SELECTION_METHODS } from '@/config/payment-tracking'
+import { listPaymentListingCategoriesApi } from '@/api'
 
 const model = defineModel({ type: Object, required: true })
 const props = defineProps({
@@ -108,6 +118,36 @@ const props = defineProps({
 })
 const emit = defineEmits(['record-updated', 'reload-requested'])
 const formRef = ref(null)
+const listingCategories = ref([])
+const categoryLoading = ref(false)
+
+const categoryOptions = computed(() => {
+  const options = listingCategories.value
+    .filter(item => item && (item.active === undefined || Number(item.active) === 1))
+    .map(item => ({
+      id: item.id,
+      value: item.name,
+      label: item.name
+    }))
+  const current = String(model.value.listingCategory || '').trim()
+  if (current && !options.some(item => item.value === current)) {
+    options.unshift({ id: `legacy-${current}`, value: current, label: `${current}（历史类目）` })
+  }
+  return options
+})
+
+async function loadListingCategories() {
+  categoryLoading.value = true
+  try {
+    const response = await listPaymentListingCategoriesApi()
+    const rows = Array.isArray(response?.data) ? response.data : response?.data?.list
+    if (Array.isArray(rows)) listingCategories.value = rows
+  } catch (error) {
+    console.error('[PaymentTracking] 加载上架类目失败:', error)
+  } finally {
+    categoryLoading.value = false
+  }
+}
 
 const positivePrice = (_rule, value, callback) => {
   if (value === null || value === undefined || Number(value) <= 0) callback(new Error('售价必须大于 0'))
@@ -125,17 +165,9 @@ const rules = {
   salePrice: [{ validator: positivePrice, trigger: 'change' }],
   productId: [{ required: true, message: '请填写产品 ID', trigger: 'blur' }],
   selectionMethod: [{ required: true, message: '请选择选品方式', trigger: 'change' }],
-  skuLe200: [{ required: true, message: '请选择 SKU 数是否不超过 200', trigger: 'change' }],
   listingDate: [{ required: true, message: '请选择上架日期', trigger: 'change' }],
   listingCategory: [{ required: true, message: '请填写上架类目', trigger: 'blur' }]
 }
-
-const grossMarginText = computed(() => {
-  const cost = Number(model.value.cost)
-  const salePrice = Number(model.value.salePrice)
-  if (!Number.isFinite(cost) || cost < 0 || !Number.isFinite(salePrice) || salePrice <= 0) return '-'
-  return `${(((salePrice - cost) / salePrice) * 100).toFixed(2)}%`
-})
 
 async function validateForAdvance() {
   await formRef.value.validate()
@@ -148,6 +180,8 @@ async function validateForAdvance() {
 }
 
 defineExpose({ validateForAdvance })
+
+onMounted(loadListingCategories)
 </script>
 
 <style scoped>
@@ -157,24 +191,37 @@ defineExpose({ validateForAdvance })
 }
 
 .form-section {
-  padding: 22px 0;
-  border-top: 1px solid var(--dd-border-light, #e4e7ed);
+  padding: 20px;
+  border: 1px solid var(--dd-border-light, #dfe4ec);
+  border-radius: 6px;
+  background: #fff;
 }
 
 .form-section:first-child {
-  padding-top: 4px;
-  border-top: 0;
+  padding-top: 20px;
 }
 
 h2 {
-  margin: 0 0 16px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin: 0 0 18px;
+  color: #253047;
   font-size: 16px;
+}
+
+h2::before {
+  width: 3px;
+  height: 18px;
+  border-radius: 2px;
+  background: #409eff;
+  content: '';
 }
 
 .form-grid {
   display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 0 18px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 0 20px;
 }
 
 .span-2 {
@@ -196,6 +243,21 @@ h2 {
 :deep(.el-date-editor.el-input),
 :deep(.el-select) {
   width: 100%;
+}
+
+:deep(.el-form-item) {
+  margin-bottom: 18px;
+}
+
+:deep(.el-form-item__label) {
+  color: #4b5565;
+  font-weight: 600;
+}
+
+:deep(.el-input__wrapper),
+:deep(.el-textarea__inner),
+:deep(.el-select__wrapper) {
+  border-radius: 5px;
 }
 
 @media (max-width: 1100px) {
