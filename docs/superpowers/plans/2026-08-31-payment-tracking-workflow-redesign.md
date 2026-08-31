@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the obsolete preparation/testing/monitoring workflow with the confirmed four-node payment tracking flow, remove the former breakout stage and its old data, migrate existing local/production-compatible data, add administrator-configured promotion methods, and support stage-bound multi-image feedback without changing unrelated task flows.
+**Goal:** Replace the obsolete preparation/testing/monitoring workflow with the confirmed four-node payment tracking flow, remove the former breakout stage and its old data, add one movable stage-owned link status per record, migrate existing local/production-compatible data, add administrator-configured promotion methods, and support stage-bound multi-image feedback without changing unrelated task flows.
 
-**Architecture:** Keep the stable `selection`, `testing`, `monitoring`, and `summary` stage codes while removing `preparation` and `breakout` from the active graph. Add an idempotent payment-tracking migration invoked by database startup, keep business branching in backend workflow rules, expose promotion methods through an isolated configuration service, and extend the existing image service with stage and adjustment ownership. Frontend forms consume these contracts and retain the existing timeline component and interaction model.
+**Architecture:** Keep the stable `selection`, `testing`, `monitoring`, and `summary` stage codes while removing `preparation` and `breakout` from the active graph. Add an idempotent payment-tracking migration invoked by database startup, keep business branching in backend workflow rules, expose promotion and stage-link-status data through isolated services, and extend the existing image service with stage and adjustment ownership. Frontend forms consume these contracts and retain the existing timeline node and interaction model while adding a compact status row beneath an owning stage.
 
 **Tech Stack:** Vue 3, Element Plus, Vite dev server, Express, sql.js SQLite compatibility layer, MySQL 8-compatible SQL, Jest/Supertest, Playwright.
 
@@ -21,7 +21,9 @@
 - Modify `standalone-server/services/payment-tracking/repository.js`: new stage fields, migration-safe adjustment upserts, promotion CRUD, and adjustment-scoped image queries.
 - Modify `standalone-server/services/payment-tracking/workflow.service.js`: accepted field maps, manager review location, promotion validation, and link-state validation.
 - Create `standalone-server/services/payment-tracking/promotion.service.js`: promotion method normalization, CRUD, and active-value validation.
+- Create `standalone-server/services/payment-tracking/link-status.service.js`: unique owner-stage status validation, save, clear, and editability rules.
 - Create `standalone-server/routes/payment-tracking/promotion-routes.js`: super-admin configuration endpoints and authenticated active-option listing.
+- Create `standalone-server/routes/payment-tracking/link-status-routes.js`: authenticated stage link-status save and clear endpoints.
 - Modify `standalone-server/routes/payment-tracking/index.js`: mount promotion routes.
 - Modify `standalone-server/routes/payment-tracking/image-routes.js`: accept an optional adjustment owner for feedback uploads.
 - Modify `standalone-server/services/payment-tracking/image.service.js`: enforce category-specific stage ownership.
@@ -35,6 +37,8 @@
 - Modify `src/views/payment-tracking/forms/MonitoringForm.vue`: confirmed third-stage layout.
 - Modify `src/components/payment-tracking/PromotionAdjustments.vue`: simplified stable adjustments with one multi-image gallery per adjustment.
 - Modify `src/components/payment-tracking/ImageGallery.vue`: optional adjustment ownership and pre-upload preparation.
+- Create `src/components/payment-tracking/StageLinkStatusDialog.vue`: conditional radio form with clear-then-save behavior.
+- Modify `src/components/payment-tracking/StageTimeline.vue`: optional compact status row under the owning stage without changing node/connectors/click behavior.
 - Delete `src/views/payment-tracking/forms/PreparationForm.vue`: no longer reachable or represented.
 - Delete `src/views/payment-tracking/forms/BreakoutForm.vue`: former fifth stage is no longer reachable or represented.
 - Modify `standalone-server/tests/api/payment-tracking.test.js`: configuration, source time, workflow, permissions, and migration-facing API coverage.
@@ -377,7 +381,125 @@ git add standalone-server/services/payment-tracking/repository.js standalone-ser
 git commit -m "feat: add stage payment feedback images"
 ```
 
-### Task 5: Frontend Four-Node Timeline And Selection Form
+### Task 5: Unique Stage-Owned Link Status Backend
+
+**Files:**
+- Modify: `standalone-server/config/payment-tracking-schema.js`
+- Modify: `standalone-server/services/payment-tracking/repository.js`
+- Create: `standalone-server/services/payment-tracking/link-status.service.js`
+- Create: `standalone-server/routes/payment-tracking/link-status-routes.js`
+- Modify: `standalone-server/routes/payment-tracking/index.js`
+- Modify: `standalone-server/services/payment-tracking/record.service.js`
+- Modify: `src/api/payment-tracking.js`
+- Test: `standalone-server/tests/api/payment-tracking.test.js`
+
+- [ ] **Step 1: Add failing uniqueness, dependency, clear, and ownership tests**
+
+Create a testing-stage record, save one link status, and assert the presented record includes its owner stage and tri-state values:
+
+```js
+const saved = await request(app)
+  .put(`/api/payment-tracking/records/${recordId}/stages/testing/link-status`)
+  .set('Authorization', `Bearer ${storeAToken}`)
+  .send({
+    version,
+    data: {
+      flashSaleRegistered: true,
+      flashSaleGroup: 'new_product_cold_start',
+      rapidOrderEntered: true,
+      newProductOperationRegistered: true,
+      newProductPeak: false,
+      productBurst: true,
+      productBurstMode: 'trade_price_for_volume'
+    }
+  });
+expect(saved.body.data.linkStatus).toMatchObject({
+  stageCode: 'testing',
+  flashSaleRegistered: true,
+  rapidOrderEntered: true,
+  productBurstMode: 'trade_price_for_volume'
+});
+```
+
+Assert missing `flashSaleGroup` or `productBurstMode` fails when its parent is true. Advance to monitoring and assert a second save is rejected while the testing-owned row exists. Reopen testing, clear with `{ clear: true }`, then assert monitoring can own the replacement. Assert completed non-reopened stages cannot save or clear and another store cannot view or mutate the data.
+
+- [ ] **Step 2: Run the focused API test**
+
+Run: `npm test -- --runInBand tests/api/payment-tracking.test.js` from `standalone-server`.
+
+Expected: FAIL because the link-status route and table do not exist.
+
+- [ ] **Step 3: Add the fresh-database table for SQLite and MySQL**
+
+Use `record_id` as the primary key so the database enforces one status per product record:
+
+```sql
+CREATE TABLE payment_selection_link_status (
+  record_id INTEGER PRIMARY KEY,
+  stage_code VARCHAR(30) NOT NULL,
+  flash_sale_registered TINYINT NULL,
+  flash_sale_group VARCHAR(50) DEFAULT '',
+  rapid_order_entered TINYINT NULL,
+  new_product_operation_registered TINYINT NULL,
+  new_product_peak TINYINT NULL,
+  product_burst TINYINT NULL,
+  product_burst_mode VARCHAR(50) DEFAULT '',
+  create_time DATETIME,
+  update_time DATETIME
+);
+```
+
+The startup schema creates this table for upgraded databases without inserting default rows for old records.
+
+- [ ] **Step 4: Add repository methods and record presentation**
+
+Implement `findLinkStatus(recordId, conn)`, `upsertLinkStatus(conn, recordId, stageCode, data)`, `deleteLinkStatus(conn, recordId)`, and `listLinkStatusesForRecords(recordIds)`. Include `linkStatus` in detail and list responses so the outer timeline does not issue one request per card. Present nullable integers as `null` or booleans, never coerce `null` to false.
+
+- [ ] **Step 5: Implement the isolated service**
+
+Accept only owner stages `testing` and `monitoring`. Reuse store access, `payment.selection.view`, current/reopened stage editability, record version, and transaction helpers. Normalize parent/child values:
+
+```js
+if (data.flashSaleRegistered === true && !FLASH_SALE_GROUPS.includes(data.flashSaleGroup)) {
+  throw fieldError('flashSaleGroup', '请选择秒杀类型');
+}
+if (data.flashSaleRegistered !== true) {
+  data.flashSaleGroup = '';
+  data.rapidOrderEntered = null;
+}
+if (data.newProductOperationRegistered !== true) data.newProductPeak = null;
+if (data.productBurst === true && !PRODUCT_BURST_MODES.includes(data.productBurstMode)) {
+  throw fieldError('productBurstMode', '请选择商品速爆类型');
+}
+if (data.productBurst !== true) data.productBurstMode = '';
+```
+
+Reject a save when an existing row belongs to the other stage. Clear only when the requested stage owns the row and is currently editable; delete the row and increment the record version in the same transaction.
+
+- [ ] **Step 6: Add routes and frontend API functions**
+
+Expose:
+
+```text
+PUT /api/payment-tracking/records/:id/stages/:stageCode/link-status
+```
+
+The request body is `{ version, data }` for save or `{ version, clear: true }` for clear-then-save. Add one matching frontend API function; do not create separate per-card GET calls because record responses already contain the status.
+
+- [ ] **Step 7: Run the API tests**
+
+Run: `npm test -- --runInBand tests/api/payment-tracking.test.js` from `standalone-server`.
+
+Expected: PASS.
+
+- [ ] **Step 8: Commit the backend link-status slice locally**
+
+```bash
+git add standalone-server/config/payment-tracking-schema.js standalone-server/services/payment-tracking/repository.js standalone-server/services/payment-tracking/link-status.service.js standalone-server/routes/payment-tracking/link-status-routes.js standalone-server/routes/payment-tracking/index.js standalone-server/services/payment-tracking/record.service.js src/api/payment-tracking.js standalone-server/tests/api/payment-tracking.test.js
+git commit -m "feat: add stage-owned payment link status"
+```
+
+### Task 6: Frontend Four-Node Timeline And Selection Form
 
 **Files:**
 - Modify: `src/config/payment-tracking.js`
@@ -440,7 +562,7 @@ git add src/config/payment-tracking.js src/views/payment-tracking/StageDetail.vu
 git commit -m "feat: simplify payment selection workflow"
 ```
 
-### Task 6: Second-Stage Form
+### Task 7: Second-Stage Form
 
 **Files:**
 - Modify: `src/api/payment-tracking.js`
@@ -486,7 +608,7 @@ git add src/api/payment-tracking.js src/views/payment-tracking/StageDetail.vue s
 git commit -m "feat: rebuild payment second stage"
 ```
 
-### Task 7: Third-Stage Form And Per-Adjustment Feedback
+### Task 8: Third-Stage Form And Per-Adjustment Feedback
 
 **Files:**
 - Modify: `src/views/payment-tracking/StageDetail.vue`
@@ -553,7 +675,53 @@ git add src/views/payment-tracking/StageDetail.vue src/views/payment-tracking/fo
 git commit -m "feat: rebuild payment third stage"
 ```
 
-### Task 8: Full Local Regression And Visual Verification
+### Task 9: Link Status Dialog And Timeline Status Frames
+
+**Files:**
+- Create: `src/components/payment-tracking/StageLinkStatusDialog.vue`
+- Modify: `src/views/payment-tracking/StageDetail.vue`
+- Modify: `src/components/payment-tracking/StageTimeline.vue`
+- Modify: `src/views/payment-tracking/RecordsList.vue`
+- Modify: `tests/payment-tracking/payment-tracking.spec.js`
+
+- [ ] **Step 1: Add failing dialog and status-frame assertions**
+
+Assert the button exists immediately left of “保存本阶段” only on testing/monitoring. Open the dialog and verify all yes/no controls use radio inputs. Select flash sale and product burst, assert their required child options appear, save, and verify the owning timeline node shows four frames with only selected true states active. Assert a completed non-reopened owner is read-only and the other stage cannot create a second status.
+
+- [ ] **Step 2: Run the focused Playwright test**
+
+Run: `npx playwright test --config=playwright.payment-tracking.config.js -g "链接状态|状态框"`.
+
+Expected: FAIL because the dialog and frames do not exist.
+
+- [ ] **Step 3: Implement the conditional dialog**
+
+Use a centered Element Plus dialog with an internally scrolling body. Render compact `el-radio-group` yes/no controls and conditional radio groups. Keep a `clearRequested` flag: clicking the left-footer “清空” resets the local model and shows “保存后生效”; closing cancels it, while saving sends `{ clear: true }`. Parent values set to false/null immediately clear hidden child values.
+
+- [ ] **Step 4: Place the button and enforce read-only/other-owner states**
+
+In `StageDetail.vue`, render the button before “保存本阶段” for testing and monitoring. Current/reopened owners can edit; completed non-reopened owners open read-only; when the single status belongs to the other stage, disable creation with a tooltip telling the user to reopen and clear the owner stage first.
+
+- [ ] **Step 5: Add the optional status row without restyling nodes**
+
+Extend `StageTimeline.vue` with status data keyed by owner stage. Do not alter the existing rectangle, number, connectors, colors, or node click handler. Under the owning node only, render fixed-size frames for `秒杀`, `极速爆单`, `新品运营`, and `速爆`; true is active, false/null is muted. Records without `linkStatus` render no extra row.
+
+- [ ] **Step 6: Run focused frontend and backend tests**
+
+Run: `npx playwright test --config=playwright.payment-tracking.config.js -g "链接状态|状态框"`.
+
+Run: `npm test -- --runInBand tests/api/payment-tracking.test.js` from `standalone-server`.
+
+Expected: PASS.
+
+- [ ] **Step 7: Commit the frontend link-status slice locally**
+
+```bash
+git add src/components/payment-tracking/StageLinkStatusDialog.vue src/views/payment-tracking/StageDetail.vue src/components/payment-tracking/StageTimeline.vue src/views/payment-tracking/RecordsList.vue tests/payment-tracking/payment-tracking.spec.js
+git commit -m "feat: show payment link status by stage"
+```
+
+### Task 10: Full Local Regression And Visual Verification
 
 **Files:**
 - Modify only if a test exposes a defect in files already listed above.
