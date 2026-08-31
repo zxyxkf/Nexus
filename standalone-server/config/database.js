@@ -8,6 +8,7 @@ const path = require('path');
 const fs = require('fs');
 const dbEngine = require('./db-engine');
 const PAYMENT_TRACKING_TABLES = require('./payment-tracking-schema');
+const { migratePaymentTracking } = require('./payment-tracking-migration');
 
 // ===== 初始化 SQL 表（兼容 SQLite 和 MySQL） =====
 
@@ -474,11 +475,15 @@ CREATE_TABLES_SQL.mysql.push(...PAYMENT_TRACKING_TABLES.mysql);
 const SEED_DATA = {
   sqlite: [
     `INSERT OR IGNORE INTO sys_user (username, password, real_name, role, status)
-     VALUES ('admin', '$2a$10$9WDdMTCuUjrMYBfknNbFY.gxfRHodF2wnkIS/LpsuXUmhrdNWDlOi', '管理员', 'admin', 1)`
+      VALUES ('admin', '$2a$10$9WDdMTCuUjrMYBfknNbFY.gxfRHodF2wnkIS/LpsuXUmhrdNWDlOi', '管理员', 'admin', 1)`,
+    `INSERT OR IGNORE INTO payment_listing_category (name, sort_order, active)
+      VALUES ('女装', 0, 1)`
   ],
   mysql: [
     `INSERT IGNORE INTO sys_user (username, password, real_name, role, status)
-     VALUES ('admin', '$2a$10$9WDdMTCuUjrMYBfknNbFY.gxfRHodF2wnkIS/LpsuXUmhrdNWDlOi', '管理员', 'admin', 1)`
+      VALUES ('admin', '$2a$10$9WDdMTCuUjrMYBfknNbFY.gxfRHodF2wnkIS/LpsuXUmhrdNWDlOi', '管理员', 'admin', 1)`,
+    `INSERT IGNORE INTO payment_listing_category (name, sort_order, active)
+      VALUES ('女装', 0, 1)`
   ]
 };
 
@@ -578,6 +583,16 @@ async function initDatabase() {
       try { await dbEngine.execute(sql); } catch (err) {
         console.warn('[DB] 建表警告:', err.message);
       }
+    }
+
+    try {
+      await migratePaymentTracking({
+        execute: (sql, params = []) => dbEngine.execute(sql, params),
+        mode
+      });
+    } catch (err) {
+      console.error('[DB] 打款跟踪数据迁移失败:', err.message);
+      throw err;
     }
 
     const alterSqls = mode === 'mysql' ? [

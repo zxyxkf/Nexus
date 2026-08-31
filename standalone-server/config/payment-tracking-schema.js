@@ -45,6 +45,7 @@ const sqlite = [
     mime_type TEXT DEFAULT '',
     file_size INTEGER DEFAULT 0,
     sort_order INTEGER DEFAULT 0,
+    adjustment_id INTEGER,
     source_task_file_id INTEGER,
     uploader_id INTEGER,
     deleted_at TEXT,
@@ -52,6 +53,8 @@ const sqlite = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_payment_image_record
     ON payment_selection_image(record_id, category, deleted_at, sort_order)`,
+  `CREATE INDEX IF NOT EXISTS idx_payment_image_adjustment
+    ON payment_selection_image(record_id, category, adjustment_id, deleted_at, sort_order)`,
   `CREATE TABLE IF NOT EXISTS payment_selection_stage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     record_id INTEGER NOT NULL,
@@ -71,6 +74,9 @@ const sqlite = [
   )`,
   `CREATE TABLE IF NOT EXISTS payment_selection_testing (
     record_id INTEGER PRIMARY KEY,
+    paid_enabled INTEGER,
+    paid_at TEXT,
+    promotion_method TEXT DEFAULT '',
     car_promotion_method TEXT DEFAULT '',
     car_clicks INTEGER,
     car_ctr REAL,
@@ -87,6 +93,8 @@ const sqlite = [
   )`,
   `CREATE TABLE IF NOT EXISTS payment_selection_monitoring (
     record_id INTEGER PRIMARY KEY,
+    link_optimized INTEGER,
+    link_status TEXT DEFAULT '',
     domestic_sales_count INTEGER,
     added_reviews INTEGER,
     title_optimized_at TEXT,
@@ -104,6 +112,7 @@ const sqlite = [
   `CREATE TABLE IF NOT EXISTS payment_selection_adjustment (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     record_id INTEGER NOT NULL,
+    client_key TEXT,
     sort_order INTEGER NOT NULL,
     reason TEXT DEFAULT '',
     adjusted_at TEXT,
@@ -112,7 +121,8 @@ const sqlite = [
     total_budget REAL,
     detail_text TEXT DEFAULT '',
     feedback_text TEXT DEFAULT '',
-    UNIQUE(record_id, sort_order)
+    UNIQUE(record_id, sort_order),
+    UNIQUE(record_id, client_key)
   )`,
   `CREATE TABLE IF NOT EXISTS payment_selection_breakout (
     record_id INTEGER PRIMARY KEY,
@@ -140,6 +150,22 @@ const sqlite = [
     style_definition TEXT DEFAULT '',
     summary_text TEXT DEFAULT '',
     notes TEXT DEFAULT ''
+  )`,
+  `CREATE TABLE IF NOT EXISTS payment_listing_category (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    sort_order INTEGER DEFAULT 0,
+    active INTEGER DEFAULT 1,
+    create_time TEXT DEFAULT (datetime('now', 'localtime')),
+    update_time TEXT DEFAULT (datetime('now', 'localtime'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS payment_promotion_method (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    sort_order INTEGER DEFAULT 0,
+    active INTEGER DEFAULT 1,
+    create_time TEXT DEFAULT (datetime('now', 'localtime')),
+    update_time TEXT DEFAULT (datetime('now', 'localtime'))
   )`
 ];
 
@@ -187,11 +213,13 @@ const mysql = [
     mime_type VARCHAR(100) DEFAULT '',
     file_size INT DEFAULT 0,
     sort_order INT DEFAULT 0,
+    adjustment_id INT DEFAULT NULL,
     source_task_file_id INT DEFAULT NULL,
     uploader_id INT DEFAULT NULL,
     deleted_at DATETIME DEFAULT NULL,
     create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
-    KEY idx_payment_image_record (record_id, category, deleted_at, sort_order)
+    KEY idx_payment_image_record (record_id, category, deleted_at, sort_order),
+    KEY idx_payment_image_adjustment (record_id, category, adjustment_id, deleted_at, sort_order)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS payment_selection_stage (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -212,6 +240,9 @@ const mysql = [
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS payment_selection_testing (
     record_id INT PRIMARY KEY,
+    paid_enabled TINYINT DEFAULT NULL,
+    paid_at DATETIME DEFAULT NULL,
+    promotion_method VARCHAR(200) DEFAULT '',
     car_promotion_method VARCHAR(200) DEFAULT '',
     car_clicks INT DEFAULT NULL,
     car_ctr DECIMAL(14,4) DEFAULT NULL,
@@ -228,6 +259,8 @@ const mysql = [
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS payment_selection_monitoring (
     record_id INT PRIMARY KEY,
+    link_optimized TINYINT DEFAULT NULL,
+    link_status VARCHAR(30) DEFAULT '',
     domestic_sales_count INT DEFAULT NULL,
     added_reviews INT DEFAULT NULL,
     title_optimized_at DATETIME DEFAULT NULL,
@@ -245,6 +278,7 @@ const mysql = [
   `CREATE TABLE IF NOT EXISTS payment_selection_adjustment (
     id INT AUTO_INCREMENT PRIMARY KEY,
     record_id INT NOT NULL,
+    client_key VARCHAR(100) DEFAULT NULL,
     sort_order INT NOT NULL,
     reason VARCHAR(500) DEFAULT '',
     adjusted_at DATETIME DEFAULT NULL,
@@ -253,7 +287,8 @@ const mysql = [
     total_budget DECIMAL(14,4) DEFAULT NULL,
     detail_text TEXT,
     feedback_text TEXT,
-    UNIQUE KEY uk_payment_adjustment_order (record_id, sort_order)
+    UNIQUE KEY uk_payment_adjustment_order (record_id, sort_order),
+    UNIQUE KEY uk_payment_adjustment_client (record_id, client_key)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS payment_selection_breakout (
     record_id INT PRIMARY KEY,
@@ -281,6 +316,22 @@ const mysql = [
     style_definition VARCHAR(50) DEFAULT '',
     summary_text TEXT,
     notes TEXT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS payment_listing_category (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(200) NOT NULL UNIQUE,
+    sort_order INT DEFAULT 0,
+    active TINYINT DEFAULT 1,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS payment_promotion_method (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(200) NOT NULL UNIQUE,
+    sort_order INT DEFAULT 0,
+    active TINYINT DEFAULT 1,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`
 ];
 

@@ -9,7 +9,9 @@ let noPermissionToken;
 let recordsOnlyToken;
 let managerToken;
 let reopenerToken;
+let globalManagerToken;
 let storeAUserId;
+let globalManagerUserId;
 
 const suffix = Date.now();
 const users = {
@@ -18,7 +20,8 @@ const users = {
   noPermission: `payment_none_${suffix}`,
   recordsOnly: `payment_records_${suffix}`,
   manager: `payment_manager_${suffix}`,
-  reopener: `payment_reopener_${suffix}`
+  reopener: `payment_reopener_${suffix}`,
+  globalManager: `payment_global_${suffix}`
 };
 
 async function login(username) {
@@ -43,19 +46,27 @@ beforeAll(async () => {
     [users.noPermission, 'A店'],
     [users.recordsOnly, 'A店'],
     [users.manager, 'A店'],
-    [users.reopener, 'A店']
+    [users.reopener, 'A店'],
+    [users.globalManager, '']
   ]) {
     await request(app)
       .post('/api/user/create')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ username, password: 'test123456', realName: username, role: 'operator', store });
+      .send({
+        username,
+        password: 'test123456',
+        realName: username,
+        role: username === users.globalManager ? 'sub_admin' : 'operator',
+        store
+      });
   }
 
   const list = await request(app)
-    .get('/api/user/list?role=operator&pageSize=100')
+    .get('/api/user/list?pageSize=100')
     .set('Authorization', `Bearer ${adminToken}`);
   const byName = new Map(list.body.data.list.map(user => [user.username, user]));
   storeAUserId = byName.get(users.storeA).id;
+  globalManagerUserId = byName.get(users.globalManager).id;
 
   for (const username of [users.storeA, users.storeB]) {
     await request(app)
@@ -74,6 +85,15 @@ beforeAll(async () => {
     .send({
       userId: byName.get(users.recordsOnly).id,
       permissions: ['payment.records.view'],
+      deniedPermissions: []
+    });
+
+  await request(app)
+    .post('/api/user/permissions/save')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      userId: globalManagerUserId,
+      permissions: ['payment.manage.all'],
       deniedPermissions: []
     });
 
@@ -101,6 +121,7 @@ beforeAll(async () => {
   recordsOnlyToken = await login(users.recordsOnly);
   managerToken = await login(users.manager);
   reopenerToken = await login(users.reopener);
+  globalManagerToken = await login(users.globalManager);
 }, 30000);
 
 it('creates store-scoped records with independent store sequences', async () => {
@@ -237,6 +258,90 @@ it('returns list card details and applies planner and current-stage filters', as
     .get('/api/payment-tracking/records?processStatus=in_progress&store=B店&stageCode=testing')
     .set('Authorization', `Bearer ${storeAToken}`);
   expect(cannotOverrideStore.body.data.list.every(record => record.store === 'A店')).toBe(true);
+});
+
+it('allows a global payment manager without a store to manage records across stores', async () => {
+  const storeARecord = await request(app)
+    .post('/api/payment-tracking/records')
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ styleNumber: `GLOBAL-A-${suffix}` });
+  const storeBRecord = await request(app)
+    .post('/api/payment-tracking/records')
+    .set('Authorization', `Bearer ${storeBToken}`)
+    .send({ styleNumber: `GLOBAL-B-${suffix}` });
+  expect(storeARecord.body.code).toBe(0);
+  expect(storeBRecord.body.code).toBe(0);
+
+  const globalList = await request(app)
+    .get('/api/payment-tracking/records?processStatus=in_progress&keyword=GLOBAL-')
+    .set('Authorization', `Bearer ${globalManagerToken}`);
+  expect(globalList.body.data.list.map(record => record.store).sort()).toEqual(['A店', 'B店']);
+
+  const crossStoreDetail = await request(app)
+    .get(`/api/payment-tracking/records/${storeBRecord.body.data.id}`)
+    .set('Authorization', `Bearer ${globalManagerToken}`);
+  expect(crossStoreDetail.body.data).toMatchObject({
+    id: storeBRecord.body.data.id,
+    store: 'B店'
+  });
+
+  const saved = await request(app)
+    .put(`/api/payment-tracking/records/${storeBRecord.body.data.id}/stages/selection`)
+    .set('Authorization', `Bearer ${globalManagerToken}`)
+    .send({ version: crossStoreDetail.body.data.version, data: { listingCategory: '女装' } });
+  expect(saved.body.code).toBe(0);
+
+  const ended = await request(app)
+    .post(`/api/payment-tracking/records/${storeBRecord.body.data.id}/end`)
+    .set('Authorization', `Bearer ${globalManagerToken}`)
+    .send({ version: saved.body.data.version });
+  expect(ended.body.data.processStatus).toBe('ended');
+
+  const restored = await request(app)
+    .post(`/api/payment-tracking/records/${storeBRecord.body.data.id}/restore`)
+    .set('Authorization', `Bearer ${globalManagerToken}`)
+    .send({ version: ended.body.data.version });
+  expect(restored.body.data).toMatchObject({ store: 'B店', processStatus: 'in_progress' });
+
+  const deleted = await request(app)
+    .delete(`/api/payment-tracking/records/${storeARecord.body.data.id}`)
+    .set('Authorization', `Bearer ${globalManagerToken}`)
+    .send({ version: storeARecord.body.data.version });
+  expect(deleted.body.code).toBe(0);
+});
+
+it('provides configurable listing categories and rejects unknown active values', async () => {
+  const created = await request(app)
+    .post('/api/payment-tracking/categories')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ name: `类目-${suffix}`, sortOrder: 10 });
+  expect(created.body).toMatchObject({ code: 0, data: { name: `类目-${suffix}`, active: 1 } });
+
+  const duplicate = await request(app)
+    .post('/api/payment-tracking/categories')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ name: `  类目-${suffix}  ` });
+  expect(duplicate.body.code).toBe(400);
+
+  const listed = await request(app)
+    .get('/api/payment-tracking/categories')
+    .set('Authorization', `Bearer ${storeAToken}`);
+  expect(listed.body.data.some(item => item.name === `类目-${suffix}`)).toBe(true);
+
+  const record = await request(app)
+    .post('/api/payment-tracking/records')
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ styleNumber: `CATEGORY-${suffix}` });
+  const invalid = await request(app)
+    .put(`/api/payment-tracking/records/${record.body.data.id}/stages/selection`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ version: record.body.data.version, data: { listingCategory: `不存在-${suffix}` } });
+  expect(invalid.body.code).toBe(400);
+
+  const deleted = await request(app)
+    .delete(`/api/payment-tracking/categories/${created.body.data.id}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  expect(deleted.body.code).toBe(0);
 });
 
 it('runs the workflow without exposing future stages and enforces optimistic locking', async () => {
@@ -451,4 +556,123 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
     .send({ version: reopened.body.data.version, data: { detailText: '历史阶段已修正' } });
   expect(corrected.body.data.currentStage).toBe('summary');
   expect(corrected.body.data.stages.find(stage => stage.stageCode === 'selection').isReopened).toBe(false);
+});
+
+it('migrates retired preparation stages and clears obsolete payment data idempotently', async () => {
+  const { execute, getMode } = require('../../config/database');
+  const { migratePaymentTracking } = require('../../config/payment-tracking-migration');
+  const baseSeq = Number(String(Date.now()).slice(-8));
+
+  const [stoppedResult] = await execute(
+    `INSERT INTO payment_selection_record
+       (store, store_seq, planner_id, planner_name, source_task_no, style_number,
+        current_stage, process_status, end_stage, end_type, end_reason)
+     VALUES ('迁移店铺', ?, ?, '迁移人员', ?, 'LEGACY-STOPPED',
+             'preparation', 'ended', 'preparation', 'manual', '旧阶段结束')`,
+    [baseSeq, storeAUserId, `LEGACY-PAYMENT-STOPPED-${suffix}`]
+  );
+  const stoppedId = stoppedResult.insertId;
+  await execute(
+    `INSERT INTO payment_selection_stage (record_id, stage_code, stage_status)
+     VALUES (?, 'selection', 'completed'), (?, 'preparation', 'ended')`,
+    [stoppedId, stoppedId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_preparation
+       (record_id, review_count, new_ops_registered, paid_enabled, paid_at)
+     VALUES (?, 12, 1, 1, '2026-08-20 09:30:00')`,
+    [stoppedId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_testing
+       (record_id, car_promotion_method, car_clicks, car_ctr, car_qualifies,
+        site_promotion_method, overall_visitors, search_visitors, buyers, average_ctr)
+     VALUES (?, '旧直通车', 99, 3.21, 1, '旧全站', 1000, 500, 12, 2.22)`,
+    [stoppedId]
+  );
+
+  const [advancedResult] = await execute(
+    `INSERT INTO payment_selection_record
+       (store, store_seq, planner_id, planner_name, source_task_no, style_number, current_stage)
+     VALUES ('迁移店铺', ?, ?, '迁移人员', ?, 'LEGACY-ADVANCED', 'monitoring')`,
+    [baseSeq + 1, storeAUserId, `LEGACY-PAYMENT-ADVANCED-${suffix}`]
+  );
+  const advancedId = advancedResult.insertId;
+  await execute(
+    `INSERT INTO payment_selection_stage (record_id, stage_code, stage_status)
+     VALUES (?, 'selection', 'completed'), (?, 'preparation', 'completed'),
+            (?, 'testing', 'completed'), (?, 'monitoring', 'active')`,
+    [advancedId, advancedId, advancedId, advancedId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_monitoring
+       (record_id, domestic_sales_count, added_reviews, abandoned, abandon_reason, abandon_at)
+     VALUES (?, 8, 6, 1, '旧放弃原因', '2026-08-28 10:00:00')`,
+    [advancedId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_adjustment
+       (record_id, sort_order, reason, fee_ratio_7d, payers_7d, total_budget, detail_text, feedback_text)
+     VALUES (?, 0, '旧调整', 18.8, 20, 500, '旧操作概述', '旧备注')`,
+    [advancedId]
+  );
+
+  await migratePaymentTracking({ execute, mode: getMode() });
+  await migratePaymentTracking({ execute, mode: getMode() });
+
+  const [stoppedRows] = await execute(
+    `SELECT current_stage, end_stage FROM payment_selection_record WHERE id = ?`,
+    [stoppedId]
+  );
+  expect(stoppedRows[0]).toMatchObject({ current_stage: 'testing', end_stage: 'testing' });
+  const [stoppedStages] = await execute(
+    'SELECT stage_code, stage_status FROM payment_selection_stage WHERE record_id = ? ORDER BY id',
+    [stoppedId]
+  );
+  expect(stoppedStages).toEqual([
+    expect.objectContaining({ stage_code: 'selection' }),
+    expect.objectContaining({ stage_code: 'testing', stage_status: 'ended' })
+  ]);
+  const [testingRows] = await execute(
+    `SELECT paid_enabled, paid_at, promotion_method, car_clicks, site_promotion_method
+     FROM payment_selection_testing WHERE record_id = ?`,
+    [stoppedId]
+  );
+  expect(testingRows[0]).toMatchObject({
+    paid_enabled: 1,
+    paid_at: '2026-08-20 09:30:00',
+    promotion_method: '',
+    car_clicks: null,
+    site_promotion_method: ''
+  });
+
+  const [advancedStages] = await execute(
+    'SELECT stage_code FROM payment_selection_stage WHERE record_id = ? ORDER BY id',
+    [advancedId]
+  );
+  expect(advancedStages.map(row => row.stage_code)).toEqual(['selection', 'testing', 'monitoring']);
+  const [monitoringRows] = await execute(
+    `SELECT link_status, domestic_sales_count, abandon_reason, abandon_at
+     FROM payment_selection_monitoring WHERE record_id = ?`,
+    [advancedId]
+  );
+  expect(monitoringRows[0]).toMatchObject({
+    link_status: 'protect_roi',
+    domestic_sales_count: null,
+    abandon_reason: '',
+    abandon_at: null
+  });
+  const [adjustments] = await execute(
+    `SELECT client_key, fee_ratio_7d, payers_7d, total_budget, detail_text, feedback_text
+     FROM payment_selection_adjustment WHERE record_id = ?`,
+    [advancedId]
+  );
+  expect(adjustments[0]).toMatchObject({
+    client_key: expect.stringMatching(/^legacy-/),
+    fee_ratio_7d: null,
+    payers_7d: null,
+    total_budget: null,
+    detail_text: '旧操作概述',
+    feedback_text: '旧备注'
+  });
 });
