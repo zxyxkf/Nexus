@@ -2,9 +2,9 @@
 
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
-**Goal:** Replace the obsolete preparation/testing/monitoring workflow with the confirmed five-node payment tracking flow, migrate existing local/production-compatible data, add administrator-configured promotion methods, and support stage-bound multi-image feedback without changing unrelated task flows.
+**Goal:** Replace the obsolete preparation/testing/monitoring workflow with the confirmed four-node payment tracking flow, remove the former breakout stage and its old data, migrate existing local/production-compatible data, add administrator-configured promotion methods, and support stage-bound multi-image feedback without changing unrelated task flows.
 
-**Architecture:** Keep the stable `selection`, `testing`, `monitoring`, `breakout`, and `summary` stage codes while removing `preparation` from the active graph. Add an idempotent payment-tracking migration invoked by database startup, keep business branching in backend workflow rules, expose promotion methods through an isolated configuration service, and extend the existing image service with stage and adjustment ownership. Frontend forms consume these contracts and retain the existing timeline component and interaction model.
+**Architecture:** Keep the stable `selection`, `testing`, `monitoring`, and `summary` stage codes while removing `preparation` and `breakout` from the active graph. Add an idempotent payment-tracking migration invoked by database startup, keep business branching in backend workflow rules, expose promotion methods through an isolated configuration service, and extend the existing image service with stage and adjustment ownership. Frontend forms consume these contracts and retain the existing timeline component and interaction model.
 
 **Tech Stack:** Vue 3, Element Plus, Vite dev server, Express, sql.js SQLite compatibility layer, MySQL 8-compatible SQL, Jest/Supertest, Playwright.
 
@@ -15,7 +15,7 @@
 - Create `standalone-server/config/payment-tracking-migration.js`: idempotent SQLite/MySQL schema and data migration.
 - Modify `standalone-server/config/payment-tracking-schema.js`: new promotion table, stage fields, stable adjustment identity, and image ownership columns for fresh databases.
 - Modify `standalone-server/config/database.js`: run the payment migration after base table creation and before serving requests.
-- Modify `standalone-server/services/payment-tracking/constants.js`: active five-stage graph and image category metadata.
+- Modify `standalone-server/services/payment-tracking/constants.js`: active four-stage graph and image category metadata.
 - Modify `standalone-server/services/payment-tracking/rules.js`: second/third-stage advance and end rules.
 - Modify `standalone-server/services/payment-tracking/open.service.js`: copy task publish time into new records.
 - Modify `standalone-server/services/payment-tracking/repository.js`: new stage fields, migration-safe adjustment upserts, promotion CRUD, and adjustment-scoped image queries.
@@ -27,19 +27,20 @@
 - Modify `standalone-server/services/payment-tracking/image.service.js`: enforce category-specific stage ownership.
 - Modify `standalone-server/services/payment-tracking/record.service.js`: present new fields, adjustment IDs/keys, and image ownership.
 - Modify `src/api/payment-tracking.js`: promotion CRUD and adjustment-owned image request parameters.
-- Modify `src/config/payment-tracking.js`: five displayed stages and removal of hard-coded promotion methods.
+- Modify `src/config/payment-tracking.js`: four displayed stages and removal of hard-coded promotion methods.
 - Modify `src/views/admin/Config.vue`: super-admin promotion method configuration tab.
-- Modify `src/views/payment-tracking/StageDetail.vue`: remove preparation routing/models, use new branch fields, and prepare a newly-added adjustment before image upload.
+- Modify `src/views/payment-tracking/StageDetail.vue`: remove preparation/breakout routing and models, use new branch fields, and prepare a newly-added adjustment before image upload.
 - Modify `src/views/payment-tracking/forms/SelectionForm.vue`: source date read-only behavior and removal of obsolete fields.
 - Modify `src/views/payment-tracking/forms/TestingForm.vue`: confirmed second-stage layout.
 - Modify `src/views/payment-tracking/forms/MonitoringForm.vue`: confirmed third-stage layout.
 - Modify `src/components/payment-tracking/PromotionAdjustments.vue`: simplified stable adjustments with one multi-image gallery per adjustment.
 - Modify `src/components/payment-tracking/ImageGallery.vue`: optional adjustment ownership and pre-upload preparation.
 - Delete `src/views/payment-tracking/forms/PreparationForm.vue`: no longer reachable or represented.
+- Delete `src/views/payment-tracking/forms/BreakoutForm.vue`: former fifth stage is no longer reachable or represented.
 - Modify `standalone-server/tests/api/payment-tracking.test.js`: configuration, source time, workflow, permissions, and migration-facing API coverage.
 - Modify `standalone-server/tests/api/payment-tracking-images.test.js`: stage image ownership and adjustment isolation coverage.
 - Modify `standalone-server/tests/unit/payment-tracking-rules.test.js`: pure branch rule coverage; create if absent.
-- Modify `tests/payment-tracking/payment-tracking.spec.js`: five-node timeline and confirmed form behavior.
+- Modify `tests/payment-tracking/payment-tracking.spec.js`: four-node timeline and confirmed form behavior.
 
 ### Task 1: Idempotent Schema And Old-Record Migration
 
@@ -51,7 +52,7 @@
 
 - [ ] **Step 1: Add a failing migration regression test**
 
-Seed one record at `preparation`, one record already past it, old testing/monitoring values, and old adjustment metrics. Re-run the exported migration twice and assert the same final state:
+Seed one record at `preparation`, one record at `breakout`, one record already past them, old testing/monitoring values, old breakout data, and old adjustment metrics. Re-run the exported migration twice and assert the same final state:
 
 ```js
 it('migrates the retired preparation stage and clears obsolete payment data idempotently', async () => {
@@ -68,6 +69,10 @@ it('migrates the retired preparation stage and clears obsolete payment data idem
   expect(stages.map(row => row.stage_code)).toEqual(['selection', 'testing']);
   const [testing] = await execute('SELECT paid_enabled, paid_at, promotion_method, car_clicks FROM payment_selection_testing WHERE record_id = ?', [legacyRecordId]);
   expect(testing[0]).toMatchObject({ paid_enabled: 1, promotion_method: '', car_clicks: null });
+  const [breakoutRows] = await execute('SELECT record_id FROM payment_selection_breakout');
+  expect(breakoutRows).toHaveLength(0);
+  const [breakoutStages] = await execute("SELECT id FROM payment_selection_stage WHERE stage_code = 'breakout'");
+  expect(breakoutStages).toHaveLength(0);
 });
 ```
 
@@ -100,6 +105,7 @@ async function migratePaymentTracking({ execute, mode }) {
   await ensureColumns(execute, mode);
   await migratePreparationData(execute);
   await migrateStageRows(execute);
+  await migrateBreakoutToSummary(execute);
   await backfillSelectionDates(execute);
   await migrateMonitoringStatus(execute);
   await clearRetiredValues(execute);
@@ -118,9 +124,13 @@ SET paid_enabled = COALESCE(paid_enabled, (SELECT paid_enabled FROM payment_sele
 UPDATE payment_selection_record SET current_stage = 'testing' WHERE current_stage = 'preparation';
 UPDATE payment_selection_record SET end_stage = 'testing' WHERE end_stage = 'preparation';
 DELETE FROM payment_selection_stage WHERE stage_code = 'preparation';
+UPDATE payment_selection_record SET current_stage = 'summary' WHERE current_stage = 'breakout';
+UPDATE payment_selection_record SET end_stage = 'summary' WHERE end_stage = 'breakout';
+DELETE FROM payment_selection_stage WHERE stage_code = 'breakout';
+DELETE FROM payment_selection_breakout;
 ```
 
-Insert missing `testing` stage/data rows before updates; merge duplicate stage status using ended over active over completed, and preserve earliest entered/latest completed timestamps. Backfill `client_key` as `legacy-<id>`, map `abandoned=1` to `link_status='protect_roi'` and `abandoned=0` to `link_status='keep_breaking'` only when the old field was explicitly stored. Clear all retired columns listed in the approved design, including old promotion values and adjustment metrics.
+Insert missing `testing` and `summary` stage rows before updates; merge duplicate stage status using ended over active over completed, and preserve earliest entered/latest completed timestamps. When migrating `breakout`, carry only the workflow status into `summary`; discard all breakout form values and stage rows. Backfill `client_key` as `legacy-<id>`, map `abandoned=1` to `link_status='protect_roi'` and `abandoned=0` to `link_status='keep_breaking'` only when the old field was explicitly stored. Clear all retired columns listed in the approved design, including old promotion values and adjustment metrics.
 
 - [ ] **Step 5: Invoke migration during startup**
 
@@ -146,7 +156,7 @@ git add standalone-server/config/payment-tracking-migration.js standalone-server
 git commit -m "feat: migrate payment tracking workflow schema"
 ```
 
-### Task 2: Five-Stage Workflow Rules And Source Publish Time
+### Task 2: Four-Stage Workflow Rules And Source Publish Time
 
 **Files:**
 - Modify: `standalone-server/services/payment-tracking/constants.js`
@@ -162,7 +172,7 @@ git commit -m "feat: migrate payment tracking workflow schema"
 
 ```js
 expect(NEXT_STAGE).toEqual({
-  selection: 'testing', testing: 'monitoring', monitoring: 'breakout', breakout: 'summary', summary: null
+  selection: 'testing', testing: 'monitoring', monitoring: 'summary', summary: null
 });
 expect(validateAdvance('testing', { paid_enabled: 1, paid_at: '2026-08-31 10:00:00', potential_status: '符合潜力款标准' }).ok).toBe(true);
 expect(validateAdvance('monitoring', { link_status: 'protect_roi' })).toMatchObject({ ok: false });
@@ -187,12 +197,14 @@ Expected: FAIL on old stage graph, old monitoring branch, and missing task publi
 Use stable internal values:
 
 ```js
-const STAGES = ['selection', 'testing', 'monitoring', 'breakout', 'summary'];
-const NEXT_STAGE = { selection: 'testing', testing: 'monitoring', monitoring: 'breakout', breakout: 'summary', summary: null };
+const STAGES = ['selection', 'testing', 'monitoring', 'summary'];
+const NEXT_STAGE = { selection: 'testing', testing: 'monitoring', monitoring: 'summary', summary: null };
 const LINK_STATUS = ['protect_roi', 'keep_breaking'];
 ```
 
 `testing` requires `paid_enabled === 1`, nonblank `paid_at`, and `potential_status === '符合潜力款标准'`. `monitoring` requires `link_status === 'keep_breaking'` to advance. Ending `monitoring` requires a selected link status and only accepts `protect_roi`; its snapshot reason is `链接状态：保投产`.
+
+Remove the `breakout` field mapping, repository stage-data reader/writer, permission mapping, and validation branch. A monitoring record marked `keep_breaking` advances directly to `summary`.
 
 - [ ] **Step 5: Move manager fields and remove retired field mappings**
 
@@ -365,13 +377,14 @@ git add standalone-server/services/payment-tracking/repository.js standalone-ser
 git commit -m "feat: add stage payment feedback images"
 ```
 
-### Task 5: Frontend Five-Node Timeline And Selection Form
+### Task 5: Frontend Four-Node Timeline And Selection Form
 
 **Files:**
 - Modify: `src/config/payment-tracking.js`
 - Modify: `src/views/payment-tracking/StageDetail.vue`
 - Modify: `src/views/payment-tracking/forms/SelectionForm.vue`
 - Delete: `src/views/payment-tracking/forms/PreparationForm.vue`
+- Delete: `src/views/payment-tracking/forms/BreakoutForm.vue`
 - Test: `tests/payment-tracking/payment-tracking.spec.js`
 
 - [ ] **Step 1: Update mocked records and add failing timeline/selection assertions**
@@ -379,11 +392,12 @@ git commit -m "feat: add stage payment feedback images"
 Expect exactly:
 
 ```js
-await expect(page.locator('.stage-step')).toHaveCount(5);
+await expect(page.locator('.stage-step')).toHaveCount(4);
 await expect(page.locator('.stage-step')).toContainText([
-  '信息及选品', '第二阶段', '第三阶段', '第22-30天打爆', '总结阶段'
+  '信息及选品', '第二阶段', '第三阶段', '总结阶段'
 ]);
 await expect(page.getByText('第1-6天准备工作')).toHaveCount(0);
+await expect(page.getByText('第12-30天打爆')).toHaveCount(0);
 await expect(page.getByLabel('SKU 数是否不超过 200')).toHaveCount(0);
 await expect(page.getByText('通过并设计主图')).toHaveCount(0);
 ```
@@ -403,7 +417,6 @@ export const PAYMENT_STAGES = [
   { code: 'selection', label: '信息及选品' },
   { code: 'testing', label: '第二阶段' },
   { code: 'monitoring', label: '第三阶段' },
-  { code: 'breakout', label: '第22-30天打爆' },
   { code: 'summary', label: '总结阶段' }
 ];
 ```
@@ -412,7 +425,7 @@ Do not change `StageTimeline.vue` visual structure, state classes, connectors, o
 
 - [ ] **Step 4: Remove preparation and obsolete selection fields**
 
-Remove the preparation import/model/component mapping and delete `PreparationForm.vue`. Remove `designMainImage`/`skuLe200` controls and model fields. Pass `record` into `SelectionForm`; disable the selection date when `record.sourceTaskId` is present and retain the date picker for manual records.
+Remove the preparation and breakout import/model/component mappings and delete `PreparationForm.vue` and `BreakoutForm.vue`. Remove `designMainImage`/`skuLe200` controls and model fields. Pass `record` into `SelectionForm`; disable the selection date when `record.sourceTaskId` is present and retain the date picker for manual records.
 
 - [ ] **Step 5: Run focused Playwright tests**
 
@@ -423,7 +436,7 @@ Expected: PASS.
 - [ ] **Step 6: Commit the timeline/selection slice locally**
 
 ```bash
-git add src/config/payment-tracking.js src/views/payment-tracking/StageDetail.vue src/views/payment-tracking/forms/SelectionForm.vue src/views/payment-tracking/forms/PreparationForm.vue tests/payment-tracking/payment-tracking.spec.js
+git add src/config/payment-tracking.js src/views/payment-tracking/StageDetail.vue src/views/payment-tracking/forms/SelectionForm.vue src/views/payment-tracking/forms/PreparationForm.vue src/views/payment-tracking/forms/BreakoutForm.vue tests/payment-tracking/payment-tracking.spec.js
 git commit -m "feat: simplify payment selection workflow"
 ```
 
