@@ -789,6 +789,7 @@ it('requires confirmation before a reopened terminal stage invalidates downstrea
 });
 
 it('uses existing terminal reasons and preserves non-terminal historical edits', async () => {
+  const { execute } = require('../../config/database');
   const unqualifiedSeed = await createRecordAtSummary(`INVALIDATE-POTENTIAL-${suffix}`);
   const unqualifiedReopened = await request(app)
     .post(`/api/payment-tracking/records/${unqualifiedSeed.id}/stages/testing/reopen`)
@@ -835,6 +836,27 @@ it('uses existing terminal reasons and preserves non-terminal historical edits',
   expect(continuing.body.data.stageData.monitoring.linkStatus).toBe('keep_breaking');
   expect(continuing.body.data.stageData.summary.summaryText).toBe('旧总结');
   expect(continuing.body.data.linkStatus).toMatchObject({ stageCode: 'monitoring' });
+
+  const emptyPaymentSeed = await createRecordAtSummary(`INVALIDATE-EMPTY-${suffix}`);
+  await execute(
+    'UPDATE payment_selection_testing SET paid_enabled = NULL WHERE record_id = ?',
+    [emptyPaymentSeed.id]
+  );
+  const emptyPaymentReopened = await request(app)
+    .post(`/api/payment-tracking/records/${emptyPaymentSeed.id}/stages/testing/reopen`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: emptyPaymentSeed.version });
+  const emptyPaymentSaved = await request(app)
+    .put(`/api/payment-tracking/records/${emptyPaymentSeed.id}/stages/testing`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      version: emptyPaymentReopened.body.data.version,
+      data: { managerReportDate: '2026-08-31' }
+    });
+  expect(emptyPaymentSaved.body).toMatchObject({
+    code: 0,
+    data: { currentStage: 'summary', processStatus: 'in_progress' }
+  });
 });
 
 it('ends at a reopened third stage without deleting third-stage-owned data', async () => {
