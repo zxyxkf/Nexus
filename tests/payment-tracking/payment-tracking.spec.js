@@ -690,36 +690,40 @@ async function expectNoHorizontalPageOverflow(page) {
   expect(dimensions.pageWidth).toBeLessThanOrEqual(dimensions.viewportWidth)
 }
 
-async function pasteClipboardImage(locator, options = {}) {
+async function pasteClipboardImage(page, options = {}) {
   const file = {
     name: options.name ?? '',
     mimeType: options.mimeType || 'image/png',
     content: options.content || 'clipboard-image'
   }
-  await locator.evaluate((element, clipboardFile) => {
+  return page.evaluate(clipboardFile => {
     const dataTransfer = new DataTransfer()
     dataTransfer.items.add(new File(
       [clipboardFile.content],
       clipboardFile.name,
       { type: clipboardFile.mimeType }
     ))
-    element.dispatchEvent(new ClipboardEvent('paste', {
+    const event = new ClipboardEvent('paste', {
       bubbles: true,
       cancelable: true,
       clipboardData: dataTransfer
-    }))
+    })
+    window.dispatchEvent(event)
+    return event.defaultPrevented
   }, file)
 }
 
-async function pasteClipboardText(locator, text) {
-  await locator.evaluate((element, value) => {
+async function pasteClipboardText(page, text) {
+  return page.evaluate(value => {
     const dataTransfer = new DataTransfer()
     dataTransfer.setData('text/plain', value)
-    element.dispatchEvent(new ClipboardEvent('paste', {
+    const event = new ClipboardEvent('paste', {
       bubbles: true,
       cancelable: true,
       clipboardData: dataTransfer
-    }))
+    })
+    window.dispatchEvent(event)
+    return event.defaultPrevented
   }, text)
 }
 
@@ -944,8 +948,8 @@ test('第三阶段按链接状态分支并隔离每次数据反馈', async ({ pa
     && new URL(request.url()).pathname === '/api/payment-tracking/records/105/images/adjustment_feedback'
   ))
   const feedbackDropzone = newAdjustment.locator('.image-gallery-dropzone')
-  await feedbackDropzone.click()
-  await pasteClipboardImage(feedbackDropzone, { name: 'feedback-paste.png' })
+  await feedbackDropzone.hover()
+  await pasteClipboardImage(page, { name: 'feedback-paste.png' })
   await stageSave
   const uploadRequest = await imageUpload
   expect(uploadRequest.postData()).toContain('name="adjustmentId"')
@@ -1255,7 +1259,7 @@ test('selection image galleries expose upload dropzones and delete controls', as
   await expect(page.locator('.image-gallery').first().getByRole('button', { name: '删除图片', exact: true })).toBeVisible()
 })
 
-test('image dropzone pastes clipboard screenshots into its own category only', async ({ page }) => {
+test('image dropzone pastes screenshots only while hovered and keeps click upload', async ({ page }) => {
   const uploads = []
   page.on('request', request => {
     if (request.method() === 'POST' && /\/api\/payment-tracking\/records\/111\/images\//.test(request.url())) {
@@ -1266,15 +1270,27 @@ test('image dropzone pastes clipboard screenshots into its own category only', a
 
   const detailGallery = page.locator('.image-gallery').filter({ hasText: '说明截图' })
   const dropzone = detailGallery.locator('.image-gallery-dropzone')
+
+  const fileChooserPromise = page.waitForEvent('filechooser')
   await dropzone.click()
-  await pasteClipboardImage(dropzone)
+  await fileChooserPromise
+
+  await page.mouse.move(0, 0)
+  expect(await pasteClipboardImage(page)).toBe(false)
+  expect(uploads).toHaveLength(0)
+
+  await dropzone.hover()
+  expect(await pasteClipboardImage(page)).toBe(true)
 
   await expect.poll(() => uploads.length).toBe(1)
   expect(new URL(uploads[0].url()).pathname).toBe('/api/payment-tracking/records/111/images/detail_screenshot')
   expect(uploads[0].postData()).toMatch(/filename="clipboard-\d+-1\.png"/)
   await expect(detailGallery).toContainText(/clipboard-\d+-1\.png/)
 
-  await pasteClipboardText(dropzone, 'not an image')
-  await expect(page.getByText('剪贴板中没有图片')).toBeVisible()
+  expect(await pasteClipboardText(page, 'not an image')).toBe(false)
+  expect(uploads).toHaveLength(1)
+
+  await page.mouse.move(0, 0)
+  expect(await pasteClipboardImage(page, { name: 'outside.png' })).toBe(false)
   expect(uploads).toHaveLength(1)
 })

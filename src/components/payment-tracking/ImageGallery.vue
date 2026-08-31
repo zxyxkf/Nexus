@@ -24,10 +24,11 @@
       @click="fileInput?.click()"
       @dragover.prevent
       @drop.prevent="handleDrop"
-      @paste="handlePaste"
+      @mouseenter="pasteHovered = true"
+      @mouseleave="pasteHovered = false"
     >
       <el-icon :size="22"><Upload /></el-icon>
-      <span>拖拽图片到此处、点击上传，或点击后粘贴截图</span>
+      <span>拖拽图片到此处、点击上传，或鼠标移入后粘贴截图</span>
       <small>支持 JPG、PNG、WEBP 等图片格式</small>
     </button>
 
@@ -92,7 +93,7 @@
 </template>
 
 <script setup>
-import { computed, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import { ArrowLeft, ArrowRight, Delete, Upload } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
@@ -118,6 +119,7 @@ const props = defineProps({
 const emit = defineEmits(['record-updated', 'reload-requested'])
 const fileInput = ref(null)
 const busy = ref(false)
+const pasteHovered = ref(false)
 const CLIPBOARD_EXTENSIONS = {
   'image/png': 'png',
   'image/jpeg': 'jpg',
@@ -177,7 +179,7 @@ function nameClipboardFile(file, timestamp, index) {
 }
 
 async function handlePaste(event) {
-  if (busy.value) return
+  if (!pasteHovered.value || props.readonly || busy.value) return
   const timestamp = Date.now()
   const files = Array.from(event.clipboardData?.items || [])
     .filter(item => item.kind === 'file' && String(item.type || '').toLowerCase().startsWith('image/'))
@@ -185,13 +187,13 @@ async function handlePaste(event) {
     .filter(Boolean)
     .map((file, index) => nameClipboardFile(file, timestamp, index))
 
-  if (!files.length) {
-    ElMessage.warning('剪贴板中没有图片')
-    return
-  }
+  if (!files.length) return
   event.preventDefault()
   await uploadFileList(files)
 }
+
+onMounted(() => window.addEventListener('paste', handlePaste))
+onBeforeUnmount(() => window.removeEventListener('paste', handlePaste))
 
 async function uploadFileList(files) {
   if (!files.length) return
