@@ -211,6 +211,15 @@ const isEditable = computed(() => Boolean(
   && record.value?.allowedActions?.edit
   && (isCurrentStage.value || currentStageEntry.value?.isReopened)
 ))
+const isTerminalHistoricalEdit = computed(() => {
+  if (!currentStageEntry.value?.isReopened || isCurrentStage.value) return false
+  if (stageCode.value === 'testing') {
+    return formData.value.paidEnabled === false
+      || formData.value.potentialStatus === '不符合'
+  }
+  return stageCode.value === 'monitoring'
+    && formData.value.linkStatus === 'protect_roi'
+})
 const canAdvanceByBranch = computed(() => {
   if (stageCode.value === 'testing') {
     return formData.value.paidEnabled === true
@@ -346,15 +355,39 @@ async function reloadOnVersionConflict(result) {
 }
 
 async function saveCurrentStage(options = {}) {
+  let confirmDownstreamInvalidation = false
+  if (isTerminalHistoricalEdit.value) {
+    try {
+      await ElMessageBox.confirm(
+        '该修改将作废后续阶段的内容、图片和状态，并将流程结束于当前阶段。是否继续？',
+        '作废后续阶段',
+        {
+          confirmButtonText: '确认并结束',
+          type: 'warning'
+        }
+      )
+      confirmDownstreamInvalidation = true
+    } catch (error) {
+      if (error === 'cancel' || error === 'close') return null
+      throw error
+    }
+  }
+
   saving.value = true
   try {
     const response = await savePaymentStageApi(record.value.id, stageCode.value, {
       version: record.value.version,
+      ...(confirmDownstreamInvalidation ? { confirmDownstreamInvalidation: true } : {}),
       data: formData.value
     })
     if (await reloadOnVersionConflict(response)) return null
     if (response.code === 0) {
       applyRecord(response.data)
+      if (response.data.processStatus === 'ended') {
+        ElMessage.success(`流程已结束于${stageTitle.value}`)
+        await router.replace('/payment-tracking/records')
+        return null
+      }
       if (!options.silent) ElMessage.success('本阶段已保存')
       return response.data
     }

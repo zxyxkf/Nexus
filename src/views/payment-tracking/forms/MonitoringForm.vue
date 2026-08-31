@@ -2,12 +2,25 @@
   <el-form ref="formRef" :model="model" label-position="top" class="stage-form">
     <section class="form-section">
       <h2>链接优化</h2>
-      <el-form-item label="是否做链接优化">
-        <el-radio-group v-model="model.linkOptimized" :disabled="readonly">
-          <el-radio :value="true">是</el-radio>
-          <el-radio :value="false">否</el-radio>
-        </el-radio-group>
-      </el-form-item>
+      <div class="link-optimization-layout">
+        <el-form-item label="是否做链接优化">
+          <el-radio-group v-model="model.linkOptimized" :disabled="readonly">
+            <el-radio :value="true">是</el-radio>
+            <el-radio :value="false">否</el-radio>
+          </el-radio-group>
+        </el-form-item>
+        <ImageGallery
+          v-if="model.linkOptimized === true"
+          :record-id="record.id"
+          :version="record.version"
+          :images="record.images"
+          category="link_optimization"
+          label="图片上传区"
+          :readonly="readonly"
+          @record-updated="emit('record-updated', $event)"
+          @reload-requested="emit('reload-requested')"
+        />
+      </div>
     </section>
 
     <section class="form-section">
@@ -36,6 +49,7 @@
 <script setup>
 import { ref } from 'vue'
 import { ElMessage } from 'element-plus'
+import ImageGallery from '@/components/payment-tracking/ImageGallery.vue'
 import PromotionAdjustments from '@/components/payment-tracking/PromotionAdjustments.vue'
 
 const model = defineModel({ type: Object, required: true })
@@ -101,6 +115,14 @@ h2::before {
   content: '';
 }
 
+.link-optimization-layout {
+  display: grid;
+  grid-template-columns: minmax(180px, 0.42fr) minmax(320px, 1fr);
+  align-items: start;
+  gap: 28px;
+  min-width: 0;
+}
+
 :deep(.el-form-item) {
   margin-bottom: 0;
 }
@@ -108,5 +130,12 @@ h2::before {
 :deep(.el-form-item__label) {
   color: #4b5565;
   font-weight: 600;
+}
+
+@media (max-width: 1100px) {
+  .link-optimization-layout {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
 }
 </style>

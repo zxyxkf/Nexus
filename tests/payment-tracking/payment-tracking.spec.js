@@ -162,7 +162,8 @@ const laterStageRecords = [
     },
     images: [
       { id: 601, category: 'adjustment_feedback', adjustmentId: 1, originalName: 'feedback-one.png', sortOrder: 0 },
-      { id: 602, category: 'adjustment_feedback', adjustmentId: 2, originalName: 'feedback-two.png', sortOrder: 0 }
+      { id: 602, category: 'adjustment_feedback', adjustmentId: 2, originalName: 'feedback-two.png', sortOrder: 0 },
+      { id: 603, category: 'link_optimization', adjustmentId: null, originalName: 'link-before.png', sortOrder: 0 }
     ],
     linkStatus: {
       stageCode: 'monitoring',
@@ -289,6 +290,49 @@ const invalidMonitoringRecord = {
   allowedActions: { edit: true, advance: true, end: true }
 }
 
+const reopenedTestingRecord = {
+  ...baseRecord,
+  id: 112,
+  storeSeq: 29,
+  styleNumber: 'NX-260829',
+  currentStage: 'summary',
+  processStatus: 'in_progress',
+  stages: [
+    stage('selection'),
+    { ...stage('testing'), isReopened: true },
+    stage('monitoring'),
+    stage('summary', 'active')
+  ],
+  stageData: {
+    testing: {
+      paidEnabled: true,
+      paidAt: '2026-08-23 10:00:00',
+      promotionMethod: '直通车',
+      potentialStatus: '符合潜力款标准',
+      unqualifiedAction: '',
+      managerReportDate: null,
+      weiStockReported: true
+    },
+    monitoring: { linkOptimized: true, linkStatus: 'keep_breaking', adjustments: [] },
+    summary: { summaryText: '旧总结' }
+  },
+  images: [
+    { id: 610, category: 'potential_judgment', originalName: 'testing-kept.png', sortOrder: 0 },
+    { id: 611, category: 'link_optimization', originalName: 'monitoring-invalidated.png', sortOrder: 0 }
+  ],
+  linkStatus: {
+    stageCode: 'monitoring',
+    flashSaleRegistered: true,
+    flashSaleGroup: 'potential_breakout',
+    rapidOrderEntered: true,
+    newProductOperationRegistered: true,
+    newProductPeak: true,
+    productBurst: true,
+    productBurstMode: 'super_breakout'
+  },
+  allowedActions: { edit: true, advance: false, end: true, reopen: true, managerReview: true }
+}
+
 const allDetailRecords = [
   ...records,
   linkedImageRecord,
@@ -296,7 +340,8 @@ const allDetailRecords = [
   ...laterStageRecords,
   advanceTestingRecord,
   invalidSelectionRecord,
-  invalidMonitoringRecord
+  invalidMonitoringRecord,
+  reopenedTestingRecord
 ]
 const nextStageByCode = {
   selection: 'testing',
@@ -482,6 +527,7 @@ async function installMocks(page, options = {}) {
       const current = getMockRecord(id)
       const multipart = route.request().postData() || ''
       const adjustmentId = Number(multipart.match(/name="adjustmentId"\r?\n\r?\n(\d+)/)?.[1]) || null
+      const originalName = multipart.match(/filename="([^"]+)"/)?.[1] || 'uploaded-feedback.png'
       const updated = {
         ...current,
         version: Number(current.version || 0) + 1,
@@ -491,7 +537,7 @@ async function installMocks(page, options = {}) {
             id: 700 + (current.images || []).length,
             category,
             adjustmentId,
-            originalName: 'uploaded-feedback.png',
+            originalName,
             sortOrder: 0
           }
         ]
@@ -516,6 +562,36 @@ async function installMocks(page, options = {}) {
           }
         })
         await route.fulfill({ json: { code: 409, msg: '记录已被其他人更新，请刷新后重试' } })
+        return
+      }
+      if (payload.confirmDownstreamInvalidation === true) {
+        const retainedStages = ['selection', stageCode]
+        const updated = {
+          ...current,
+          version: Number(current.version || 0) + 1,
+          currentStage: stageCode,
+          processStatus: 'ended',
+          endStage: stageCode,
+          endType: stageCode === 'testing' ? 'payment_not_enabled' : 'protect_roi',
+          endReason: stageCode === 'testing' ? '店长未确认开启付费' : '链接状态：保投产',
+          stages: current.stages
+            .filter(item => retainedStages.includes(item.stageCode))
+            .map(item => item.stageCode === stageCode
+              ? { ...item, stageStatus: 'ended', isReopened: false }
+              : item),
+          stageData: {
+            ...current.stageData,
+            [stageCode]: { ...payload.data },
+            monitoring: stageCode === 'monitoring' ? { ...payload.data } : undefined,
+            summary: undefined
+          },
+          images: (current.images || []).filter(image => (
+            stageCode === 'monitoring' || image.category === 'potential_judgment'
+          )),
+          linkStatus: stageCode === 'monitoring' ? current.linkStatus : null
+        }
+        recordOverrides.set(id, updated)
+        await route.fulfill({ json: { code: 0, data: updated } })
         return
       }
       const updated = {
@@ -842,7 +918,7 @@ test('第三阶段按链接状态分支并隔离每次数据反馈', async ({ pa
   await stageSave
   const uploadRequest = await imageUpload
   expect(uploadRequest.postData()).toContain('name="adjustmentId"')
-  await expect(newAdjustment).toContainText('uploaded-feedback.png')
+  await expect(newAdjustment).toContainText('feedback-upload.png')
   await expectNoHorizontalPageOverflow(page)
   await page.screenshot({ path: testInfo.outputPath('payment-monitoring.png'), fullPage: true })
 
@@ -869,6 +945,34 @@ test('第三阶段按链接状态分支并隔离每次数据反馈', async ({ pa
   await saveSummaryRequest
   await endSummaryRequest
   await expect(page).toHaveURL(/#\/payment-tracking\/records$/)
+})
+
+test('第三阶段链接优化为是时展示独立图片上传区', async ({ page }) => {
+  await page.goto('/#/payment-tracking/records/105/stages/monitoring')
+
+  const optimization = page.locator('.link-optimization-layout')
+  await expect(optimization.getByText('图片上传区', { exact: true })).toBeVisible()
+  await expect(optimization).toContainText('link-before.png')
+  await expect(optimization).not.toContainText('feedback-one.png')
+
+  const uploadRequest = page.waitForRequest(request => (
+    request.method() === 'POST'
+    && new URL(request.url()).pathname === '/api/payment-tracking/records/105/images/link_optimization'
+  ))
+  await optimization.locator('input[type="file"]').setInputFiles({
+    name: 'link-after.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('image-data')
+  })
+  const request = await uploadRequest
+  expect(request.postData()).not.toContain('name="adjustmentId"')
+  await expect(optimization).toContainText('link-after.png')
+
+  await page.goto('/#/payment-tracking/records/106/stages/monitoring')
+  await expect(page.locator('.link-optimization-layout .image-gallery')).toHaveCount(0)
+  const linkOptimization = page.locator('.el-form-item').filter({ hasText: '是否做链接优化' })
+  await linkOptimization.locator('.el-radio').filter({ hasText: '是' }).click()
+  await expect(page.locator('.link-optimization-layout .image-gallery')).toBeVisible()
 })
 
 test('有效第二阶段可以保存并进入第三阶段', async ({ page }) => {
@@ -914,6 +1018,43 @@ test('第二阶段仅在确认付费后展示并保留后续内容', async ({ pa
   await expect(page.getByText('付费时间', { exact: true })).toBeVisible()
   await expect(page.locator('.el-form-item').filter({ hasText: '推广方式' })).toContainText('直通车')
   await expect(page.locator('.image-section')).toContainText('testing-proof.png')
+})
+
+test('重开历史阶段终止分支需确认后才作废后续流程', async ({ page }) => {
+  await page.goto('/#/payment-tracking/records/112/stages/testing')
+  await expect(page.getByRole('heading', { name: '第二阶段' })).toBeVisible()
+
+  let saveRequestCount = 0
+  page.on('request', request => {
+    if (request.method() === 'PUT'
+      && new URL(request.url()).pathname === '/api/payment-tracking/records/112/stages/testing') {
+      saveRequestCount += 1
+    }
+  })
+
+  const paidReview = page.locator('.el-form-item').filter({ hasText: '确认开启付费' })
+  await paidReview.locator('.el-radio').filter({ hasText: '否' }).click()
+  await page.getByRole('button', { name: '保存本阶段' }).click()
+  await expect(page.getByText(
+    '该修改将作废后续阶段的内容、图片和状态，并将流程结束于当前阶段。是否继续？',
+    { exact: true }
+  )).toBeVisible()
+  await page.getByRole('button', { name: '取消' }).click()
+  await page.waitForTimeout(100)
+  expect(saveRequestCount).toBe(0)
+
+  const saveRequest = page.waitForRequest(request => (
+    request.method() === 'PUT'
+    && new URL(request.url()).pathname === '/api/payment-tracking/records/112/stages/testing'
+  ))
+  await page.getByRole('button', { name: '保存本阶段' }).click()
+  await page.getByRole('button', { name: '确认并结束' }).click()
+  const request = await saveRequest
+  expect(request.postDataJSON()).toMatchObject({
+    confirmDownstreamInvalidation: true,
+    data: { paidEnabled: false }
+  })
+  await expect(page).toHaveURL(/#\/payment-tracking\/records$/)
 })
 
 test('保存遇到版本冲突时刷新服务器最新记录', async ({ page }) => {
