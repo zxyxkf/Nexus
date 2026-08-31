@@ -24,9 +24,10 @@
       @click="fileInput?.click()"
       @dragover.prevent
       @drop.prevent="handleDrop"
+      @paste="handlePaste"
     >
       <el-icon :size="22"><Upload /></el-icon>
-      <span>拖拽图片到此处，或点击上传</span>
+      <span>拖拽图片到此处、点击上传，或点击后粘贴截图</span>
       <small>支持 JPG、PNG、WEBP 等图片格式</small>
     </button>
 
@@ -117,6 +118,12 @@ const props = defineProps({
 const emit = defineEmits(['record-updated', 'reload-requested'])
 const fileInput = ref(null)
 const busy = ref(false)
+const CLIPBOARD_EXTENSIONS = {
+  'image/png': 'png',
+  'image/jpeg': 'jpg',
+  'image/webp': 'webp',
+  'image/gif': 'gif'
+}
 const categoryImages = computed(() => props.images
   .filter(image => {
     if (image.category !== props.category) return false
@@ -156,6 +163,34 @@ async function uploadFiles(event) {
 
 async function handleDrop(event) {
   await uploadFileList(Array.from(event.dataTransfer?.files || []))
+}
+
+function nameClipboardFile(file, timestamp, index) {
+  if (String(file.name || '').trim()) return file
+  const mimeType = String(file.type || 'image/png').toLowerCase()
+  const extension = CLIPBOARD_EXTENSIONS[mimeType] || 'png'
+  return new File(
+    [file],
+    `clipboard-${timestamp}-${index + 1}.${extension}`,
+    { type: mimeType, lastModified: file.lastModified || timestamp }
+  )
+}
+
+async function handlePaste(event) {
+  if (busy.value) return
+  const timestamp = Date.now()
+  const files = Array.from(event.clipboardData?.items || [])
+    .filter(item => item.kind === 'file' && String(item.type || '').toLowerCase().startsWith('image/'))
+    .map(item => item.getAsFile())
+    .filter(Boolean)
+    .map((file, index) => nameClipboardFile(file, timestamp, index))
+
+  if (!files.length) {
+    ElMessage.warning('剪贴板中没有图片')
+    return
+  }
+  event.preventDefault()
+  await uploadFileList(files)
 }
 
 async function uploadFileList(files) {
