@@ -4,7 +4,7 @@ const { ownsPermission } = require('../../middleware/auth');
 const repository = require('./repository');
 const recordService = require('./record.service');
 const { STAGES, NEXT_STAGE, PERMISSIONS } = require('./constants');
-const { validateAdvance, deriveEndSnapshot } = require('./rules');
+const { validateAdvance, validateEnd, deriveEndSnapshot } = require('./rules');
 const { conflictError, requireVersion, assertVersion } = require('./optimistic-lock');
 const {
   assertPermission,
@@ -22,46 +22,21 @@ const FIELD_MAP = {
     productId: 'product_id',
     selectionMethod: 'selection_method',
     detailText: 'detail_text',
-    designMainImage: 'design_main_image',
-    skuLe200: 'sku_le_200',
     listingDate: 'listing_date',
     listingCategory: 'listing_category'
   },
-  preparation: {
-    reviewCount: 'review_count',
-    newOpsRegistered: 'new_ops_registered',
-    paidEnabled: 'paid_enabled',
-    paidAt: 'paid_at'
-  },
   testing: {
-    carPromotionMethod: 'car_promotion_method',
-    carClicks: 'car_clicks',
-    carCtr: 'car_ctr',
-    carQualifies: 'car_qualifies',
-    sitePromotionMethod: 'site_promotion_method',
-    overallVisitors: 'overall_visitors',
-    searchVisitors: 'search_visitors',
-    buyers: 'buyers',
-    averageCtr: 'average_ctr',
+    paidEnabled: 'paid_enabled',
+    paidAt: 'paid_at',
+    promotionMethod: 'promotion_method',
     potentialStatus: 'potential_status',
     unqualifiedAction: 'unqualified_action',
     managerReportDate: 'manager_report_date',
     weiStockReported: 'wei_stock_reported'
   },
   monitoring: {
-    domesticSalesCount: 'domestic_sales_count',
-    addedReviews: 'added_reviews',
-    titleOptimizedAt: 'title_optimized_at',
-    qaCount: 'qa_count',
-    detailOptimizedAt: 'detail_optimized_at',
-    materialSelected: 'material_selected',
-    skuOptimizedAt: 'sku_optimized_at',
-    campaignName: 'campaign_name',
-    concessionRate: 'concession_rate',
-    quickPeakDone: 'quick_peak_done',
-    abandoned: 'abandoned',
-    abandonReason: 'abandon_reason',
-    abandonAt: 'abandon_at'
+    linkOptimized: 'link_optimized',
+    linkStatus: 'link_status'
   },
   breakout: {
     pitOutputDay1: 'pit_output_day1',
@@ -91,22 +66,18 @@ const FIELD_MAP = {
 };
 
 const BOOLEAN_FIELDS = new Set([
-  'design_main_image', 'sku_le_200', 'new_ops_registered', 'paid_enabled',
-  'car_qualifies', 'wei_stock_reported', 'material_selected', 'quick_peak_done',
-  'abandoned', 'strong_lift_qualified', 'exploded'
+  'paid_enabled', 'wei_stock_reported', 'link_optimized',
+  'strong_lift_qualified', 'exploded'
 ]);
 
 const NUMBER_FIELDS = new Set([
-  'cost', 'sale_price', 'review_count', 'car_clicks', 'car_ctr',
-  'overall_visitors', 'search_visitors', 'buyers', 'average_ctr',
-  'domestic_sales_count', 'added_reviews', 'qa_count',
+  'cost', 'sale_price',
   'pit_output_day1', 'pit_output_day2', 'pit_output_day3', 'current_budget',
   'fee_ratio_7d', 'payers_7d', 'total_budget'
 ]);
 
 const DATE_FIELDS = new Set([
   'selection_date', 'listing_date', 'paid_at', 'manager_report_date',
-  'title_optimized_at', 'detail_optimized_at', 'sku_optimized_at', 'abandon_at',
   'flash_sale_at', 'super_breakout_at', 'rapid_breakout_at', 'adjusted_at'
 ]);
 
@@ -149,11 +120,10 @@ function normalizeValue(field, value) {
 function normalizeAdjustments(value) {
   if (!Array.isArray(value)) throw validationError({ adjustments: '推广调整格式不正确' });
   return value.map(item => ({
+    id: item?.id ? Number(item.id) : null,
+    client_key: normalizeValue('client_key', item?.clientKey ?? item?.client_key),
     reason: normalizeValue('reason', item?.reason),
     adjusted_at: normalizeValue('adjusted_at', item?.adjustedAt ?? item?.adjusted_at),
-    fee_ratio_7d: normalizeValue('fee_ratio_7d', item?.feeRatio7d ?? item?.fee_ratio_7d),
-    payers_7d: normalizeValue('payers_7d', item?.payers7d ?? item?.payers_7d),
-    total_budget: normalizeValue('total_budget', item?.totalBudget ?? item?.total_budget),
     detail_text: normalizeValue('detail_text', item?.detailText ?? item?.detail_text),
     feedback_text: normalizeValue('feedback_text', item?.feedbackText ?? item?.feedback_text)
   }));
@@ -203,14 +173,6 @@ function managerFieldsChanged(existing, changes) {
   ));
 }
 
-function validateMonitoringBranch(data) {
-  if (Number(data.abandoned) !== 1) return;
-  const errors = {};
-  if (!data.abandon_reason) errors.abandon_reason = '请填写放弃原因';
-  if (!data.abandon_at) errors.abandon_at = '请选择放弃时间';
-  if (Object.keys(errors).length) throw validationError(errors);
-}
-
 async function saveStage(recordId, stageCode, payload, user) {
   assertPermission(user, PERMISSIONS.selection);
   if (!STAGES.includes(stageCode)) throw new AppError(400, '无效阶段');
@@ -224,14 +186,18 @@ async function saveStage(recordId, stageCode, payload, user) {
     const stage = await assertEditableStage(conn, record, stageCode);
     const existing = await repository.loadStageData(record.id, stageCode, conn) || {};
 
-    if (stageCode === 'preparation'
+    if (stageCode === 'selection' && Object.prototype.hasOwnProperty.call(changes, 'listing_category')) {
+      await recordService.assertListingCategoryAllowed(changes.listing_category, {
+        allowHistorical: true,
+        historicalValue: existing.listing_category
+      });
+    }
+
+    if (stageCode === 'testing'
       && managerFieldsChanged(existing, changes)
       && !ownsPermission(user, PERMISSIONS.managerReview)) {
       throw new AppError(403, '只有拥有店长审核权限的用户可以修改付费审核');
     }
-
-    const merged = { ...existing, ...changes };
-    if (stageCode === 'monitoring') validateMonitoringBranch(merged);
 
     await repository.saveStageData(conn, record.id, stageCode, changes);
     const updated = await repository.updateRecordWithVersion(conn, record.id, version);
@@ -300,7 +266,8 @@ async function endProcess(recordId, payload, user) {
     if (!canManageOwnerRecord(record, user)) throw new AppError(403, '只有填写人或阶段管理人可以结束流程');
 
     const data = await repository.loadStageData(record.id, record.current_stage, conn) || {};
-    if (record.current_stage === 'monitoring') validateMonitoringBranch(data);
+    const endValidation = validateEnd(record.current_stage, data);
+    if (!endValidation.ok) throw validationError(endValidation.errors);
     const snapshot = deriveEndSnapshot(record.current_stage, data);
     await repository.markStageEnded(conn, record.id, record.current_stage);
     const updated = await repository.updateRecordWithVersion(conn, record.id, version, {

@@ -43,9 +43,6 @@ function validateSelection(data, errors) {
   if (isBlank(data.sale_price) || !Number.isFinite(Number(data.sale_price)) || Number(data.sale_price) <= 0) {
     errors.sale_price = '售价必须大于0';
   }
-  if (![0, 1].includes(Number(data.sku_le_200))) {
-    errors.sku_le_200 = '请选择SKU数是否不超过200';
-  }
   if (Number(data.product_image_count || 0) < 1) {
     errors.product_images = '至少上传一张产品主图';
   }
@@ -60,24 +57,35 @@ function validateAdvance(stageCode, data = {}) {
     errors.stage = '当前阶段没有下一阶段';
   } else if (stageCode === 'selection') {
     validateSelection(data, errors);
-  } else if (stageCode === 'preparation') {
+  } else if (stageCode === 'testing') {
     if (Number(data.paid_enabled) !== 1) {
       errors.paid_enabled = '店长必须确认开启付费';
     } else if (isBlank(data.paid_at)) {
       errors.paid_at = '请选择付费时间';
-    }
-  } else if (stageCode === 'testing') {
-    if (data.potential_status !== '符合潜力款标准') {
+    } else if (data.potential_status !== '符合潜力款标准') {
       errors.potential_status = '只有符合潜力款标准才能进入下一阶段';
     }
-  } else if (stageCode === 'monitoring' && Number(data.abandoned) === 1) {
-    if (isBlank(data.abandon_reason)) errors.abandon_reason = '请填写放弃原因';
-    if (isBlank(data.abandon_at)) errors.abandon_at = '请选择放弃时间';
-    errors.abandoned = '潜力款后放弃不能进入下一阶段';
+  } else if (stageCode === 'monitoring') {
+    if (isBlank(data.link_status)) {
+      errors.link_status = '请选择链接状态';
+    } else if (data.link_status !== 'keep_breaking') {
+      errors.link_status = '只有持续打爆才能进入下一阶段';
+    }
   } else if (stageCode === 'breakout' && ![0, 1].includes(Number(data.strong_lift_qualified))) {
     errors.strong_lift_qualified = '请选择是否符合强拉升标准';
   }
 
+  return { ok: Object.keys(errors).length === 0, errors };
+}
+
+function validateEnd(stageCode, data = {}) {
+  const errors = {};
+  if (stageCode !== 'monitoring') return { ok: true, errors };
+  if (isBlank(data.link_status)) {
+    errors.link_status = '请选择链接状态';
+  } else if (data.link_status !== 'protect_roi') {
+    errors.link_status = '持续打爆应进入下一阶段';
+  }
   return { ok: Object.keys(errors).length === 0, errors };
 }
 
@@ -90,11 +98,10 @@ function deriveEndSnapshot(stageCode, data = {}) {
     };
   }
 
-  if (stageCode === 'monitoring' && Number(data.abandoned) === 1) {
-    const reason = typeof data.abandon_reason === 'string' ? data.abandon_reason.trim() : '';
+  if (stageCode === 'monitoring' && data.link_status === 'protect_roi') {
     return {
-      endType: 'abandoned',
-      endReason: reason ? `潜力款后放弃 · 原因：${reason}` : '潜力款后放弃'
+      endType: 'protect_roi',
+      endReason: '链接状态：保投产'
     };
   }
 
@@ -110,5 +117,6 @@ module.exports = {
   calculateGrossMargin,
   calculateSearchShare,
   validateAdvance,
+  validateEnd,
   deriveEndSnapshot
 };

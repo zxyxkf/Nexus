@@ -11,21 +11,15 @@ const STAGE_TABLES = {
 const STAGE_FIELDS = {
   selection: [
     'selection_date', 'style_number', 'cost', 'sale_price', 'product_id',
-    'selection_method', 'detail_text', 'design_main_image', 'sku_le_200',
+    'selection_method', 'detail_text',
     'listing_date', 'listing_category'
   ],
-  preparation: ['review_count', 'new_ops_registered', 'paid_enabled', 'paid_at'],
   testing: [
-    'car_promotion_method', 'car_clicks', 'car_ctr', 'car_qualifies',
-    'site_promotion_method', 'overall_visitors', 'search_visitors', 'buyers',
-    'average_ctr', 'potential_status', 'unqualified_action',
+    'paid_enabled', 'paid_at', 'promotion_method', 'potential_status', 'unqualified_action',
     'manager_report_date', 'wei_stock_reported'
   ],
   monitoring: [
-    'domestic_sales_count', 'added_reviews', 'title_optimized_at', 'qa_count',
-    'detail_optimized_at', 'material_selected', 'sku_optimized_at',
-    'campaign_name', 'concession_rate', 'quick_peak_done', 'abandoned',
-    'abandon_reason', 'abandon_at'
+    'link_optimized', 'link_status'
   ],
   breakout: [
     'pit_output_day1', 'pit_output_day2', 'pit_output_day3', 'flash_sale_at',
@@ -99,9 +93,10 @@ async function findRecordById(id, options = {}) {
 
 async function findRecordBySourceTaskId(sourceTaskId, options = {}) {
   const deletedClause = options.includeDeleted ? '' : 'AND deleted_at IS NULL';
+  const lockClause = options.forUpdate && getMode() === 'mysql' ? 'FOR UPDATE' : '';
   const [rows] = await executor(options.conn).execute(
     `SELECT * FROM payment_selection_record
-     WHERE source_task_id = ? ${deletedClause}`,
+     WHERE source_task_id = ? ${deletedClause} ${lockClause}`,
     [sourceTaskId]
   );
   return rows[0] || null;
@@ -151,6 +146,16 @@ async function softDeleteRecord(id, version, conn) {
     `UPDATE payment_selection_record
      SET deleted_at = CURRENT_TIMESTAMP, update_time = CURRENT_TIMESTAMP, version = version + 1
      WHERE id = ? AND version = ? AND deleted_at IS NULL`,
+    [id, version]
+  );
+  return Number(result.affectedRows || 0) > 0;
+}
+
+async function restoreDeletedRecord(id, version, conn) {
+  const [result] = await executor(conn).execute(
+    `UPDATE payment_selection_record
+     SET deleted_at = NULL, update_time = CURRENT_TIMESTAMP, version = version + 1
+     WHERE id = ? AND version = ? AND deleted_at IS NOT NULL`,
     [id, version]
   );
   return Number(result.affectedRows || 0) > 0;
@@ -298,8 +303,7 @@ async function loadStageData(recordId, stageCode, conn) {
   const data = rows[0] || {};
   if (stageCode === 'monitoring') {
     const [adjustments] = await executor(conn).execute(
-      `SELECT sort_order, reason, adjusted_at, fee_ratio_7d, payers_7d,
-              total_budget, detail_text, feedback_text
+      `SELECT id, client_key, sort_order, reason, adjusted_at, detail_text, feedback_text
        FROM payment_selection_adjustment
        WHERE record_id = ? ORDER BY sort_order ASC, id ASC`,
       [recordId]
@@ -438,6 +442,60 @@ async function lockStage(conn, recordId, stageCode) {
   );
 }
 
+async function listListingCategories(options = {}) {
+  const activeClause = options.includeInactive ? '' : 'WHERE active = 1';
+  const [rows] = await getPool().execute(
+    `SELECT id, name, sort_order, active, create_time, update_time
+     FROM payment_listing_category ${activeClause}
+     ORDER BY sort_order ASC, name ASC, id ASC`
+  );
+  return rows;
+}
+
+async function findListingCategoryById(id) {
+  const [rows] = await getPool().execute(
+    'SELECT id, name, sort_order, active, create_time, update_time FROM payment_listing_category WHERE id = ?',
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function findListingCategoryByName(name) {
+  const [rows] = await getPool().execute(
+    'SELECT id, name, sort_order, active, create_time, update_time FROM payment_listing_category WHERE name = ?',
+    [name]
+  );
+  return rows[0] || null;
+}
+
+async function insertListingCategory(data) {
+  const [result] = await getPool().execute(
+    `INSERT INTO payment_listing_category (name, sort_order, active)
+     VALUES (?, ?, ?)`,
+    [data.name, data.sortOrder ?? 0, data.active === false ? 0 : 1]
+  );
+  return findListingCategoryById(result.insertId);
+}
+
+async function updateListingCategory(id, data) {
+  const [result] = await getPool().execute(
+    `UPDATE payment_listing_category
+     SET name = ?, sort_order = ?, active = ?, update_time = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [data.name, data.sortOrder ?? 0, data.active === false ? 0 : 1, id]
+  );
+  if (!Number(result.affectedRows || 0)) return null;
+  return findListingCategoryById(id);
+}
+
+async function deleteListingCategory(id) {
+  const [result] = await getPool().execute(
+    'DELETE FROM payment_listing_category WHERE id = ?',
+    [id]
+  );
+  return Number(result.affectedRows || 0) > 0;
+}
+
 module.exports = {
   listRecords,
   countRecords,
@@ -446,6 +504,7 @@ module.exports = {
   allocateStoreSeq,
   insertRecord,
   softDeleteRecord,
+  restoreDeletedRecord,
   listEnteredStages,
   listEnteredStagesForRecords,
   insertInitialStage,
@@ -459,6 +518,12 @@ module.exports = {
   insertStage,
   reopenStage,
   lockStage,
+  listListingCategories,
+  findListingCategoryById,
+  findListingCategoryByName,
+  insertListingCategory,
+  updateListingCategory,
+  deleteListingCategory,
   listImages,
   listProductImagesForRecords,
   insertImage,

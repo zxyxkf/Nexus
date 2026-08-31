@@ -4,6 +4,7 @@ const {
   validateAdvance,
   deriveEndSnapshot
 } = require('../../services/payment-tracking/rules');
+const { NEXT_STAGE } = require('../../services/payment-tracking/constants');
 
 describe('payment tracking calculations', () => {
   it('calculates ratios to four decimal places', () => {
@@ -28,7 +29,6 @@ describe('payment tracking stage advancement', () => {
       sale_price: 75,
       product_id: '123456',
       selection_method: '方式五：跟款',
-      sku_le_200: 1,
       listing_date: '2026-08-28',
       listing_category: '女装',
       product_image_count: 0
@@ -38,29 +38,42 @@ describe('payment tracking stage advancement', () => {
     expect(result.errors).toEqual({ product_images: '至少上传一张产品主图' });
   });
 
-  it('requires the manager to enable paid promotion with a date', () => {
-    expect(validateAdvance('preparation', { paid_enabled: 0, paid_at: null })).toEqual({
+  it('uses the confirmed five-stage graph', () => {
+    expect(NEXT_STAGE).toEqual({
+      selection: 'testing',
+      testing: 'monitoring',
+      monitoring: 'breakout',
+      breakout: 'summary',
+      summary: null
+    });
+  });
+
+  it('requires payment confirmation and a qualified potential result in the second stage', () => {
+    expect(validateAdvance('testing', { paid_enabled: 0, paid_at: null })).toEqual({
       ok: false,
       errors: { paid_enabled: '店长必须确认开启付费' }
     });
-    expect(validateAdvance('preparation', { paid_enabled: 1, paid_at: null }).errors).toEqual({
+    expect(validateAdvance('testing', { paid_enabled: 1, paid_at: null }).errors).toEqual({
       paid_at: '请选择付费时间'
     });
-    expect(validateAdvance('preparation', { paid_enabled: 1, paid_at: '2026-09-01' }).ok).toBe(true);
+    expect(validateAdvance('testing', {
+      paid_enabled: 1,
+      paid_at: '2026-09-01',
+      potential_status: '不符合'
+    }).errors).toEqual({ potential_status: '只有符合潜力款标准才能进入下一阶段' });
+    expect(validateAdvance('testing', {
+      paid_enabled: 1,
+      paid_at: '2026-09-01',
+      potential_status: '符合潜力款标准'
+    }).ok).toBe(true);
   });
 
-  it('only advances testing records that meet the potential standard', () => {
-    expect(validateAdvance('testing', { potential_status: '不符合' }).ok).toBe(false);
-    expect(validateAdvance('testing', { potential_status: '符合潜力款标准' }).ok).toBe(true);
-  });
-
-  it('blocks abandoned monitoring records and requires their existing reason fields', () => {
-    expect(validateAdvance('monitoring', { abandoned: 1 }).errors).toEqual({
-      abandon_reason: '请填写放弃原因',
-      abandon_at: '请选择放弃时间',
-      abandoned: '潜力款后放弃不能进入下一阶段'
+  it('only advances third-stage records marked for continued breakout', () => {
+    expect(validateAdvance('monitoring', {}).errors).toEqual({ link_status: '请选择链接状态' });
+    expect(validateAdvance('monitoring', { link_status: 'protect_roi' }).errors).toEqual({
+      link_status: '只有持续打爆才能进入下一阶段'
     });
-    expect(validateAdvance('monitoring', { abandoned: 0 }).ok).toBe(true);
+    expect(validateAdvance('monitoring', { link_status: 'keep_breaking' }).ok).toBe(true);
   });
 
   it('requires a breakout decision but allows either decision to advance', () => {
@@ -83,19 +96,18 @@ describe('payment tracking end snapshots', () => {
     expect(deriveEndSnapshot('testing', { potential_status: '不符合' }).endReason).toBe('未达潜力款');
   });
 
-  it('derives abandoned, completed and manual endings without free-form input', () => {
+  it('derives link status, completed and manual endings without free-form input', () => {
     expect(deriveEndSnapshot('monitoring', {
-      abandoned: 1,
-      abandon_reason: '费比持续偏高'
+      link_status: 'protect_roi'
     })).toEqual({
-      endType: 'abandoned',
-      endReason: '潜力款后放弃 · 原因：费比持续偏高'
+      endType: 'protect_roi',
+      endReason: '链接状态：保投产'
     });
     expect(deriveEndSnapshot('summary', {})).toEqual({
       endType: 'completed',
       endReason: '流程完成'
     });
-    expect(deriveEndSnapshot('preparation', {})).toEqual({
+    expect(deriveEndSnapshot('selection', {})).toEqual({
       endType: 'manual',
       endReason: '主动结束流程'
     });

@@ -403,38 +403,32 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
     .send({ version: 2, data: {} });
   expect(futureStage.body.code).toBe(403);
 
-  const preparation = await request(app)
+  const testing = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/advance`)
     .set('Authorization', `Bearer ${storeAToken}`)
     .send({ version: 2, stageCode: 'selection' });
-  expect(preparation.body.data.currentStage).toBe('preparation');
-  expect(preparation.body.data.stages.map(stage => stage.stageCode)).toEqual(['selection', 'preparation']);
+  expect(testing.body.data.currentStage).toBe('testing');
+  expect(testing.body.data.stages.map(stage => stage.stageCode)).toEqual(['selection', 'testing']);
 
   const plannerCannotReview = await request(app)
-    .put(`/api/payment-tracking/records/${recordId}/stages/preparation`)
+    .put(`/api/payment-tracking/records/${recordId}/stages/testing`)
     .set('Authorization', `Bearer ${storeAToken}`)
     .send({ version: 3, data: { paidEnabled: true, paidAt: '2026-09-01' } });
   expect(plannerCannotReview.body.code).toBe(403);
 
   const reviewed = await request(app)
-    .put(`/api/payment-tracking/records/${recordId}/stages/preparation`)
+    .put(`/api/payment-tracking/records/${recordId}/stages/testing`)
     .set('Authorization', `Bearer ${managerToken}`)
     .send({
       version: 3,
-      data: { reviewCount: 6, newOpsRegistered: true, paidEnabled: true, paidAt: '2026-09-01' }
+      data: { paidEnabled: true, paidAt: '2026-09-01' }
     });
   expect(reviewed.body.data.version).toBe(4);
-
-  const testing = await request(app)
-    .post(`/api/payment-tracking/records/${recordId}/advance`)
-    .set('Authorization', `Bearer ${managerToken}`)
-    .send({ version: 4, stageCode: 'preparation' });
-  expect(testing.body.data.currentStage).toBe('testing');
 
   const unqualified = await request(app)
     .put(`/api/payment-tracking/records/${recordId}/stages/testing`)
     .set('Authorization', `Bearer ${storeAToken}`)
-    .send({ version: 5, data: { potentialStatus: '不符合', unqualifiedAction: '直接关闭' } });
+    .send({ version: reviewed.body.data.version, data: { potentialStatus: '不符合', unqualifiedAction: '直接关闭' } });
   const blockedTesting = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/advance`)
     .set('Authorization', `Bearer ${storeAToken}`)
@@ -445,7 +439,7 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
     .get(`/api/payment-tracking/records/${recordId}`)
     .set('Authorization', `Bearer ${storeAToken}`);
   expect(testingDetail.body.data.stages.map(stage => stage.stageCode)).toEqual([
-    'selection', 'preparation', 'testing'
+    'selection', 'testing'
   ]);
 
   const qualified = await request(app)
@@ -458,20 +452,31 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
     .send({ version: qualified.body.data.version, stageCode: 'testing' });
   expect(monitoring.body.data.currentStage).toBe('monitoring');
 
-  const invalidAbandon = await request(app)
+  const protectedLink = await request(app)
     .put(`/api/payment-tracking/records/${recordId}/stages/monitoring`)
     .set('Authorization', `Bearer ${storeAToken}`)
-    .send({ version: monitoring.body.data.version, data: { abandoned: true } });
-  expect(invalidAbandon.body.code).toBe(400);
+    .send({
+      version: monitoring.body.data.version,
+      data: { linkOptimized: true, linkStatus: 'protect_roi' }
+    });
+  expect(protectedLink.body.data.stageData.monitoring).toMatchObject({
+    linkOptimized: 1,
+    linkStatus: 'protect_roi'
+  });
+  const blockedMonitoring = await request(app)
+    .post(`/api/payment-tracking/records/${recordId}/advance`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ version: protectedLink.body.data.version, stageCode: 'monitoring' });
+  expect(blockedMonitoring.body.code).toBe(400);
 
   const monitored = await request(app)
     .put(`/api/payment-tracking/records/${recordId}/stages/monitoring`)
     .set('Authorization', `Bearer ${storeAToken}`)
     .send({
-      version: monitoring.body.data.version,
-      data: { abandoned: false, domesticSalesCount: 10, concessionRate: '25%以上' }
+      version: protectedLink.body.data.version,
+      data: { linkStatus: 'keep_breaking' }
     });
-  expect(monitored.body.data.stageData.monitoring.concessionRate).toBe('25%以上');
+  expect(monitored.body.data.stageData.monitoring.linkStatus).toBe('keep_breaking');
   const breakout = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/advance`)
     .set('Authorization', `Bearer ${storeAToken}`)

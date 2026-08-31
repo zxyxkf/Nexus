@@ -4,11 +4,13 @@ const repository = require('./repository');
 const recordService = require('./record.service');
 const imageService = require('./image.service');
 const { PERMISSIONS } = require('./constants');
-const { assertPermission, assertStoreAccess, isAdmin } = require('./access');
+const { assertPermission, assertStoreAccess, canManageAllPaymentData } = require('./access');
+const { conflictError } = require('./optimistic-lock');
 
 async function findSourceTask(taskId) {
   const [rows] = await getPool().execute(
     `SELECT t.id, t.task_no, t.style_number, t.publisher_id, t.status,
+            t.create_time AS selection_date,
             COALESCE(NULLIF(t.task_group, ''), 'design') AS task_group,
             COALESCE(u.real_name, t.publisher_name, '') AS planner_name,
             COALESCE(u.store, '') AS publisher_store
@@ -33,7 +35,7 @@ async function listSourceImages(taskId) {
   return rows;
 }
 
-async function presentOpenedRecord(recordId, user, alreadyOpened = false) {
+async function presentOpenedRecord(recordId, user, alreadyOpened = false, extra = {}) {
   const record = await repository.findRecordById(recordId);
   if (!record) throw new AppError(404, '选品记录不存在');
   assertStoreAccess(record, user);
@@ -47,7 +49,8 @@ async function presentOpenedRecord(recordId, user, alreadyOpened = false) {
   ]));
   return {
     ...recordService.presentRecord(record, stages, images, user, Object.fromEntries(stageEntries)),
-    ...(alreadyOpened ? { alreadyOpened: true } : {})
+    ...(alreadyOpened ? { alreadyOpened: true } : {}),
+    ...extra
   };
 }
 
@@ -64,7 +67,7 @@ function assertTaskCanOpen(task, user) {
   if (!task.publisher_id || !task.publisher_store) {
     throw attachTask(new AppError(400, '任务发布人未绑定店铺'), task);
   }
-  if (!isAdmin(user) && user.store !== task.publisher_store) {
+  if (!canManageAllPaymentData(user) && user.store !== task.publisher_store) {
     throw attachTask(new AppError(403, '无权为其他店铺的任务开启打款'), task);
   }
 }
@@ -76,13 +79,36 @@ async function openFromTask(taskId, user) {
 
   const existing = await repository.findRecordBySourceTaskId(normalizedTaskId, { includeDeleted: true });
   if (existing) {
-    if (existing.deleted_at) throw new AppError(400, '已开启打款');
-    return presentOpenedRecord(existing.id, user, true);
+    if (existing.deleted_at) {
+      const task = await findSourceTask(normalizedTaskId);
+      if (!task) throw new AppError(404, '任务不存在');
+      assertTaskCanOpen(task, user);
+      assertStoreAccess(existing, user);
+
+      const restored = await executeTransaction(async conn => {
+        const current = await repository.findRecordBySourceTaskId(normalizedTaskId, {
+          conn,
+          includeDeleted: true,
+          forUpdate: true
+        });
+        if (!current) return null;
+        assertStoreAccess(current, user);
+        if (!current.deleted_at) return { id: current.id, alreadyOpened: true };
+        const restoredRecord = await repository.restoreDeletedRecord(current.id, current.version, conn);
+        if (!restoredRecord) throw conflictError();
+        return { id: current.id, restored: true };
+      });
+
+      if (restored?.alreadyOpened) return presentOpenedRecord(restored.id, user, true);
+      if (restored?.restored) return presentOpenedRecord(restored.id, user, false, { restored: true });
+    }
+    if (!existing.deleted_at) return presentOpenedRecord(existing.id, user, true);
   }
 
   const task = await findSourceTask(normalizedTaskId);
   if (!task) throw new AppError(404, '任务不存在');
   assertTaskCanOpen(task, user);
+  if (!task.selection_date) throw attachTask(new AppError(400, '来源任务缺少发布时间'), task);
   const files = await listSourceImages(task.id);
   if (!files.length) throw attachTask(new AppError(400, '没有作品图片'), task);
   try {
@@ -109,7 +135,8 @@ async function openFromTask(taskId, user) {
         plannerName: task.planner_name,
         sourceTaskId: task.id,
         sourceTaskNo: task.task_no,
-        styleNumber: task.style_number || ''
+        styleNumber: task.style_number || '',
+        selectionDate: task.selection_date
       });
       await repository.insertInitialStage(conn, id);
       await imageService.copyTaskImages(conn, {

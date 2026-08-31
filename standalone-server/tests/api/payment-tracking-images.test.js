@@ -12,6 +12,7 @@ let app;
 let adminToken;
 let storeAToken;
 let storeBToken;
+let globalManagerToken;
 let recordId;
 let imageConfigId;
 let designImageConfigId;
@@ -84,6 +85,26 @@ beforeAll(async () => {
   }
   storeAToken = await login(users[0].username);
   storeBToken = await login(users[1].username);
+
+  await request(app)
+    .post('/api/user/create')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      username: `image_global_${suffix}`,
+      password: 'test123456',
+      realName: '全局打款管理员',
+      role: 'sub_admin',
+      store: ''
+    });
+  const allUsers = await request(app)
+    .get('/api/user/list?pageSize=100')
+    .set('Authorization', `Bearer ${adminToken}`);
+  const globalUser = allUsers.body.data.list.find(user => user.username === `image_global_${suffix}`);
+  await request(app)
+    .post('/api/user/permissions/save')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ userId: globalUser.id, permissions: ['payment.manage.all'], deniedPermissions: [] });
+  globalManagerToken = await login(`image_global_${suffix}`);
 
   const configs = await request(app)
     .get('/api/config/list?group=upload')
@@ -236,6 +257,8 @@ it('opens payment tracking from task images and reports batch skip reasons', asy
     styleNumber: 'STYLE-100',
     files: [{ name: 'open-1.png' }, { name: 'open-2.png' }]
   });
+  const sourcePublishTime = '2026-08-15 14:25:36';
+  await execute('UPDATE task_info SET create_time = ? WHERE id = ?', [sourcePublishTime, multiImageTask]);
   const noImageTask = await createTask('PAY-OPEN-2');
   const noStoreTask = await createTask('PAY-OPEN-3', {
     publisherId: admins[0].id,
@@ -248,6 +271,15 @@ it('opens payment tracking from task images and reports batch skip reasons', asy
   const goodBatchTask = await createTask('PAY-OPEN-5', {
     files: [{ name: 'open-batch.png' }]
   });
+  const globalTask = await createTask('PAY-OPEN-6', {
+    files: [{ name: 'open-global.png' }]
+  });
+
+  const globallyOpened = await request(app)
+    .post(`/api/payment-tracking/open/task/${globalTask}`)
+    .set('Authorization', `Bearer ${globalManagerToken}`);
+  expect(globallyOpened.body.code).toBe(0);
+  expect(globallyOpened.body.data.store).toBe('图片A店');
 
   const [beforeRows] = await execute('SELECT status FROM task_info WHERE id = ?', [multiImageTask]);
   const openedResponse = await request(app)
@@ -259,7 +291,8 @@ it('opens payment tracking from task images and reports batch skip reasons', asy
     store: '图片A店',
     styleNumber: 'STYLE-100',
     sourceTaskId: multiImageTask,
-    sourceTaskNo: 'PAY-OPEN-1'
+    sourceTaskNo: 'PAY-OPEN-1',
+    selectionDate: sourcePublishTime
   });
   expect(openedResponse.body.data.images).toHaveLength(2);
 
@@ -268,6 +301,29 @@ it('opens payment tracking from task images and reports batch skip reasons', asy
     .set('Authorization', `Bearer ${adminToken}`);
   const openedTask = reviewList.body.data.list.find(task => Number(task.id) === Number(multiImageTask));
   expect(openedTask).toMatchObject({ payment_tracking_opened: 1 });
+
+  const deleted = await request(app)
+    .delete(`/api/payment-tracking/records/${openedResponse.body.data.id}`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: openedResponse.body.data.version });
+  expect(deleted.body.code).toBe(0);
+
+  const reopened = await request(app)
+    .post(`/api/payment-tracking/open/task/${multiImageTask}`)
+    .set('Authorization', `Bearer ${storeAToken}`);
+  expect(reopened.body).toMatchObject({ code: 0, msg: '已恢复打款记录' });
+  expect(reopened.body.data).toMatchObject({
+    id: openedResponse.body.data.id,
+    sourceTaskId: multiImageTask,
+    restored: true
+  });
+  expect(reopened.body.data.images).toHaveLength(2);
+
+  const reopenedTaskList = await request(app)
+    .get('/api/task/my-published?taskGroup=design&status=doing&pageSize=100')
+    .set('Authorization', `Bearer ${adminToken}`);
+  const reopenedTask = reopenedTaskList.body.data.list.find(task => Number(task.id) === Number(multiImageTask));
+  expect(reopenedTask).toMatchObject({ payment_tracking_opened: 1 });
 
   const duplicate = await request(app)
     .post(`/api/payment-tracking/open/task/${multiImageTask}`)
