@@ -26,6 +26,16 @@ export function uploadPaymentImagesApi(id, category, files, version) {
 export const sortPaymentImagesApi = (id, imageIds, version) => request.put(`/api/payment-tracking/records/${id}/images/order`, { imageIds, version })
 export const deletePaymentImageApi = (id, imageId, version) => request.delete(`/api/payment-tracking/records/${id}/images/${imageId}`, { data: { version } })
 
+export const listPaymentListingCategoriesApi = (params) => request.get('/api/payment-tracking/categories', { params })
+export const createPaymentListingCategoryApi = (data) => request.post('/api/payment-tracking/categories', data)
+export const updatePaymentListingCategoryApi = (id, data) => request.put(`/api/payment-tracking/categories/${id}`, data)
+export const deletePaymentListingCategoryApi = (id) => request.delete(`/api/payment-tracking/categories/${id}`)
+
+export const listPaymentPromotionMethodsApi = (params) => request.get('/api/payment-tracking/promotion-methods', { params })
+export const createPaymentPromotionMethodApi = (data) => request.post('/api/payment-tracking/promotion-methods', data)
+export const updatePaymentPromotionMethodApi = (id, data) => request.put(`/api/payment-tracking/promotion-methods/${id}`, data)
+export const deletePaymentPromotionMethodApi = (id) => request.delete(`/api/payment-tracking/promotion-methods/${id}`)
+
 export function getPaymentImageUrl(image) {
   if (!image?.id) return ''
   const token = getToken()

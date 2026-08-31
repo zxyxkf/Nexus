@@ -46,6 +46,98 @@
           </el-table>
         </el-tab-pane>
 
+        <el-tab-pane label="上架类目" name="listingCategory">
+          <template #label>
+            <span>上架类目 <el-tag size="small" type="info" style="margin-left:4px;">{{ listingCategoryList.length }}</el-tag></span>
+          </template>
+
+          <div class="filter-bar">
+            <el-button type="primary" @click="openListingCategoryDialog()"><el-icon><Plus /></el-icon> 新增类目</el-button>
+            <el-button link @click="loadListingCategories"><el-icon><Refresh /></el-icon></el-button>
+          </div>
+
+          <el-table
+            data-nexus-column-key="admin-config-payment-listing-category"
+            :data="listingCategoryList"
+            v-loading="listingCategoryLoading"
+            stripe
+            style="width:100%"
+            empty-text="暂无上架类目"
+            :max-height="550"
+          >
+            <el-table-column prop="name" label="类目名称" min-width="240" show-overflow-tooltip />
+            <el-table-column label="排序" width="90" align="center">
+              <template #default="{ row }">{{ row.sort_order ?? row.sortOrder ?? 0 }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag :type="Number(row.active) === 1 ? 'success' : 'info'" size="small">
+                  {{ Number(row.active) === 1 ? '启用' : '停用' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="更新时间" width="180" align="center">
+              <template #default="{ row }">{{ row.update_time || row.updateTime || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" fixed="right" align="center">
+              <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="openListingCategoryDialog(row)">编辑</el-button>
+                <el-popconfirm title="确认删除此上架类目？" confirm-button-text="删除" @confirm="handleListingCategoryDelete(row)">
+                  <template #reference>
+                    <el-button type="danger" link size="small">删除</el-button>
+                  </template>
+                </el-popconfirm>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+
+        <el-tab-pane label="推广方式" name="promotionMethod">
+          <template #label>
+            <span>推广方式 <el-tag size="small" type="info" style="margin-left:4px;">{{ promotionMethodList.length }}</el-tag></span>
+          </template>
+
+          <div class="filter-bar">
+            <el-button type="primary" @click="openPromotionMethodDialog()"><el-icon><Plus /></el-icon> 新增推广方式</el-button>
+            <el-button link @click="loadPromotionMethods"><el-icon><Refresh /></el-icon></el-button>
+          </div>
+
+          <el-table
+            data-nexus-column-key="admin-config-payment-promotion-method"
+            :data="promotionMethodList"
+            v-loading="promotionMethodLoading"
+            stripe
+            style="width:100%"
+            empty-text="暂无推广方式"
+            :max-height="550"
+          >
+            <el-table-column prop="name" label="推广方式" min-width="240" show-overflow-tooltip />
+            <el-table-column label="排序" width="90" align="center">
+              <template #default="{ row }">{{ row.sort_order ?? row.sortOrder ?? 0 }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag :type="Number(row.active) === 1 ? 'success' : 'info'" size="small">
+                  {{ Number(row.active) === 1 ? '启用' : '停用' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="更新时间" width="180" align="center">
+              <template #default="{ row }">{{ row.update_time || row.updateTime || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" fixed="right" align="center">
+              <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="openPromotionMethodDialog(row)">编辑</el-button>
+                <el-popconfirm title="确认删除此推广方式？" confirm-button-text="删除" @confirm="handlePromotionMethodDelete(row)">
+                  <template #reference>
+                    <el-button type="danger" link size="small">删除</el-button>
+                  </template>
+                </el-popconfirm>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+
         <el-tab-pane label="设计积分项目" name="score">
           <template #label>
             <span>设计积分 <el-tag size="small" type="info" style="margin-left:4px;">{{ scoreList.length }}</el-tag></span>
@@ -242,6 +334,43 @@
       </template>
     </el-dialog>
 
+    <!-- 上架类目弹窗 -->
+    <el-dialog v-model="listingCategoryDialogVisible" :title="listingCategoryForm.id ? '编辑上架类目' : '新增上架类目'" width="460px" :close-on-click-modal="false">
+      <el-form ref="listingCategoryFormRef" :model="listingCategoryForm" :rules="listingCategoryRules" label-width="80px">
+        <el-form-item label="类目名称" prop="name">
+          <el-input v-model="listingCategoryForm.name" placeholder="请输入上架类目名称" maxlength="100" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="listingCategoryForm.sortOrder" :min="0" :max="9999" :precision="0" controls-position="right" style="width:100%;" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-switch v-model="listingCategoryForm.active" active-text="启用" inactive-text="停用" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="listingCategoryDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleListingCategorySave" :loading="listingCategorySaving">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="promotionMethodDialogVisible" :title="promotionMethodForm.id ? '编辑推广方式' : '新增推广方式'" width="460px" :close-on-click-modal="false">
+      <el-form ref="promotionMethodFormRef" :model="promotionMethodForm" :rules="promotionMethodRules" label-width="80px">
+        <el-form-item label="名称" prop="name">
+          <el-input v-model="promotionMethodForm.name" placeholder="请输入推广方式名称" maxlength="100" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="promotionMethodForm.sortOrder" :min="0" :max="9999" :precision="0" controls-position="right" style="width:100%;" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-switch v-model="promotionMethodForm.active" active-text="启用" inactive-text="停用" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="promotionMethodDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handlePromotionMethodSave" :loading="promotionMethodSaving">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 运营积分项目弹窗 -->
     <el-dialog v-model="scoreOpDialogVisible" :title="scoreOpForm.id ? '编辑运营积分项目' : '新增运营积分项目'" width="460px" :close-on-click-modal="false">
       <el-form ref="scoreOpFormRef" :model="scoreOpForm" :rules="scoreRules" label-width="80px">
@@ -286,7 +415,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Plus } from '@element-plus/icons-vue'
-import { getConfigListApi, updateConfigApi, deleteConfigApi, getScoreItemsApi, saveScoreItemApi, deleteScoreItemApi, getAnnouncementListApi, createAnnouncementApi, updateAnnouncementApi, deleteAnnouncementApi, getShopListApi, createShopApi, updateShopApi, deleteShopApi } from '@/api'
+import { getConfigListApi, updateConfigApi, deleteConfigApi, getScoreItemsApi, saveScoreItemApi, deleteScoreItemApi, getAnnouncementListApi, createAnnouncementApi, updateAnnouncementApi, deleteAnnouncementApi, getShopListApi, createShopApi, updateShopApi, deleteShopApi, listPaymentListingCategoriesApi, createPaymentListingCategoryApi, updatePaymentListingCategoryApi, deletePaymentListingCategoryApi, listPaymentPromotionMethodsApi, createPaymentPromotionMethodApi, updatePaymentPromotionMethodApi, deletePaymentPromotionMethodApi } from '@/api'
 
 // ===== 系统配置 =====
 const configLoading = ref(false)
@@ -697,6 +826,171 @@ async function handleShopDelete(row) {
   }
 }
 
+// ===== 上架类目管理 =====
+const listingCategoryLoading = ref(false)
+const listingCategoryList = ref([])
+const listingCategoryDialogVisible = ref(false)
+const listingCategoryFormRef = ref(null)
+const listingCategorySaving = ref(false)
+const listingCategoryForm = ref({ id: null, name: '', sortOrder: 0, active: true })
+const listingCategoryRules = {
+  name: [{ required: true, message: '请输入类目名称', trigger: 'blur' }]
+}
+
+async function loadListingCategories() {
+  listingCategoryLoading.value = true
+  try {
+    const res = await listPaymentListingCategoriesApi({ includeInactive: true })
+    const rows = Array.isArray(res?.data) ? res.data : res?.data?.list
+    if (res?.code === 0 && Array.isArray(rows)) listingCategoryList.value = rows
+  } catch (e) {
+    console.error('[Config] 加载上架类目失败:', e)
+  } finally {
+    listingCategoryLoading.value = false
+  }
+}
+
+function openListingCategoryDialog(row) {
+  if (row) {
+    listingCategoryForm.value = {
+      id: row.id,
+      name: row.name || '',
+      sortOrder: Number(row.sort_order ?? row.sortOrder ?? 0),
+      active: Number(row.active) !== 0
+    }
+  } else {
+    listingCategoryForm.value = { id: null, name: '', sortOrder: 0, active: true }
+  }
+  listingCategoryDialogVisible.value = true
+}
+
+async function handleListingCategorySave() {
+  const valid = await listingCategoryFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+  const name = String(listingCategoryForm.value.name || '').trim()
+  if (!name) {
+    ElMessage.warning('类目名称不能为空')
+    return
+  }
+  listingCategorySaving.value = true
+  try {
+    const payload = {
+      name,
+      sortOrder: Number(listingCategoryForm.value.sortOrder) || 0,
+      active: Boolean(listingCategoryForm.value.active)
+    }
+    const request = listingCategoryForm.value.id
+      ? updatePaymentListingCategoryApi(listingCategoryForm.value.id, payload)
+      : createPaymentListingCategoryApi(payload)
+    const res = await request
+    if (res?.code === 0) {
+      ElMessage.success(res.msg || '保存成功')
+      listingCategoryDialogVisible.value = false
+      await loadListingCategories()
+    } else {
+      ElMessage.error(res?.msg || '保存失败')
+    }
+  } catch (e) {
+    console.error('[Config] 保存上架类目失败:', e)
+  } finally {
+    listingCategorySaving.value = false
+  }
+}
+
+async function handleListingCategoryDelete(row) {
+  try {
+    const res = await deletePaymentListingCategoryApi(row.id)
+    if (res?.code === 0) {
+      ElMessage.success(res.msg || '已删除')
+      await loadListingCategories()
+    } else {
+      ElMessage.error(res?.msg || '删除失败')
+    }
+  } catch (e) {
+    console.error('[Config] 删除上架类目失败:', e)
+  }
+}
+
+// ===== 推广方式管理 =====
+const promotionMethodLoading = ref(false)
+const promotionMethodList = ref([])
+const promotionMethodDialogVisible = ref(false)
+const promotionMethodFormRef = ref(null)
+const promotionMethodSaving = ref(false)
+const promotionMethodForm = ref({ id: null, name: '', sortOrder: 0, active: true })
+const promotionMethodRules = {
+  name: [{ required: true, message: '请输入推广方式名称', trigger: 'blur' }]
+}
+
+async function loadPromotionMethods() {
+  promotionMethodLoading.value = true
+  try {
+    const res = await listPaymentPromotionMethodsApi({ includeInactive: true })
+    const rows = Array.isArray(res?.data) ? res.data : res?.data?.list
+    if (res?.code === 0 && Array.isArray(rows)) promotionMethodList.value = rows
+  } catch (e) {
+    console.error('[Config] 加载推广方式失败:', e)
+  } finally {
+    promotionMethodLoading.value = false
+  }
+}
+
+function openPromotionMethodDialog(row) {
+  promotionMethodForm.value = row
+    ? {
+        id: row.id,
+        name: row.name || '',
+        sortOrder: Number(row.sort_order ?? row.sortOrder ?? 0),
+        active: Number(row.active) !== 0
+      }
+    : { id: null, name: '', sortOrder: 0, active: true }
+  promotionMethodDialogVisible.value = true
+}
+
+async function handlePromotionMethodSave() {
+  const valid = await promotionMethodFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+  const name = String(promotionMethodForm.value.name || '').trim()
+  if (!name) return ElMessage.warning('推广方式名称不能为空')
+  promotionMethodSaving.value = true
+  try {
+    const payload = {
+      name,
+      sortOrder: Number(promotionMethodForm.value.sortOrder) || 0,
+      active: Boolean(promotionMethodForm.value.active)
+    }
+    const request = promotionMethodForm.value.id
+      ? updatePaymentPromotionMethodApi(promotionMethodForm.value.id, payload)
+      : createPaymentPromotionMethodApi(payload)
+    const res = await request
+    if (res?.code === 0) {
+      ElMessage.success(res.msg || '保存成功')
+      promotionMethodDialogVisible.value = false
+      await loadPromotionMethods()
+    } else {
+      ElMessage.error(res?.msg || '保存失败')
+    }
+  } catch (e) {
+    console.error('[Config] 保存推广方式失败:', e)
+  } finally {
+    promotionMethodSaving.value = false
+  }
+}
+
+async function handlePromotionMethodDelete(row) {
+  try {
+    const res = await deletePaymentPromotionMethodApi(row.id)
+    if (res?.code === 0) {
+      ElMessage.success(res.msg || '已删除')
+      await loadPromotionMethods()
+    } else {
+      ElMessage.error(res?.msg || '删除失败')
+    }
+  } catch (e) {
+    console.error('[Config] 删除推广方式失败:', e)
+  }
+}
+
 // ===== 生命周期 =====
 const activeTab = ref('config')
 function onTabChange(tab) {
@@ -705,6 +999,8 @@ function onTabChange(tab) {
   if (tab === 'scoreOp' && scoreOpList.value.length === 0) loadScoreOpItems()
   if (tab === 'announce' && announceList.value.length === 0) loadAnnouncements()
   if (tab === 'shop' && shopList.value.length === 0) loadShops()
+  if (tab === 'listingCategory' && listingCategoryList.value.length === 0) loadListingCategories()
+  if (tab === 'promotionMethod' && promotionMethodList.value.length === 0) loadPromotionMethods()
 }
 
 onMounted(() => {

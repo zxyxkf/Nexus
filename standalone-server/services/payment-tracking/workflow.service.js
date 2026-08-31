@@ -2,6 +2,7 @@ const AppError = require('../../utils/AppError');
 const { executeTransaction } = require('../../config/database');
 const { ownsPermission } = require('../../middleware/auth');
 const repository = require('./repository');
+const promotionService = require('./promotion.service');
 const recordService = require('./record.service');
 const { STAGES, NEXT_STAGE, PERMISSIONS } = require('./constants');
 const { validateAdvance, validateEnd, deriveEndSnapshot } = require('./rules');
@@ -190,6 +191,12 @@ async function saveStage(recordId, stageCode, payload, user) {
       await recordService.assertListingCategoryAllowed(changes.listing_category, {
         allowHistorical: true,
         historicalValue: existing.listing_category
+      });
+    }
+
+    if (stageCode === 'testing' && Object.prototype.hasOwnProperty.call(changes, 'promotion_method')) {
+      changes.promotion_method = await promotionService.assertConfiguredPromotionMethod(changes.promotion_method, {
+        existingValue: existing.promotion_method
       });
     }
 

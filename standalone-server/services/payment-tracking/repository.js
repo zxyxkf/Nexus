@@ -496,6 +496,61 @@ async function deleteListingCategory(id) {
   return Number(result.affectedRows || 0) > 0;
 }
 
+async function listPromotionMethods(options = {}) {
+  const activeClause = options.includeInactive ? '' : 'WHERE active = 1';
+  const [rows] = await getPool().execute(
+    `SELECT id, name, sort_order, active, create_time, update_time
+     FROM payment_promotion_method ${activeClause}
+     ORDER BY sort_order ASC, name ASC, id ASC`
+  );
+  return rows;
+}
+
+async function findPromotionMethodById(id) {
+  const [rows] = await getPool().execute(
+    `SELECT id, name, sort_order, active, create_time, update_time
+     FROM payment_promotion_method WHERE id = ?`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function findPromotionMethodByName(name) {
+  const [rows] = await getPool().execute(
+    `SELECT id, name, sort_order, active, create_time, update_time
+     FROM payment_promotion_method WHERE name = ?`,
+    [name]
+  );
+  return rows[0] || null;
+}
+
+async function insertPromotionMethod(data) {
+  const [result] = await getPool().execute(
+    `INSERT INTO payment_promotion_method (name, sort_order, active) VALUES (?, ?, ?)`,
+    [data.name, data.sortOrder ?? 0, data.active === false ? 0 : 1]
+  );
+  return findPromotionMethodById(result.insertId);
+}
+
+async function updatePromotionMethod(id, data) {
+  const [result] = await getPool().execute(
+    `UPDATE payment_promotion_method
+     SET name = ?, sort_order = ?, active = ?, update_time = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [data.name, data.sortOrder ?? 0, data.active === false ? 0 : 1, id]
+  );
+  if (!Number(result.affectedRows || 0)) return null;
+  return findPromotionMethodById(id);
+}
+
+async function deletePromotionMethod(id) {
+  const [result] = await getPool().execute(
+    'DELETE FROM payment_promotion_method WHERE id = ?',
+    [id]
+  );
+  return Number(result.affectedRows || 0) > 0;
+}
+
 module.exports = {
   listRecords,
   countRecords,
@@ -524,6 +579,12 @@ module.exports = {
   insertListingCategory,
   updateListingCategory,
   deleteListingCategory,
+  listPromotionMethods,
+  findPromotionMethodById,
+  findPromotionMethodByName,
+  insertPromotionMethod,
+  updatePromotionMethod,
+  deletePromotionMethod,
   listImages,
   listProductImagesForRecords,
   insertImage,

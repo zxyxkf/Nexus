@@ -344,6 +344,79 @@ it('provides configurable listing categories and rejects unknown active values',
   expect(deleted.body.code).toBe(0);
 });
 
+it('provides super-admin promotion methods and rejects unconfigured stage values', async () => {
+  const methodName = `直通车-${suffix}`;
+  const created = await request(app)
+    .post('/api/payment-tracking/promotion-methods')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ name: methodName, sortOrder: 10, active: true });
+  expect(created.body).toMatchObject({ code: 0, data: { name: methodName, active: 1 } });
+
+  const duplicate = await request(app)
+    .post('/api/payment-tracking/promotion-methods')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ name: `  ${methodName}  ` });
+  expect(duplicate.body.code).toBe(400);
+
+  const forbidden = await request(app)
+    .post('/api/payment-tracking/promotion-methods')
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ name: `无权新增-${suffix}` });
+  expect(forbidden.body.code).toBe(403);
+
+  const activeList = await request(app)
+    .get('/api/payment-tracking/promotion-methods')
+    .set('Authorization', `Bearer ${storeAToken}`);
+  expect(activeList.body.data).toEqual(expect.arrayContaining([
+    expect.objectContaining({ name: methodName, active: 1 })
+  ]));
+
+  const disabled = await request(app)
+    .put(`/api/payment-tracking/promotion-methods/${created.body.data.id}`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ active: false });
+  expect(disabled.body.data.active).toBe(0);
+  const afterDisable = await request(app)
+    .get('/api/payment-tracking/promotion-methods')
+    .set('Authorization', `Bearer ${storeAToken}`);
+  expect(afterDisable.body.data.some(item => item.name === methodName)).toBe(false);
+
+  const reenabled = await request(app)
+    .put(`/api/payment-tracking/promotion-methods/${created.body.data.id}`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ active: true });
+  expect(reenabled.body.data.active).toBe(1);
+
+  const record = await request(app)
+    .post('/api/payment-tracking/records')
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ styleNumber: `PROMOTION-${suffix}` });
+  const { execute } = require('../../config/database');
+  await execute("UPDATE payment_selection_stage SET stage_status = 'completed' WHERE record_id = ? AND stage_code = 'selection'", [record.body.data.id]);
+  await execute("INSERT INTO payment_selection_stage (record_id, stage_code, stage_status) VALUES (?, 'testing', 'active')", [record.body.data.id]);
+  await execute("UPDATE payment_selection_record SET current_stage = 'testing' WHERE id = ?", [record.body.data.id]);
+
+  const invalid = await request(app)
+    .put(`/api/payment-tracking/records/${record.body.data.id}/stages/testing`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ version: record.body.data.version, data: { promotionMethod: `未配置-${suffix}` } });
+  expect(invalid.body).toMatchObject({
+    code: 400,
+    data: { errors: { promotionMethod: '推广方式无效，请选择已配置的方式' } }
+  });
+
+  const valid = await request(app)
+    .put(`/api/payment-tracking/records/${record.body.data.id}/stages/testing`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ version: record.body.data.version, data: { promotionMethod: methodName } });
+  expect(valid.body.data.stageData.testing.promotionMethod).toBe(methodName);
+
+  const removed = await request(app)
+    .delete(`/api/payment-tracking/promotion-methods/${created.body.data.id}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  expect(removed.body.code).toBe(0);
+});
+
 it('runs the workflow without exposing future stages and enforces optimistic locking', async () => {
   const created = await request(app)
     .post('/api/payment-tracking/records')
