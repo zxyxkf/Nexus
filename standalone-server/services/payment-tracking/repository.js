@@ -1,5 +1,6 @@
 const { randomUUID } = require('crypto');
 const { getPool, getMode } = require('../../config/database');
+const { STAGES } = require('./constants');
 
 const STAGE_TABLES = {
   preparation: 'payment_selection_preparation',
@@ -22,6 +23,17 @@ const STAGE_FIELDS = {
     'link_optimized', 'link_status'
   ],
   summary: ['exploded', 'link_maintenance', 'style_definition', 'summary_text', 'notes']
+};
+
+const DOWNSTREAM_TABLES = {
+  testing: 'payment_selection_testing',
+  monitoring: 'payment_selection_monitoring',
+  summary: 'payment_selection_summary'
+};
+
+const STAGE_IMAGE_CATEGORIES = {
+  monitoring: ['link_optimization', 'adjustment_feedback'],
+  summary: []
 };
 
 function executor(conn) {
@@ -578,6 +590,47 @@ async function lockStage(conn, recordId, stageCode) {
   );
 }
 
+async function invalidateStagesAfter(conn, recordId, stageCode) {
+  const stageIndex = STAGES.indexOf(stageCode);
+  if (stageIndex < 0) throw new Error(`Unsupported stage: ${stageCode}`);
+  const downstreamStages = STAGES.slice(stageIndex + 1);
+  if (!downstreamStages.length) return;
+
+  const categories = downstreamStages.flatMap(code => STAGE_IMAGE_CATEGORIES[code] || []);
+  if (categories.length) {
+    const categoryPlaceholders = categories.map(() => '?').join(',');
+    await conn.execute(
+      `UPDATE payment_selection_image SET deleted_at = CURRENT_TIMESTAMP
+       WHERE record_id = ? AND category IN (${categoryPlaceholders}) AND deleted_at IS NULL`,
+      [recordId, ...categories]
+    );
+  }
+
+  if (downstreamStages.includes('monitoring')) {
+    await conn.execute(
+      'DELETE FROM payment_selection_adjustment WHERE record_id = ?',
+      [recordId]
+    );
+  }
+
+  for (const code of [...downstreamStages].reverse()) {
+    const table = DOWNSTREAM_TABLES[code];
+    if (table) await conn.execute(`DELETE FROM ${table} WHERE record_id = ?`, [recordId]);
+  }
+
+  const stagePlaceholders = downstreamStages.map(() => '?').join(',');
+  await conn.execute(
+    `DELETE FROM payment_selection_link_status
+     WHERE record_id = ? AND stage_code IN (${stagePlaceholders})`,
+    [recordId, ...downstreamStages]
+  );
+  await conn.execute(
+    `DELETE FROM payment_selection_stage
+     WHERE record_id = ? AND stage_code IN (${stagePlaceholders})`,
+    [recordId, ...downstreamStages]
+  );
+}
+
 async function listListingCategories(options = {}) {
   const activeClause = options.includeInactive ? '' : 'WHERE active = 1';
   const [rows] = await getPool().execute(
@@ -709,6 +762,7 @@ module.exports = {
   insertStage,
   reopenStage,
   lockStage,
+  invalidateStagesAfter,
   listListingCategories,
   findListingCategoryById,
   findListingCategoryByName,

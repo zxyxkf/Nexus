@@ -5,7 +5,12 @@ const repository = require('./repository');
 const promotionService = require('./promotion.service');
 const recordService = require('./record.service');
 const { STAGES, NEXT_STAGE, PERMISSIONS } = require('./constants');
-const { validateAdvance, validateEnd, deriveEndSnapshot } = require('./rules');
+const {
+  validateAdvance,
+  validateEnd,
+  deriveEndSnapshot,
+  deriveExplicitTerminalSnapshot
+} = require('./rules');
 const { conflictError, requireVersion, assertVersion } = require('./optimistic-lock');
 const {
   assertPermission,
@@ -182,6 +187,7 @@ async function saveStage(recordId, stageCode, payload, user) {
     assertVersion(record, version);
     const stage = await assertEditableStage(conn, record, stageCode);
     const existing = await repository.loadStageData(record.id, stageCode, conn) || {};
+    const merged = { ...existing, ...changes };
 
     if (stageCode === 'selection' && Object.prototype.hasOwnProperty.call(changes, 'listing_category')) {
       await recordService.assertListingCategoryAllowed(changes.listing_category, {
@@ -206,7 +212,34 @@ async function saveStage(recordId, stageCode, payload, user) {
       await assertAdjustmentOwnership(conn, record.id, changes.adjustments);
     }
 
+    const terminalSnapshot = Number(stage.is_reopened)
+      ? deriveExplicitTerminalSnapshot(stageCode, merged)
+      : null;
+    const requiresInvalidation = Boolean(
+      terminalSnapshot && record.current_stage !== stageCode
+    );
+    if (requiresInvalidation && payload?.confirmDownstreamInvalidation !== true) {
+      const error = new AppError(400, '该修改会作废后续阶段，请确认后重试');
+      error.data = { requiresDownstreamInvalidation: true, stageCode };
+      throw error;
+    }
+
     await repository.saveStageData(conn, record.id, stageCode, changes);
+    if (requiresInvalidation) {
+      await repository.invalidateStagesAfter(conn, record.id, stageCode);
+      await repository.markStageEnded(conn, record.id, stageCode);
+      const updated = await repository.updateRecordWithVersion(conn, record.id, version, {
+        current_stage: stageCode,
+        process_status: 'ended',
+        end_stage: stageCode,
+        end_type: terminalSnapshot.endType,
+        end_reason: terminalSnapshot.endReason,
+        ended_at: localDateTime()
+      });
+      if (!updated) throw conflictError();
+      return;
+    }
+
     const updated = await repository.updateRecordWithVersion(conn, record.id, version);
     if (!updated) throw conflictError();
     if (Number(stage.is_reopened)) await repository.lockStage(conn, record.id, stageCode);

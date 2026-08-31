@@ -741,6 +741,171 @@ it('requires confirmation before a reopened terminal stage invalidates downstrea
     'potential_judgment', 'link_optimization', 'adjustment_feedback'
   ]));
   expect(unchanged.body.data.linkStatus).toMatchObject({ stageCode: 'monitoring' });
+
+  const confirmed = await request(app)
+    .put(`/api/payment-tracking/records/${seeded.id}/stages/testing`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      version: reopened.body.data.version,
+      confirmDownstreamInvalidation: true,
+      data: { paidEnabled: false, potentialStatus: '符合潜力款标准' }
+    });
+  expect(confirmed.body).toMatchObject({
+    code: 0,
+    data: {
+      currentStage: 'testing',
+      processStatus: 'ended',
+      endStage: 'testing',
+      endType: 'payment_not_enabled',
+      endReason: '店长未确认开启付费',
+      linkStatus: null
+    }
+  });
+  expect(confirmed.body.data.stages.map(stage => stage.stageCode)).toEqual([
+    'selection', 'testing'
+  ]);
+  expect(confirmed.body.data.stages.find(stage => stage.stageCode === 'testing')).toMatchObject({
+    stageStatus: 'ended',
+    isReopened: false
+  });
+  expect(confirmed.body.data.stageData.monitoring).toBeUndefined();
+  expect(confirmed.body.data.stageData.summary).toBeUndefined();
+  expect(confirmed.body.data.images.map(image => image.category)).toEqual(['potential_judgment']);
+
+  const { execute } = require('../../config/database');
+  const [images] = await execute(
+    `SELECT category, deleted_at FROM payment_selection_image
+     WHERE record_id = ? ORDER BY id`,
+    [seeded.id]
+  );
+  expect(images.find(image => image.category === 'potential_judgment').deleted_at).toBeNull();
+  expect(images.find(image => image.category === 'link_optimization').deleted_at).not.toBeNull();
+  expect(images.find(image => image.category === 'adjustment_feedback').deleted_at).not.toBeNull();
+  const [adjustments] = await execute(
+    'SELECT id FROM payment_selection_adjustment WHERE record_id = ?',
+    [seeded.id]
+  );
+  expect(adjustments).toHaveLength(0);
+});
+
+it('uses existing terminal reasons and preserves non-terminal historical edits', async () => {
+  const unqualifiedSeed = await createRecordAtSummary(`INVALIDATE-POTENTIAL-${suffix}`);
+  const unqualifiedReopened = await request(app)
+    .post(`/api/payment-tracking/records/${unqualifiedSeed.id}/stages/testing/reopen`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: unqualifiedSeed.version });
+  const unqualified = await request(app)
+    .put(`/api/payment-tracking/records/${unqualifiedSeed.id}/stages/testing`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      version: unqualifiedReopened.body.data.version,
+      confirmDownstreamInvalidation: true,
+      data: {
+        paidEnabled: true,
+        potentialStatus: '不符合',
+        unqualifiedAction: '直接关闭'
+      }
+    });
+  expect(unqualified.body.data).toMatchObject({
+    currentStage: 'testing',
+    processStatus: 'ended',
+    endType: 'unqualified',
+    endReason: '未达潜力款 · 后续操作：直接关闭'
+  });
+
+  const continuingSeed = await createRecordAtSummary(`INVALIDATE-CONTINUE-${suffix}`);
+  const continuingReopened = await request(app)
+    .post(`/api/payment-tracking/records/${continuingSeed.id}/stages/testing/reopen`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: continuingSeed.version });
+  const continuing = await request(app)
+    .put(`/api/payment-tracking/records/${continuingSeed.id}/stages/testing`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      version: continuingReopened.body.data.version,
+      data: { managerReportDate: '2026-08-30' }
+    });
+  expect(continuing.body.data).toMatchObject({
+    currentStage: 'summary',
+    processStatus: 'in_progress'
+  });
+  expect(continuing.body.data.stages.map(stage => stage.stageCode)).toEqual([
+    'selection', 'testing', 'monitoring', 'summary'
+  ]);
+  expect(continuing.body.data.stageData.monitoring.linkStatus).toBe('keep_breaking');
+  expect(continuing.body.data.stageData.summary.summaryText).toBe('旧总结');
+  expect(continuing.body.data.linkStatus).toMatchObject({ stageCode: 'monitoring' });
+});
+
+it('ends at a reopened third stage without deleting third-stage-owned data', async () => {
+  const seeded = await createRecordAtSummary(`INVALIDATE-MONITORING-${suffix}`);
+  const reopened = await request(app)
+    .post(`/api/payment-tracking/records/${seeded.id}/stages/monitoring/reopen`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: seeded.version });
+  const ended = await request(app)
+    .put(`/api/payment-tracking/records/${seeded.id}/stages/monitoring`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      version: reopened.body.data.version,
+      confirmDownstreamInvalidation: true,
+      data: { linkOptimized: false, linkStatus: 'protect_roi' }
+    });
+  expect(ended.body.data).toMatchObject({
+    currentStage: 'monitoring',
+    processStatus: 'ended',
+    endStage: 'monitoring',
+    endType: 'protect_roi',
+    endReason: '链接状态：保投产'
+  });
+  expect(ended.body.data.stages.map(stage => stage.stageCode)).toEqual([
+    'selection', 'testing', 'monitoring'
+  ]);
+  expect(ended.body.data.stageData.summary).toBeUndefined();
+  expect(ended.body.data.stageData.monitoring.adjustments).toHaveLength(1);
+  expect(ended.body.data.images.map(image => image.category)).toEqual(expect.arrayContaining([
+    'potential_judgment', 'link_optimization', 'adjustment_feedback'
+  ]));
+  expect(ended.body.data.linkStatus).toMatchObject({ stageCode: 'monitoring' });
+});
+
+it('rolls back a historical stage save when downstream invalidation fails', async () => {
+  const repository = require('../../services/payment-tracking/repository');
+  const seeded = await createRecordAtSummary(`INVALIDATE-ROLLBACK-${suffix}`);
+  const reopened = await request(app)
+    .post(`/api/payment-tracking/records/${seeded.id}/stages/testing/reopen`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: seeded.version });
+  const invalidateSpy = jest.spyOn(repository, 'invalidateStagesAfter')
+    .mockRejectedValueOnce(new Error('forced downstream cleanup failure'));
+
+  const failed = await request(app)
+    .put(`/api/payment-tracking/records/${seeded.id}/stages/testing`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      version: reopened.body.data.version,
+      confirmDownstreamInvalidation: true,
+      data: { paidEnabled: false }
+    });
+  invalidateSpy.mockRestore();
+  expect(failed.body.code).not.toBe(0);
+
+  const unchanged = await request(app)
+    .get(`/api/payment-tracking/records/${seeded.id}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  expect(unchanged.body.data).toMatchObject({
+    version: reopened.body.data.version,
+    currentStage: 'summary',
+    processStatus: 'in_progress'
+  });
+  expect(unchanged.body.data.stageData.testing.paidEnabled).toBe(true);
+  expect(unchanged.body.data.stages.map(stage => stage.stageCode)).toEqual([
+    'selection', 'testing', 'monitoring', 'summary'
+  ]);
+  expect(unchanged.body.data.stages.find(stage => stage.stageCode === 'testing').isReopened)
+    .toBe(true);
+  expect(unchanged.body.data.images).toHaveLength(3);
+  expect(unchanged.body.data.linkStatus).toMatchObject({ stageCode: 'monitoring' });
 });
 
 it('keeps one editable stage-owned link status and allows explicit clearing before moving it', async () => {
