@@ -28,6 +28,31 @@ it('creates every payment tracking table and unique index', async () => {
   expect(indexes.some(index => index.name === 'uk_payment_source_task')).toBe(true);
 });
 
+it('applies the base SQLite schema to a legacy image table before migration', async () => {
+  const initSqlJs = require('sql.js');
+  const paymentTrackingSchema = require('../../config/payment-tracking-schema');
+  const SQL = await initSqlJs();
+  const database = new SQL.Database();
+
+  database.run(`CREATE TABLE payment_selection_image (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id INTEGER NOT NULL,
+    category TEXT NOT NULL,
+    sort_order INTEGER DEFAULT 0,
+    deleted_at TEXT
+  )`);
+
+  const imageSchemaStatements = paymentTrackingSchema.sqlite.filter(sql => (
+    sql.includes('payment_selection_image')
+  ));
+
+  expect(() => {
+    for (const sql of imageSchemaStatements) database.run(sql);
+  }).not.toThrow();
+
+  database.close();
+});
+
 it('keeps payment tracking data when database initialization runs again', async () => {
   await execute(
     `INSERT INTO payment_selection_record (store, store_seq, planner_id, planner_name)

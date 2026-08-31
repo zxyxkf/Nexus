@@ -53,8 +53,6 @@ const sqlite = [
   )`,
   `CREATE INDEX IF NOT EXISTS idx_payment_image_record
     ON payment_selection_image(record_id, category, deleted_at, sort_order)`,
-  `CREATE INDEX IF NOT EXISTS idx_payment_image_adjustment
-    ON payment_selection_image(record_id, category, adjustment_id, deleted_at, sort_order)`,
   `CREATE TABLE IF NOT EXISTS payment_selection_stage (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     record_id INTEGER NOT NULL,
