@@ -63,6 +63,17 @@ const sqlite = [
     completed_at TEXT,
     UNIQUE(record_id, stage_code)
   )`,
+  `CREATE TABLE IF NOT EXISTS payment_manager_review_request (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    record_id INTEGER NOT NULL UNIQUE,
+    store TEXT NOT NULL,
+    applicant_id INTEGER NOT NULL,
+    applicant_name TEXT DEFAULT '',
+    request_version INTEGER NOT NULL,
+    create_time TEXT DEFAULT (datetime('now', 'localtime'))
+  )`,
+  `CREATE INDEX IF NOT EXISTS idx_payment_manager_review_store
+    ON payment_manager_review_request(store, create_time)`,
   `CREATE TABLE IF NOT EXISTS payment_selection_preparation (
     record_id INTEGER PRIMARY KEY,
     review_count INTEGER,
@@ -241,6 +252,17 @@ const mysql = [
     entered_at DATETIME DEFAULT CURRENT_TIMESTAMP,
     completed_at DATETIME DEFAULT NULL,
     UNIQUE KEY uk_payment_stage (record_id, stage_code)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS payment_manager_review_request (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    record_id INT NOT NULL,
+    store VARCHAR(100) NOT NULL,
+    applicant_id INT NOT NULL,
+    applicant_name VARCHAR(100) DEFAULT '',
+    request_version INT NOT NULL,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uk_payment_manager_review_record (record_id),
+    KEY idx_payment_manager_review_store (store, create_time)
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS payment_selection_preparation (
     record_id INT PRIMARY KEY,

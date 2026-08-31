@@ -67,7 +67,7 @@ function assertTaskCanOpen(task, user) {
   if (!task.publisher_id || !task.publisher_store) {
     throw attachTask(new AppError(400, '任务发布人未绑定店铺'), task);
   }
-  if (!canManageAllPaymentData(user) && user.store !== task.publisher_store) {
+  if (user?.role !== 'sub_admin' && !canManageAllPaymentData(user) && user.store !== task.publisher_store) {
     throw attachTask(new AppError(403, '无权为其他店铺的任务开启打款'), task);
   }
 }

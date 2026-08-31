@@ -5,7 +5,7 @@
 import { createRouter, createWebHashHistory } from 'vue-router'
 import { getToken, getUser } from '@/utils/auth'
 import { ElMessage } from 'element-plus'
-import { hasAnyPermission } from '@/utils/permissions'
+import { canUseManagerReview, hasAnyPermission } from '@/utils/permissions'
 
 const routes = [
   {
@@ -37,7 +37,7 @@ const routes = [
         path: 'operator/review',
         name: 'OperatorReview',
         component: () => import('@/views/shared/Review.vue'),
-        meta: { title: '作品审核', roles: ['operator', 'admin'], permission: 'operator.review.design', role: 'operator', taskGroup: 'design' }
+        meta: { title: '作品审核', roles: ['operator', 'admin'], permissions: ['operator.review.design', 'payment.open'], role: 'operator', taskGroup: 'design' }
       },
       {
         path: 'operator/stats',
@@ -207,6 +207,12 @@ const routes = [
         meta: { title: '打款记录', permission: 'payment.records.view' }
       },
       {
+        path: 'payment-tracking/manager-reviews',
+        name: 'PaymentManagerReviews',
+        component: () => import('@/views/payment-tracking/ManagerReviewList.vue'),
+        meta: { title: '店长审核', managerReview: true }
+      },
+      {
         path: 'payment-tracking/records/:id/stages/:stageCode',
         name: 'PaymentStageDetail',
         component: () => import('@/views/payment-tracking/StageDetail.vue'),
@@ -302,6 +308,7 @@ function firstAllowedPath(user) {
     r.path &&
     !r.redirect &&
     !isLockedAdminRoute(r, user) &&
+    (!r.meta?.managerReview || canUseManagerReview(user)) &&
     ((!r.meta?.permission && !r.meta?.permissions) || hasAnyPermission(r.meta.permissions || [r.meta.permission], user))
   )
   return matched ? `/${matched.path}` : (DEFAULT_ROUTE_BY_ROLE[user.role] || '/dashboard')
@@ -334,6 +341,11 @@ router.beforeEach((to, from, next) => {
 
   const roleAllowed = !to.meta.roles || to.meta.roles.length === 0 || to.meta.roles.includes(user.role)
   const permissionAllowed = (!to.meta.permission && !to.meta.permissions) || hasAnyPermission(to.meta.permissions || [to.meta.permission], user)
+
+  if (to.meta.managerReview && !canUseManagerReview(user)) {
+    next(firstAllowedPath(user))
+    return
+  }
 
   if (isLockedAdminRoute(to, user)) {
     next(firstAllowedPath(user))

@@ -106,6 +106,13 @@ export function hasAnyPermission(permissions = [], user = getUser()) {
   return permissions.some(p => hasPermission(p, user))
 }
 
+export function canUseManagerReview(user = getUser()) {
+  return user?.role === 'admin'
+    || user?.role === 'sub_admin'
+    || (Boolean(user?.isStoreManager) && Boolean(user?.store))
+    || hasPermission('payment.manage.all', user)
+}
+
 export function filterMenuByPermission(items, user = getUser()) {
   const result = []
   for (const item of items) {

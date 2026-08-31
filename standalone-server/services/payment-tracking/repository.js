@@ -108,6 +108,105 @@ async function findRecordBySourceTaskId(sourceTaskId, options = {}) {
   return rows[0] || null;
 }
 
+async function createManagerReviewRequest(conn, data) {
+  const [result] = await conn.execute(
+    `INSERT INTO payment_manager_review_request
+       (record_id, store, applicant_id, applicant_name, request_version)
+     VALUES (?, ?, ?, ?, ?)`,
+    [data.recordId, data.store, data.applicantId, data.applicantName || '', data.requestVersion]
+  );
+  return result.insertId;
+}
+
+async function findManagerReviewRequestByRecordId(recordId, options = {}) {
+  const lockClause = options.forUpdate && getMode() === 'mysql' ? 'FOR UPDATE' : '';
+  const [rows] = await executor(options.conn).execute(
+    `SELECT * FROM payment_manager_review_request WHERE record_id = ? ${lockClause}`,
+    [recordId]
+  );
+  return rows[0] || null;
+}
+
+async function findManagerReviewRequestById(id, options = {}) {
+  const lockClause = options.forUpdate && getMode() === 'mysql' ? 'FOR UPDATE' : '';
+  const [rows] = await executor(options.conn).execute(
+    `SELECT * FROM payment_manager_review_request WHERE id = ? ${lockClause}`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+function buildManagerReviewWhere(filters = {}) {
+  const clauses = ['p.deleted_at IS NULL'];
+  const params = [];
+  if (filters.store) {
+    clauses.push('r.store = ?');
+    params.push(filters.store);
+  }
+  if (filters.keyword) {
+    const like = `%${filters.keyword}%`;
+    clauses.push('(p.style_number LIKE ? OR p.product_id LIKE ? OR p.source_task_no LIKE ? OR r.applicant_name LIKE ?)');
+    params.push(like, like, like, like);
+  }
+  return { where: `WHERE ${clauses.join(' AND ')}`, params };
+}
+
+async function listManagerReviewRequests(filters = {}) {
+  const { where, params } = buildManagerReviewWhere(filters);
+  const page = Math.max(1, Number(filters.page) || 1);
+  const pageSize = Math.min(100, Math.max(1, Number(filters.pageSize) || 20));
+  const offset = (page - 1) * pageSize;
+  const [rows] = await getPool().execute(
+    `SELECT r.*, p.store_seq, p.style_number, p.product_id, p.source_task_no,
+            p.planner_name, p.current_stage, p.process_status,
+            p.version AS record_version, p.create_time AS record_create_time
+     FROM payment_manager_review_request r
+     JOIN payment_selection_record p ON p.id = r.record_id
+     ${where}
+     ORDER BY r.create_time ASC, r.id ASC LIMIT ? OFFSET ?`,
+    [...params, pageSize, offset]
+  );
+  return rows;
+}
+
+async function countManagerReviewRequests(filters = {}) {
+  const { where, params } = buildManagerReviewWhere(filters);
+  const [rows] = await getPool().execute(
+    `SELECT COUNT(*) AS total
+     FROM payment_manager_review_request r
+     JOIN payment_selection_record p ON p.id = r.record_id
+     ${where}`,
+    params
+  );
+  return Number(rows[0]?.total || 0);
+}
+
+async function listManagerReviewRequestsForRecords(recordIds) {
+  if (!recordIds.length) return [];
+  const placeholders = recordIds.map(() => '?').join(',');
+  const [rows] = await getPool().execute(
+    `SELECT * FROM payment_manager_review_request WHERE record_id IN (${placeholders})`,
+    recordIds
+  );
+  return rows;
+}
+
+async function deleteManagerReviewRequest(conn, id) {
+  const [result] = await conn.execute(
+    'DELETE FROM payment_manager_review_request WHERE id = ?',
+    [id]
+  );
+  return Number(result.affectedRows || 0) === 1;
+}
+
+async function deleteManagerReviewRequestByRecordId(conn, recordId) {
+  const [result] = await conn.execute(
+    'DELETE FROM payment_manager_review_request WHERE record_id = ?',
+    [recordId]
+  );
+  return Number(result.affectedRows || 0) > 0;
+}
+
 async function allocateStoreSeq(conn, store) {
   const [rows] = await conn.execute(
     `SELECT COALESCE(MAX(store_seq), 0) + 1 AS next_seq
@@ -745,6 +844,14 @@ module.exports = {
   countRecords,
   findRecordById,
   findRecordBySourceTaskId,
+  createManagerReviewRequest,
+  findManagerReviewRequestByRecordId,
+  findManagerReviewRequestById,
+  listManagerReviewRequests,
+  countManagerReviewRequests,
+  listManagerReviewRequestsForRecords,
+  deleteManagerReviewRequest,
+  deleteManagerReviewRequestByRecordId,
   allocateStoreSeq,
   insertRecord,
   softDeleteRecord,

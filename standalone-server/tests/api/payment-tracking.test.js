@@ -609,6 +609,7 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
     .send({ version: 2, stageCode: 'selection' });
   expect(testing.body.data.currentStage).toBe('testing');
   expect(testing.body.data.stages.map(stage => stage.stageCode)).toEqual(['selection', 'testing']);
+  expect(testing.body.data.managerReviewPending).toBe(true);
 
   const plannerCannotReview = await request(app)
     .put(`/api/payment-tracking/records/${recordId}/stages/testing`)
@@ -616,18 +617,34 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
     .send({ version: 3, data: { paidEnabled: true, paidAt: '2026-09-01' } });
   expect(plannerCannotReview.body.code).toBe(403);
 
+  const managerReviewList = await request(app)
+    .get('/api/payment-tracking/manager-reviews')
+    .set('Authorization', `Bearer ${managerToken}`);
+  const managerReview = managerReviewList.body.data.list.find(
+    item => Number(item.recordId) === Number(recordId)
+  );
+  expect(managerReview).toBeDefined();
+
+  const approved = await request(app)
+    .post(`/api/payment-tracking/manager-reviews/${managerReview.id}/approve`)
+    .set('Authorization', `Bearer ${managerToken}`)
+    .send({ requestVersion: managerReview.requestVersion, paidAt: '2026-09-01' });
+  expect(approved.body.data).toMatchObject({
+    version: 4,
+    managerReviewPending: false,
+    stageData: { testing: { paidEnabled: true, paidAt: '2026-09-01' } }
+  });
+
   const reviewed = await request(app)
     .put(`/api/payment-tracking/records/${recordId}/stages/testing`)
-    .set('Authorization', `Bearer ${managerToken}`)
+    .set('Authorization', `Bearer ${storeAToken}`)
     .send({
-      version: 3,
+      version: approved.body.data.version,
       data: {
-        paidEnabled: true,
-        paidAt: '2026-09-01',
         weiStockReported: false
       }
     });
-  expect(reviewed.body.data.version).toBe(4);
+  expect(reviewed.body.data.version).toBe(5);
   expect(reviewed.body.data.stageData.testing).toMatchObject({
     paidEnabled: true,
     weiStockReported: false

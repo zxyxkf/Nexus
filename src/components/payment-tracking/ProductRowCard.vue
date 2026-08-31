@@ -37,6 +37,9 @@
     </div>
 
     <div class="workflow-summary">
+      <div v-if="record.managerReviewPending" class="pending-review-summary">
+        <el-tag type="danger" effect="light">第二阶段 · 待店长审核</el-tag>
+      </div>
       <div v-if="record.processStatus === 'ended'" class="end-summary">
         <strong>结束于：{{ stageLabel(record.endStage) }}</strong>
         <span>{{ record.endReason || '流程已结束' }}</span>
@@ -57,9 +60,10 @@
       <el-button
         v-if="record.processStatus === 'in_progress'"
         type="primary"
-        :icon="EditPen"
+        :plain="record.managerReviewPending"
+        :icon="record.managerReviewPending ? View : EditPen"
         @click="emit('continue')"
-      >继续填写</el-button>
+      >{{ record.managerReviewPending ? '查看记录' : '继续填写' }}</el-button>
       <el-button
         v-else
         type="primary"
@@ -221,6 +225,10 @@ function stageLabel(code) {
   margin-bottom: 9px;
   color: #9a6417;
   font-size: 13px;
+}
+
+.pending-review-summary {
+  margin-bottom: 8px;
 }
 
 .end-summary span {

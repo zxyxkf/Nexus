@@ -90,6 +90,7 @@ const TYPE_LABELS = {
   task_comment: '任务评论',
   score_review: '分值审核',
   score_reject: '分值驳回',
+  payment_manager_review: '店长审核',
   system: '系统通知'
 }
 const typeOptions = Object.entries(TYPE_LABELS).map(([value, label]) => ({ value, label }))

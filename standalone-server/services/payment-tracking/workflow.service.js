@@ -3,6 +3,7 @@ const { executeTransaction } = require('../../config/database');
 const repository = require('./repository');
 const promotionService = require('./promotion.service');
 const recordService = require('./record.service');
+const { notifyReviewers } = require('./manager-review.service');
 const { STAGES, NEXT_STAGE, PERMISSIONS } = require('./constants');
 const {
   validateAdvance,
@@ -16,7 +17,8 @@ const {
   assertAnyPermission,
   assertStoreAccess,
   canManageOwnerRecord,
-  canSetPaymentDecision
+  canSetPaymentDecision,
+  assertNoPendingManagerReview
 } = require('./access');
 
 const FIELD_MAP = {
@@ -184,6 +186,7 @@ async function saveStage(recordId, stageCode, payload, user) {
   await executeTransaction(async conn => {
     const record = await loadRecordForUpdate(conn, recordId, user);
     assertInProgress(record);
+    await assertNoPendingManagerReview(record.id, conn);
     assertVersion(record, version);
     const stage = await assertEditableStage(conn, record, stageCode);
     const existing = await repository.loadStageData(record.id, stageCode, conn) || {};
@@ -252,10 +255,12 @@ async function advanceStage(recordId, payload, user) {
   assertPermission(user, PERMISSIONS.selection);
   const version = requireVersion(payload?.version);
   let alreadyAdvanced = false;
+  let reviewNotification;
 
   await executeTransaction(async conn => {
     const record = await loadRecordForUpdate(conn, recordId, user);
     assertInProgress(record);
+    await assertNoPendingManagerReview(record.id, conn);
     const requestedStage = payload?.stageCode;
     if (requestedStage && requestedStage !== record.current_stage) {
       const stage = await repository.findStage(record.id, requestedStage, conn);
@@ -285,7 +290,24 @@ async function advanceStage(recordId, payload, user) {
       current_stage: nextStage
     });
     if (!updated) throw conflictError();
+    if (stageCode === 'selection' && !canSetPaymentDecision(record, user)) {
+      await repository.createManagerReviewRequest(conn, {
+        recordId: record.id,
+        store: record.store,
+        applicantId: user.id,
+        applicantName: user.realName || user.username || '',
+        requestVersion: version + 1
+      });
+      reviewNotification = {
+        recordId: record.id,
+        store: record.store,
+        styleNumber: record.style_number,
+        applicantName: user.realName || user.username || ''
+      };
+    }
   });
+
+  if (reviewNotification) await notifyReviewers(reviewNotification);
 
   const result = await recordService.getRecord(recordId, user, { skipViewPermission: true });
   if (alreadyAdvanced) result.alreadyAdvanced = true;
@@ -298,6 +320,7 @@ async function endProcess(recordId, payload, user) {
 
   await executeTransaction(async conn => {
     const record = await loadRecordForUpdate(conn, recordId, user);
+    await assertNoPendingManagerReview(record.id, conn);
     if (record.process_status === 'ended') {
       if (!canManageOwnerRecord(record, user)) throw new AppError(403, '只有填写人或阶段管理人可以结束流程');
       return;
@@ -326,6 +349,7 @@ async function endProcess(recordId, payload, user) {
 async function restoreProcess(recordId, payload, user) {
   assertAnyPermission(user, [PERMISSIONS.selection, PERMISSIONS.records]);
   const version = requireVersion(payload?.version);
+  let reviewNotification;
 
   await executeTransaction(async conn => {
     const record = await loadRecordForUpdate(conn, recordId, user);
@@ -341,6 +365,14 @@ async function restoreProcess(recordId, payload, user) {
     if (!canManageOwnerRecord(record, user)) throw new AppError(403, '只有填写人或阶段管理人可以恢复流程');
 
     await repository.restoreCurrentStage(conn, record.id, record.current_stage);
+    const needsFreshManagerReview = record.end_type === 'payment_not_enabled'
+      && record.current_stage === 'testing';
+    if (needsFreshManagerReview) {
+      await repository.saveStageData(conn, record.id, 'testing', {
+        paid_enabled: null,
+        paid_at: null
+      });
+    }
     const updated = await repository.updateRecordWithVersion(conn, record.id, version, {
       process_status: 'in_progress',
       end_stage: null,
@@ -349,7 +381,24 @@ async function restoreProcess(recordId, payload, user) {
       ended_at: null
     });
     if (!updated) throw conflictError();
+    if (needsFreshManagerReview) {
+      await repository.createManagerReviewRequest(conn, {
+        recordId: record.id,
+        store: record.store,
+        applicantId: user.id,
+        applicantName: user.realName || user.username || '',
+        requestVersion: version + 1
+      });
+      reviewNotification = {
+        recordId: record.id,
+        store: record.store,
+        styleNumber: record.style_number,
+        applicantName: user.realName || user.username || ''
+      };
+    }
   });
+
+  if (reviewNotification) await notifyReviewers(reviewNotification);
 
   return recordService.getRecord(recordId, user, { skipViewPermission: true });
 }
@@ -362,6 +411,7 @@ async function reopenStage(recordId, stageCode, payload, user) {
   await executeTransaction(async conn => {
     const record = await loadRecordForUpdate(conn, recordId, user);
     assertInProgress(record);
+    await assertNoPendingManagerReview(record.id, conn);
     assertVersion(record, version);
     if (record.current_stage === stageCode) throw new AppError(400, '当前阶段无需重开');
     const stage = await repository.findStage(record.id, stageCode, conn);

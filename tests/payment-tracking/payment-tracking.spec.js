@@ -359,6 +359,7 @@ const reviewTasks = [
     designer_name: '美工甲',
     create_time: '2026-08-27 09:00:00',
     payment_tracking_opened: '0',
+    allowedActions: { review: true, openPayment: true },
     files: [
       { id: 2005, file_name: 'dress-reference.png', file_type: 'image', file_category: 'reference' },
       { id: 2006, file_name: 'dress-brief.pdf', file_type: 'file', file_category: 'reference', file_size: 1234 },
@@ -375,6 +376,7 @@ const reviewTasks = [
     designer_name: '美工乙',
     create_time: '2026-08-27 08:00:00',
     payment_tracking_opened: '0',
+    allowedActions: { review: true, openPayment: true },
     files: [{ id: 2003, file_name: 'source.psd', file_type: 'file', file_category: 'work' }]
   },
   {
@@ -386,13 +388,65 @@ const reviewTasks = [
     designer_name: '美工丙',
     create_time: '2026-08-27 07:00:00',
     payment_tracking_opened: '1',
+    allowedActions: { review: true, openPayment: true },
     files: [{ id: 2004, file_name: 'opened.png', file_type: 'image', file_category: 'work' }]
   }
 ]
 
+const managerReviewRecord = {
+  ...records[0],
+  id: 120,
+  currentStage: 'testing',
+  processStatus: 'in_progress',
+  managerReviewPending: true,
+  stages: [stage('selection', 'completed'), stage('testing', 'active')],
+  images: [{
+    id: 701,
+    category: 'product_main',
+    originalName: 'manager-review-main.png',
+    mimeType: 'image/png',
+    sortOrder: 0
+  }, {
+    id: 702,
+    category: 'detail_screenshot',
+    originalName: 'manager-review-detail.png',
+    mimeType: 'image/png',
+    sortOrder: 0
+  }, {
+    id: 703,
+    category: 'competitor',
+    originalName: 'manager-review-competitor.png',
+    mimeType: 'image/png',
+    sortOrder: 0
+  }],
+  allowedActions: {
+    edit: false,
+    advance: false,
+    end: false,
+    restore: false,
+    reopen: false,
+    managerReview: false,
+    delete: false
+  }
+}
+
 async function installMocks(page, options = {}) {
   const permissions = options.permissions || ['*']
   const recordOverrides = new Map()
+  const managerReviews = [{
+    id: 901,
+    recordId: managerReviewRecord.id,
+    store: managerReviewRecord.store,
+    storeSeq: managerReviewRecord.storeSeq,
+    applicantId: managerReviewRecord.plannerId,
+    applicantName: managerReviewRecord.plannerName,
+    requestVersion: managerReviewRecord.version,
+    styleNumber: managerReviewRecord.styleNumber,
+    productId: managerReviewRecord.productId,
+    sourceTaskNo: managerReviewRecord.sourceTaskNo,
+    currentStage: 'testing',
+    createdAt: '2026-08-31 09:30:00'
+  }]
   const getMockRecord = id => recordOverrides.get(Number(id))
     || allDetailRecords.find(record => record.id === Number(id))
   await page.addInitScript(() => {
@@ -460,6 +514,52 @@ async function installMocks(page, options = {}) {
     }
     if (url.pathname === '/api/task/stats/my') {
       await route.fulfill({ json: { code: 0, data: {} } })
+      return
+    }
+    if (url.pathname === '/api/payment-tracking/manager-reviews/count') {
+      await route.fulfill({ json: { code: 0, data: { count: managerReviews.length } } })
+      return
+    }
+    if (url.pathname === '/api/payment-tracking/manager-reviews') {
+      await route.fulfill({
+        json: {
+          code: 0,
+          data: { list: managerReviews, total: managerReviews.length, page: 1, pageSize: 20 }
+        }
+      })
+      return
+    }
+    const managerReviewDetailMatch = url.pathname.match(/^\/api\/payment-tracking\/manager-reviews\/(\d+)$/)
+    if (managerReviewDetailMatch && route.request().method() === 'GET') {
+      const review = managerReviews.find(item => item.id === Number(managerReviewDetailMatch[1]))
+      await route.fulfill({
+        status: review ? 200 : 404,
+        json: review
+          ? { code: 0, data: { request: review, record: managerReviewRecord } }
+          : { code: 404, msg: '待审核申请不存在' }
+      })
+      return
+    }
+    const managerReviewDecisionMatch = url.pathname.match(
+      /^\/api\/payment-tracking\/manager-reviews\/(\d+)\/(approve|reject)$/
+    )
+    if (managerReviewDecisionMatch && route.request().method() === 'POST') {
+      const index = managerReviews.findIndex(item => item.id === Number(managerReviewDecisionMatch[1]))
+      if (index < 0) {
+        await route.fulfill({ json: { code: 409, msg: '申请已处理' } })
+        return
+      }
+      managerReviews.splice(index, 1)
+      await route.fulfill({
+        json: {
+          code: 0,
+          data: {
+            ...managerReviewRecord,
+            managerReviewPending: false,
+            version: managerReviewRecord.version + 1
+          }
+        }
+      })
       return
     }
     if (url.pathname === '/api/task/my-published') {
@@ -1219,6 +1319,42 @@ test('四阶段页面在桌面与窄窗口保持可用布局', async ({ page }, 
     await page.screenshot({ path: testInfo.outputPath(`payment-${viewport.name}.png`), fullPage: true })
     await dialog.getByRole('button', { name: '取消' }).click()
   }
+})
+
+test('店长审核页只读查看记录并选择付费时间通过', async ({ page }) => {
+  await page.goto('/#/payment-tracking/manager-reviews')
+
+  await expect(page.getByRole('heading', { name: '店长审核' })).toBeVisible()
+  await expect(page.getByText('1 条待审核')).toBeVisible()
+  await expect(page.getByRole('button', { name: '查看记录' })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '通过', exact: true })).toHaveCount(1)
+  await expect(page.getByRole('button', { name: '拒绝', exact: true })).toHaveCount(1)
+
+  await page.getByRole('button', { name: '查看记录' }).click()
+  const detailDialog = page.getByRole('dialog', { name: '待审核记录' })
+  await expect(detailDialog).toBeVisible()
+  await expect(detailDialog.getByText('第二阶段 · 待店长审核')).toBeVisible()
+  await expect(detailDialog.getByRole('heading', { name: '产品主图' })).toBeVisible()
+  await expect(detailDialog.getByRole('heading', { name: '说明截图' })).toBeVisible()
+  await expect(detailDialog.getByRole('heading', { name: '竞品主图' })).toBeVisible()
+  await expect(detailDialog.locator('.image-grid img')).toHaveCount(3)
+  await page.keyboard.press('Escape')
+
+  await page.getByRole('button', { name: '通过', exact: true }).click()
+  const approveDialog = page.getByRole('dialog', { name: '确认开启付费' })
+  await expect(approveDialog).toBeVisible()
+  await approveDialog.getByPlaceholder('请选择付费时间').fill('2026-08-31 12:30:00')
+  await approveDialog.getByPlaceholder('请选择付费时间').press('Tab')
+  const approveRequest = page.waitForRequest(request => (
+    request.method() === 'POST'
+    && new URL(request.url()).pathname === '/api/payment-tracking/manager-reviews/901/approve'
+  ))
+  await approveDialog.getByRole('button', { name: '确认通过' }).click()
+  expect((await approveRequest).postDataJSON()).toMatchObject({
+    requestVersion: managerReviewRecord.version,
+    paidAt: '2026-08-31 12:30:00'
+  })
+  await expect(page.getByText('0 条待审核')).toBeVisible()
 })
 
 test('作品审核开启打款按图片和开启状态控制并汇总批量结果', async ({ page }, testInfo) => {

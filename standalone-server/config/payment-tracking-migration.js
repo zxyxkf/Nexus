@@ -1,3 +1,5 @@
+const MANAGER_REVIEW_BACKFILL_MARKER = 'migration.payment_manager_review_backfill.v1';
+
 async function columnExists(execute, mode, table, column) {
   if (mode === 'mysql') {
     const [rows] = await execute(
@@ -212,6 +214,37 @@ async function clearRetiredValues(execute, mode) {
   }
 }
 
+async function backfillManagerReviewRequests(execute, mode) {
+  const [markerRows] = await execute(
+    'SELECT config_value FROM sys_config WHERE config_key = ?',
+    [MANAGER_REVIEW_BACKFILL_MARKER]
+  );
+  if (markerRows.length) return;
+
+  const insert = mode === 'mysql' ? 'INSERT IGNORE' : 'INSERT OR IGNORE';
+  await execute(
+    `${insert} INTO payment_manager_review_request
+       (record_id, store, applicant_id, applicant_name, request_version)
+     SELECT record.id,
+            COALESCE(record.store, ''),
+            COALESCE(record.planner_id, 0),
+            COALESCE(record.planner_name, ''),
+            COALESCE(record.version, 1)
+     FROM payment_selection_record record
+     JOIN payment_selection_testing testing ON testing.record_id = record.id
+     WHERE record.deleted_at IS NULL
+       AND record.process_status = 'in_progress'
+       AND record.current_stage = 'testing'
+       AND testing.paid_enabled IS NULL`
+  );
+  await execute(
+    `${insert} INTO sys_config
+       (config_key, config_value, config_group, config_desc, editable)
+     VALUES (?, '1', 'migration', '店长付费审核旧数据已回填', 0)`,
+    [MANAGER_REVIEW_BACKFILL_MARKER]
+  );
+}
+
 async function migratePaymentTracking({ execute, mode }) {
   if (typeof execute !== 'function') throw new Error('Payment tracking migration requires an execute function');
   if (!['sqlite', 'mysql'].includes(mode)) throw new Error(`Unsupported payment tracking database mode: ${mode}`);
@@ -223,6 +256,7 @@ async function migratePaymentTracking({ execute, mode }) {
   await backfillSelectionDates(execute);
   await migrateMonitoringStatus(execute);
   await clearRetiredValues(execute, mode);
+  await backfillManagerReviewRequests(execute, mode);
 }
 
-module.exports = { migratePaymentTracking };
+module.exports = { MANAGER_REVIEW_BACKFILL_MARKER, migratePaymentTracking };

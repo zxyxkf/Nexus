@@ -2,18 +2,33 @@ import request from './http'
 import { getServerBase } from '@/utils/server-base'
 import { getToken } from '@/utils/auth'
 
+function paymentMutation(promise) {
+  return promise.then(response => {
+    if (typeof window !== 'undefined' && response?.code === 0) {
+      window.dispatchEvent(new CustomEvent('nexus:payment-updated', { detail: response }))
+    }
+    return response
+  })
+}
+
 export const listPaymentRecordsApi = params => request.get('/api/payment-tracking/records', { params })
 export const getPaymentRecordApi = id => request.get(`/api/payment-tracking/records/${id}`)
-export const createPaymentRecordApi = data => request.post('/api/payment-tracking/records', data)
-export const savePaymentStageApi = (id, stageCode, data) => request.put(`/api/payment-tracking/records/${id}/stages/${stageCode}`, data)
-export const advancePaymentStageApi = (id, data) => request.post(`/api/payment-tracking/records/${id}/advance`, data)
-export const endPaymentProcessApi = (id, data) => request.post(`/api/payment-tracking/records/${id}/end`, data)
-export const restorePaymentProcessApi = (id, data) => request.post(`/api/payment-tracking/records/${id}/restore`, data)
-export const reopenPaymentStageApi = (id, stageCode, data) => request.post(`/api/payment-tracking/records/${id}/stages/${stageCode}/reopen`, data)
+export const createPaymentRecordApi = data => paymentMutation(request.post('/api/payment-tracking/records', data))
+export const savePaymentStageApi = (id, stageCode, data) => paymentMutation(request.put(`/api/payment-tracking/records/${id}/stages/${stageCode}`, data))
+export const advancePaymentStageApi = (id, data) => paymentMutation(request.post(`/api/payment-tracking/records/${id}/advance`, data))
+export const endPaymentProcessApi = (id, data) => paymentMutation(request.post(`/api/payment-tracking/records/${id}/end`, data))
+export const restorePaymentProcessApi = (id, data) => paymentMutation(request.post(`/api/payment-tracking/records/${id}/restore`, data))
+export const reopenPaymentStageApi = (id, stageCode, data) => paymentMutation(request.post(`/api/payment-tracking/records/${id}/stages/${stageCode}/reopen`, data))
 export const savePaymentLinkStatusApi = (id, stageCode, data) => request.put(`/api/payment-tracking/records/${id}/stages/${stageCode}/link-status`, data)
 export const deletePaymentRecordApi = (id, version) => request.delete(`/api/payment-tracking/records/${id}`, { data: { version } })
 export const openPaymentFromTaskApi = taskId => request.post(`/api/payment-tracking/open/task/${taskId}`)
 export const openPaymentBatchApi = taskIds => request.post('/api/payment-tracking/open/batch', { taskIds })
+
+export const listPaymentManagerReviewsApi = params => request.get('/api/payment-tracking/manager-reviews', { params })
+export const getPaymentManagerReviewCountApi = params => request.get('/api/payment-tracking/manager-reviews/count', { params })
+export const getPaymentManagerReviewApi = id => request.get(`/api/payment-tracking/manager-reviews/${id}`)
+export const approvePaymentManagerReviewApi = (id, data) => paymentMutation(request.post(`/api/payment-tracking/manager-reviews/${id}/approve`, data))
+export const rejectPaymentManagerReviewApi = (id, data) => paymentMutation(request.post(`/api/payment-tracking/manager-reviews/${id}/reject`, data))
 
 export function uploadPaymentImagesApi(id, category, files, version, adjustmentId = null) {
   const formData = new FormData()

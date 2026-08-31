@@ -12,6 +12,7 @@ let app;
 let adminToken;
 let storeAToken;
 let storeBToken;
+let paymentOnlyToken;
 let globalManagerToken;
 let recordId;
 let imageConfigId;
@@ -19,6 +20,7 @@ let designImageConfigId;
 let imageRoot;
 let sourceRoot;
 let storeAUserId;
+let storeBUserId;
 
 const suffix = Date.now();
 
@@ -73,6 +75,7 @@ beforeAll(async () => {
     .set('Authorization', `Bearer ${adminToken}`);
   const byName = new Map(list.body.data.list.map(user => [user.username, user]));
   storeAUserId = byName.get(users[0].username).id;
+  storeBUserId = byName.get(users[1].username).id;
   for (const user of users) {
     await request(app)
       .post('/api/user/permissions/save')
@@ -85,6 +88,29 @@ beforeAll(async () => {
   }
   storeAToken = await login(users[0].username);
   storeBToken = await login(users[1].username);
+
+  const paymentOnlyUsername = `image_payment_only_${suffix}`;
+  await request(app)
+    .post('/api/user/create')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      username: paymentOnlyUsername,
+      password: 'test123456',
+      realName: 'Payment-only reviewer',
+      role: 'operator_assistant',
+      store: '图片A店',
+      isStoreManager: false
+    });
+  const assistantList = await request(app)
+    .get('/api/user/list?role=operator_assistant&pageSize=100')
+    .set('Authorization', `Bearer ${adminToken}`);
+  const paymentOnlyUser = assistantList.body.data.list.find(user => user.username === paymentOnlyUsername);
+  expect(paymentOnlyUser).toBeDefined();
+  await request(app)
+    .post('/api/user/permissions/save')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ userId: paymentOnlyUser.id, permissions: ['payment.open'], deniedPermissions: [] });
+  paymentOnlyToken = await login(paymentOnlyUsername);
 
   await request(app)
     .post('/api/user/create')
@@ -415,6 +441,57 @@ it('opens payment tracking from task images and reports batch skip reasons', asy
   const globalTask = await createTask('PAY-OPEN-6', {
     files: [{ name: 'open-global.png' }]
   });
+  const restrictedSameStoreTask = await createTask('PAY-OPEN-RESTRICTED-A', {
+    files: [{ name: 'open-restricted-a.png' }]
+  });
+  const restrictedCrossStoreTask = await createTask('PAY-OPEN-RESTRICTED-B', {
+    publisherId: storeBUserId,
+    publisherName: '图片B店运营',
+    files: [{ name: 'open-restricted-b.png' }]
+  });
+
+  const restrictedList = await request(app)
+    .get('/api/task/my-published?taskGroup=design&status=doing&pageSize=100')
+    .set('Authorization', `Bearer ${paymentOnlyToken}`);
+  expect(restrictedList.body.code).toBe(0);
+  expect(restrictedList.body.data.list).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      id: restrictedSameStoreTask,
+      allowedActions: { review: false, openPayment: true }
+    })
+  ]));
+  expect(restrictedList.body.data.list.some(task => Number(task.id) === Number(restrictedCrossStoreTask))).toBe(false);
+
+  const restrictedDetail = await request(app)
+    .get(`/api/task/detail?taskId=${restrictedSameStoreTask}`)
+    .set('Authorization', `Bearer ${paymentOnlyToken}`);
+  expect(restrictedDetail.body).toMatchObject({
+    code: 0,
+    data: { allowedActions: { review: false, openPayment: true } }
+  });
+
+  const forbiddenReview = await request(app)
+    .post('/api/task/review')
+    .set('Authorization', `Bearer ${paymentOnlyToken}`)
+    .send({ taskId: restrictedSameStoreTask, action: 'pass' });
+  expect(forbiddenReview.body.code).toBe(403);
+
+  const forbiddenBatchReview = await request(app)
+    .post('/api/task/batch-review')
+    .set('Authorization', `Bearer ${paymentOnlyToken}`)
+    .send({ taskIds: [restrictedSameStoreTask] });
+  expect(forbiddenBatchReview.body.code).toBe(403);
+
+  const restrictedOpened = await request(app)
+    .post(`/api/payment-tracking/open/task/${restrictedSameStoreTask}`)
+    .set('Authorization', `Bearer ${paymentOnlyToken}`);
+  expect(restrictedOpened.body.code).toBe(0);
+
+  const publisherReview = await request(app)
+    .post('/api/task/review')
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ taskId: restrictedSameStoreTask, action: 'pass' });
+  expect(publisherReview.body.code).toBe(0);
 
   const globallyOpened = await request(app)
     .post(`/api/payment-tracking/open/task/${globalTask}`)

@@ -3,7 +3,7 @@ const { executeTransaction } = require('../../config/database');
 const repository = require('./repository');
 const recordService = require('./record.service');
 const { PERMISSIONS } = require('./constants');
-const { assertPermission, assertStoreAccess } = require('./access');
+const { assertPermission, assertStoreAccess, assertNoPendingManagerReview } = require('./access');
 const { conflictError, requireVersion, assertVersion } = require('./optimistic-lock');
 
 const OWNER_STAGES = ['testing', 'monitoring'];
@@ -73,6 +73,7 @@ async function loadEditableRecord(conn, recordId, stageCode, version, user) {
   if (!record) throw new AppError(404, '选品记录不存在');
   assertStoreAccess(record, user);
   if (record.process_status !== 'in_progress') throw new AppError(400, '流程已结束，请先恢复流程');
+  await assertNoPendingManagerReview(record.id, conn);
   assertVersion(record, version);
   const stage = await repository.findStage(record.id, stageCode, conn);
   if (!stage) throw new AppError(403, '该阶段尚未进入');

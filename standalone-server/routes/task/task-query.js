@@ -7,7 +7,7 @@ const { requireRole, requireAnyPermission } = require('../../middleware/auth');
 const taskService = require('../../services/task.service');
 
 // 我发布的任务
-router.get('/my-published', requireAnyPermission(['operator.tasks.design', 'operator.tasks.assistant', 'cs.tasks.basic', 'operator.review.design', 'operator.review.assistant', 'cs.review.basic'], 'operator', 'admin', 'cs_agent'), async (req, res, next) => {
+router.get('/my-published', requireAnyPermission(['operator.tasks.design', 'operator.tasks.assistant', 'cs.tasks.basic', 'operator.review.design', 'operator.review.assistant', 'cs.review.basic', 'payment.open'], 'operator', 'admin', 'cs_agent'), async (req, res, next) => {
   try {
     const data = await taskService.getMyPublished(req.query, req.user);
     res.json({ code: 0, msg: '查询成功', data });

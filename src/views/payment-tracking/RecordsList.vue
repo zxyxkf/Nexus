@@ -70,7 +70,11 @@ import { getUser } from '@/utils/auth'
 
 const router = useRouter()
 const user = getUser()
-const isAdmin = computed(() => user?.role === 'admin' || user?.permissions?.includes('*'))
+const isAdmin = computed(() => (
+  user?.role === 'admin'
+  || user?.permissions?.includes('*')
+  || user?.permissions?.includes('payment.manage.all')
+))
 const loading = ref(false)
 const records = ref([])
 const total = ref(0)

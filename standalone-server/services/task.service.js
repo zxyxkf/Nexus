@@ -19,6 +19,7 @@ const {
   canViewByAllTasksPermission,
   allowedAllTaskGroups
 } = require('../utils/task-permissions');
+const { canManageAllPaymentData } = require('./payment-tracking/access');
 
 // ==================== 辅助 ====================
 
@@ -30,6 +31,52 @@ function getTargetRole(taskGroup) {
 
 function socketEmit(room, event = 'task:update') {
   if (global.io) global.io.to(room).emit(event);
+}
+
+function normalizedTaskGroup(task) {
+  return task?.task_group || 'design';
+}
+
+function canViewAllPaymentTasks(user) {
+  return user?.role === 'admin'
+    || user?.role === 'sub_admin'
+    || canManageAllPaymentData(user);
+}
+
+function canOpenPaymentTask(task, user) {
+  if (!hasPermission(user, 'payment.open') && !canManageAllPaymentData(user)) return false;
+  if (normalizedTaskGroup(task) !== 'design') return false;
+  if (!['doing', 'finished'].includes(task?.status)) return false;
+  if (!task?.publisher_id || !task?.publisher_store) return false;
+  return canViewAllPaymentTasks(user) || task.publisher_store === user?.store;
+}
+
+function canReviewTask(task, user) {
+  if (task?.status !== 'doing') return false;
+  const groupPermission = normalizedTaskGroup(task) === 'operator'
+    ? 'operator.review.assistant'
+    : normalizedTaskGroup(task) === 'cs'
+      ? 'cs.review.basic'
+      : 'operator.review.design';
+  const hasReviewPermission = hasPermission(user, groupPermission)
+    || hasPermission(user, 'task.review.own')
+    || hasPermission(user, 'task.review.store')
+    || hasPermission(user, 'task.review.all');
+  if (!hasReviewPermission) return false;
+  if (user?.role === 'operator' || user?.role === 'cs_agent') {
+    return Number(task.publisher_id) === Number(user.id);
+  }
+  return true;
+}
+
+function attachAllowedActions(task, user) {
+  return {
+    ...task,
+    allowedActions: {
+      review: canReviewTask(task, user),
+      openPayment: canOpenPaymentTask(task, user)
+    }
+  };
 }
 
 // ==================== 创建/编辑/删除 ====================
@@ -123,7 +170,9 @@ async function getTaskDetail(taskId, user) {
   if (!task) throw new AppError(400, '任务不存在');
 
   // 权限校验
-  const canViewAllTaskDetail = hasPermission(user, 'task.view.all') || canViewByAllTasksPermission(task, user);
+  const canViewAllTaskDetail = hasPermission(user, 'task.view.all')
+    || canViewByAllTasksPermission(task, user)
+    || canOpenPaymentTask(task, user);
   if (user.role !== 'admin' && !canViewAllTaskDetail) {
     if (user.role === 'operator' || user.role === 'cs_agent') {
       if (Number(task.publisher_id) !== Number(user.id)) {
@@ -157,7 +206,7 @@ async function getTaskDetail(taskId, user) {
   const rejectRecords = task.task_group === 'cs'
     ? await taskDao.getTaskRejectRecords(taskId)
     : [];
-  return { ...task, files, transfer_records: transferRecords, reject_records: rejectRecords };
+  return attachAllowedActions({ ...task, files, transfer_records: transferRecords, reject_records: rejectRecords }, user);
 }
 
 async function deleteTask(taskId, user) {
@@ -335,12 +384,17 @@ async function batchReassign(taskIds, designerId, designerName) {
 async function getMyPublished(query, user) {
   const page = parseInt(query.page) || 1;
   const pageSize = parseInt(query.pageSize) || 15;
+  const group = query.taskGroup || (user.role === 'cs_agent' ? 'cs' : 'design');
+  const paymentOpenView = group === 'design' && hasPermission(user, 'payment.open');
 
   const result = await taskDao.queryMyPublished({
     userId: user.id, role: user.role,
+    store: user.store || '',
     permissions: user.permissions || [],
-    filterGroup: query.taskGroup,
+    filterGroup: group,
     selfOnly: query.selfOnly === '1' || query.selfOnly === 'true',
+    paymentOpenView,
+    canViewAllPaymentTasks: canViewAllPaymentTasks(user),
     status: query.status, styleNumber: query.styleNumber,
     keyword: query.keyword, taskNo: query.taskNo, designerId: query.designerId,
     publisherId: query.publisherId,
@@ -349,6 +403,7 @@ async function getMyPublished(query, user) {
     sortField: query.sortField, sortOrder: query.sortOrder,
     page, pageSize
   });
+  result.list = result.list.map(task => attachAllowedActions(task, user));
   return result;
 }
 

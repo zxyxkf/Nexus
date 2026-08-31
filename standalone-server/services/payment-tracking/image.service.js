@@ -14,7 +14,9 @@ const {
   assertPermission,
   assertAnyPermission,
   assertStoreAccess,
-  assertRecordViewPermission
+  assertRecordViewPermission,
+  assertNoPendingManagerReview,
+  canReviewStore
 } = require('./access');
 const { conflictError, requireVersion, assertVersion } = require('./optimistic-lock');
 
@@ -81,6 +83,7 @@ async function loadEditableRecord(conn, recordId, user) {
   if (!record) throw new AppError(404, '选品记录不存在');
   assertStoreAccess(record, user);
   if (record.process_status !== 'in_progress') throw new AppError(400, '流程已结束，请先恢复流程');
+  await assertNoPendingManagerReview(record.id, conn);
   return record;
 }
 
@@ -228,13 +231,18 @@ async function deleteImage(recordId, imageId, versionValue, user) {
 }
 
 async function getPreview(imageId, user) {
-  assertAnyPermission(user, [PERMISSIONS.selection, PERMISSIONS.records]);
   const image = await repository.findImageById(imageId);
   if (!image) throw new AppError(404, '图片不存在');
   const record = await repository.findRecordById(image.record_id);
   if (!record) throw new AppError(404, '选品记录不存在');
-  assertStoreAccess(record, user);
-  assertRecordViewPermission(record, user);
+  const managerReviewRequest = await repository.findManagerReviewRequestByRecordId(record.id);
+  const canPreviewForReview = managerReviewRequest
+    && canReviewStore(user, managerReviewRequest.store);
+  if (!canPreviewForReview) {
+    assertAnyPermission(user, [PERMISSIONS.selection, PERMISSIONS.records]);
+    assertStoreAccess(record, user);
+    assertRecordViewPermission(record, user);
+  }
   const filePath = resolveStoredImagePath(image);
   if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
     throw new AppError(404, '图片文件不存在');

@@ -8,16 +8,16 @@
       </template>
 
       <div style="margin-bottom:12px;">
-        <el-button type="success" :disabled="selectedRows.length === 0" @click="handleBatchReview">
-          批量审核通过 ({{ selectedRows.length }})
+        <el-button v-if="canReviewPage" type="success" :disabled="reviewableSelected.length === 0" @click="handleBatchReview">
+          批量审核通过 ({{ reviewableSelected.length }})
         </el-button>
         <el-button
           v-if="canOpenPayment"
           type="warning"
-          :disabled="selectedRows.length === 0"
+          :disabled="paymentOpenableSelected.length === 0"
           :loading="batchPaymentOpening"
           @click="handleBatchOpenPayment"
-        >批量开启打款 ({{ selectedRows.length }})</el-button>
+        >批量开启打款 ({{ paymentOpenableSelected.length }})</el-button>
       </div>
 
       <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" :data="displayList" v-loading="loading" stripe style="width:100%" empty-text="暂无待审核任务" @selection-change="onSelectChange" @sort-change="handleSortChange">
@@ -107,21 +107,21 @@
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">查看作品</el-button>
             <el-button
-              v-if="canOpenPayment"
+              v-if="canOpenPayment && row.allowedActions?.openPayment"
               type="warning"
               link
               size="small"
-              :disabled="!getWorkImages(row.files).length || Boolean(row.payment_tracking_opened)"
+              :disabled="!getWorkImages(row.files).length || isPaymentOpened(row.payment_tracking_opened)"
               :loading="paymentOpeningIds.has(row.id)"
               @click="handleOpenPayment(row)"
             >开启打款</el-button>
             <el-button
-              v-if="row.status === 'doing'"
+              v-if="row.status === 'doing' && row.allowedActions?.review"
               type="success" link size="small"
               @click="handleReview(row, 'pass')"
             >通过</el-button>
             <el-button
-              v-if="row.status === 'doing'"
+              v-if="row.status === 'doing' && row.allowedActions?.review"
               type="danger" link size="small"
               @click="handleReview(row, 'reject')"
             >驳回</el-button>
@@ -142,172 +142,26 @@
       </div>
 
       <!-- 作品查看 —— 内联覆盖层 -->
-    <TaskDetailOverlay
+    <TaskDetail
       :visible="detailVisible"
-      :title="currentTask?.title || currentTask?.task_no || '任务详情'"
-      body-class="inline-detail-body"
+      :task="currentTask"
+      :task-group="taskGroup"
+      detail-context="review"
       @close="detailVisible = false"
     >
-      <template #summary>
-        <div class="detail-header-left">
-            <span v-if="isCsAgent" class="detail-number">#{{ currentTask.task_no }}</span>
-            <span style="font-size:14px;font-weight:600;">{{ currentTask.designer_name }}</span>
-            <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
-        </div>
-      </template>
       <template #actions>
-        <el-button v-if="currentTask.status === 'doing'" type="success" size="small" @click="doReview('pass')" :loading="reviewLoading">通过</el-button>
-        <el-button v-if="currentTask.status === 'doing'" type="danger" size="small" @click="doReview('reject')" :loading="reviewLoading">驳回</el-button>
+        <el-button v-if="currentTask.status === 'doing' && currentTask.allowedActions?.review" type="success" size="small" @click="doReview('pass')" :loading="reviewLoading">通过</el-button>
+        <el-button v-if="currentTask.status === 'doing' && currentTask.allowedActions?.review" type="danger" size="small" @click="doReview('reject')" :loading="reviewLoading">驳回</el-button>
         <el-button
-          v-if="canOpenPayment"
+          v-if="canOpenPayment && currentTask.allowedActions?.openPayment"
           type="warning"
           size="small"
-          :disabled="!getWorkImages(currentTask.files).length || Boolean(currentTask.payment_tracking_opened)"
+          :disabled="!getWorkImages(currentTask.files).length || isPaymentOpened(currentTask.payment_tracking_opened)"
           :loading="paymentOpeningIds.has(currentTask.id)"
           @click="handleOpenPayment(currentTask)"
         >开启打款</el-button>
       </template>
-
-          <TaskStatusTimeline :task="currentTask" :task-group="taskGroup" />
-          <TaskTransferTimeline v-if="isCsAgent" :records="currentTask.transfer_records || []" />
-          <div class="inline-detail-people">
-            <div class="inline-detail-stat-card">
-              <label>发布人</label>
-              <span>{{ currentTask.publisher_name || '-' }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
-              <label>{{ designerLabel }}</label>
-              <span>{{ currentTask.designer_name || '未接单' }}</span>
-            </div>
-          </div>
-
-          <div class="inline-detail-section">
-            <div class="inline-detail-section-title">任务信息</div>
-            <div class="inline-detail-stat-card">
-              <label>工作项目</label>
-              <span>{{ currentTask.title }}</span>
-            </div>
-            <template v-if="isCsAgent">
-              <div class="inline-detail-stat-card">
-                <label>旺旺ID</label>
-                <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>款号</label>
-                <span>{{ currentTask.style_number || '无' }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>指定颜色</label>
-                <span>{{ currentTask.specified_color || '无' }}</span>
-              </div>
-            </template>
-            <template v-else>
-              <div class="inline-detail-stat-card">
-                <label>参考路径</label>
-                <span class="multiline-value">{{ currentTask.ref_path || '无' }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>截止时间</label>
-                <span>{{ currentTask.deadline || '无' }}</span>
-              </div>
-            </template>
-            <div class="inline-detail-stat-card full-width">
-              <label>任务描述</label>
-              <div class="value" style="white-space:pre-wrap;">{{ currentTask.description || '暂无' }}</div>
-            </div>
-          </div>
-
-          <div class="inline-detail-section">
-            <div class="inline-detail-section-title">提交与审核</div>
-            <template v-if="isCsAgent">
-              <div class="inline-detail-stat-card">
-                <label>申请分数</label>
-                <span>{{ formatScoreValue(currentTask.applied_score) }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>分数审核状态</label>
-                <el-tag :type="scoreReviewTagType(currentTask.score_review_status)" size="small">
-                  {{ formatScoreReviewStatus(currentTask.score_review_status, currentTask) }}
-                </el-tag>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>分数审核通过分数</label>
-                <span>{{ formatScoreReviewApprovedScore(currentTask) }}</span>
-              </div>
-            </template>
-            <div class="inline-detail-stat-card full-width">
-              <label>上传路径</label>
-              <span>{{ currentTask.work_path || '无' }}</span>
-            </div>
-            <div v-if="isCsAgent && currentTask.reject_reason" class="inline-detail-stat-card full-width">
-              <label>驳回原因</label>
-              <div class="value reject-reason-text">{{ currentTask.reject_reason }}</div>
-            </div>
-            <div v-if="isCsAgent && currentTask.score_review_reason" class="inline-detail-stat-card full-width">
-              <label>分数审核驳回原因</label>
-              <div class="value reject-reason-text">{{ currentTask.score_review_reason }}</div>
-            </div>
-          </div>
-
-          <template v-if="detailRefImages.length">
-            <div class="inline-detail-files">
-              <h4>参考图 ({{ detailRefImages.length }})</h4>
-              <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                <div v-for="(file, index) in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
-                  <el-image
-                    :src="file._previewSrc || getFileUrl(file)"
-                    fit="contain"
-                    :preview-src-list="detailRefPreviewList"
-                    :initial-index="index"
-                    preview-teleported
-                    style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;"
-                  />
-                  <el-button class="file-download-btn" type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
-                </div>
-              </div>
-            </div>
-          </template>
-
-          <div v-if="detailRefAttachments.length" class="inline-detail-files">
-            <h4>参考附件 ({{ detailRefAttachments.length }})</h4>
-            <div v-for="file in detailRefAttachments" :key="file.id" class="review-ref-attach" draggable="true" @dragstart="setupFileDrag($event, file)">
-              <el-icon :size="28" color="#909399"><Document /></el-icon>
-              <div style="flex:1;min-width:0;">
-                <span style="font-size:13px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ file.file_name }}</span>
-                <span style="font-size:11px;color:#909399;">{{ formatSize(file.file_size) }}</span>
-              </div>
-              <el-button type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
-            </div>
-          </div>
-
-          <div v-if="reviewWorkFiles.length" class="inline-detail-files">
-            <h4>已提交作品文件</h4>
-            <div class="review-file-grid">
-              <div v-for="file in reviewWorkFiles" :key="file.id" class="review-file-item" draggable="true" @dragstart="setupFileDrag($event, file)">
-                <template v-if="file.file_type === 'image'">
-                  <el-image
-                    :src="file._previewSrc || getFileUrl(file)"
-                    fit="cover"
-                    :preview-src-list="imagePreviewList"
-                    :initial-index="getImagePreviewIndex(reviewWorkFiles, file)"
-                    style="width:180px;height:160px;border-radius:8px;border:1px solid #e4e7ed;cursor:pointer;"
-                  >
-                    <template #error>
-                      <div class="img-error"><el-icon :size="24"><PictureFilled /></el-icon><span>加载失败</span></div>
-                    </template>
-                  </el-image>
-                  <el-button type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
-                </template>
-                <div v-else class="review-file-nonimage">
-                  <el-icon :size="32"><Document /></el-icon>
-                  <span class="review-file-name">{{ file.file_name }}</span>
-                  <el-button type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
-                </div>
-              </div>
-            </div>
-          </div>
-          <RejectHistory v-if="isCsAgent" :records="currentTask.reject_records || []" />
-    </TaskDetailOverlay>
+    </TaskDetail>
     </el-card>
 
     <el-dialog
@@ -368,13 +222,10 @@ import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
-import { formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
+import { formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, scoreReviewTagType } from '@/utils/format'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import { hasPermission } from '@/utils/permissions'
-import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
-import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
-import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
-import RejectHistory from '@/components/RejectHistory.vue'
+import TaskDetail from '@/components/TaskDetail.vue'
 
 const route = useRoute()
 const taskGroup = computed(() => route.meta.taskGroup || (route.meta.role === 'cs_agent' ? 'cs' : 'design'))
@@ -382,6 +233,18 @@ const isCsAgent = computed(() => taskGroup.value === 'cs')
 const isOperatorTask = computed(() => taskGroup.value === 'operator')
 const designerLabel = computed(() => isCsAgent.value ? '基础美工' : isOperatorTask.value ? '运营助理' : '美工')
 const canOpenPayment = computed(() => taskGroup.value === 'design' && hasPermission('payment.open'))
+const reviewPermission = computed(() => (
+  taskGroup.value === 'operator'
+    ? 'operator.review.assistant'
+    : taskGroup.value === 'cs'
+      ? 'cs.review.basic'
+      : 'operator.review.design'
+))
+const canReviewPage = computed(() => hasPermission(reviewPermission.value))
+
+function isPaymentOpened(value) {
+  return value === true || value === 1 || value === '1'
+}
 
 const loading = ref(false)
 const list = ref([])
@@ -430,6 +293,14 @@ const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
 })
 const reviewLoading = ref(false)
 const selectedRows = ref([])
+const reviewableSelected = computed(() => selectedRows.value.filter(row => (
+  row.status === 'doing' && row.allowedActions?.review
+)))
+const paymentOpenableSelected = computed(() => selectedRows.value.filter(row => (
+  row.allowedActions?.openPayment
+  && getWorkImages(row.files).length
+  && !isPaymentOpened(row.payment_tracking_opened)
+)))
 const paymentOpeningIds = ref(new Set())
 const batchPaymentOpening = ref(false)
 const rejectDialogVisible = ref(false)
@@ -467,9 +338,10 @@ const detailRefAttachments = computed(() => {
 })
 
 async function handleBatchReview() {
+  if (!reviewableSelected.value.length) return
   try {
-    await ElMessageBox.confirm(`确认审核通过选中的 ${selectedRows.value.length} 个任务？`, '批量审核')
-    const ids = selectedRows.value.map(r => r.id)
+    await ElMessageBox.confirm(`确认审核通过选中的 ${reviewableSelected.value.length} 个任务？`, '批量审核')
+    const ids = reviewableSelected.value.map(r => r.id)
     const res = await batchReviewApi({ taskIds: ids })
     if (res.code === 0) {
       ElMessage.success(res.msg)
@@ -480,12 +352,18 @@ async function handleBatchReview() {
 }
 
 async function handleOpenPayment(row) {
-  if (!getWorkImages(row.files).length || row.payment_tracking_opened) return
+  if (!row.allowedActions?.openPayment || !getWorkImages(row.files).length || isPaymentOpened(row.payment_tracking_opened)) return
   paymentOpeningIds.value = new Set([...paymentOpeningIds.value, row.id])
   try {
     const res = await openPaymentFromTaskApi(row.id)
     if (res.code === 0) {
-      ElMessage.success(res.data?.alreadyOpened ? '该任务已开启打款' : '打款已开启')
+      ElMessage.success(
+        res.data?.restored
+          ? '已恢复打款记录'
+          : res.data?.alreadyOpened
+            ? '该任务已开启打款'
+            : '打款已开启'
+      )
       await loadData()
     } else {
       ElMessage.error(res.msg || '开启打款失败')
@@ -500,10 +378,10 @@ async function handleOpenPayment(row) {
 }
 
 async function handleBatchOpenPayment() {
-  if (!selectedRows.value.length) return
+  if (!paymentOpenableSelected.value.length) return
   batchPaymentOpening.value = true
   try {
-    const res = await openPaymentBatchApi(selectedRows.value.map(row => row.id))
+    const res = await openPaymentBatchApi(paymentOpenableSelected.value.map(row => row.id))
     if (res.code !== 0) {
       ElMessage.error(res.msg || '批量开启打款失败')
       return
@@ -554,6 +432,7 @@ async function loadData(options = {}) {
 }
 
 async function handleReview(row, action) {
+  if (!row.allowedActions?.review) return
   const actionLabel = action === 'pass' ? '审核通过' : '驳回'
   try {
     const rejectPayload = await getRejectPayload(action)
@@ -578,6 +457,7 @@ async function handleReview(row, action) {
 }
 
 async function doReview(action) {
+  if (!currentTask.value?.allowedActions?.review) return
   try {
     const rejectPayload = await getRejectPayload(action)
     reviewLoading.value = true

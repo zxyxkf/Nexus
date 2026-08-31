@@ -21,7 +21,7 @@ export const MENU_SECTIONS = [
 export const MENU_REGISTRY = [
   { group: 'operator_design', path: '/operator/publish', icon: 'Plus', label: '发布任务', permission: 'operator.publish.design' },
   { group: 'operator_design', path: '/operator/tasks', icon: 'List', label: '我的任务', permission: 'operator.tasks.design' },
-  { group: 'operator_design', path: '/operator/review', icon: 'Select', label: '作品审核', permission: 'operator.review.design' },
+  { group: 'operator_design', path: '/operator/review', icon: 'Select', label: '作品审核', permission: ['operator.review.design', 'payment.open'] },
 
   { group: 'operator_assistant', path: '/operator/op-publish', icon: 'Plus', label: '发布运营任务', permission: 'operator.publish.assistant' },
   { group: 'operator_assistant', path: '/operator/op-tasks', icon: 'List', label: '我的运营任务', permission: 'operator.tasks.assistant' },
@@ -46,6 +46,7 @@ export const MENU_REGISTRY = [
   { group: 'basic_designer', path: '/basic/tasks/pending', icon: 'Select', label: '待审核任务', permission: 'basic.tasks.cs' },
 
   { group: 'payment_tracking', path: '/payment-tracking/selections', icon: 'List', label: '选品收集', permission: 'payment.selection.view' },
+  { group: 'payment_tracking', path: '/payment-tracking/manager-reviews', icon: 'Select', label: '店长审核', identity: 'manager-review' },
   { group: 'payment_tracking', path: '/payment-tracking/records', icon: 'Document', label: '打款记录', permission: 'payment.records.view' },
 
   { group: 'data', path: '/operator/stats', icon: 'DataLine', label: '个人统计', permission: 'stats.personal', roles: ['operator'] },
@@ -117,6 +118,14 @@ export function buildSidebarMenu(user, hasPermission) {
   for (const item of MENU_REGISTRY) {
     if (!grouped.has(item.group)) continue
     if (!canShowForRole(item, user.role)) continue
+    if (item.identity === 'manager-review') {
+      const canReview = user.role === 'admin'
+        || user.role === 'sub_admin'
+        || (Boolean(user.isStoreManager) && Boolean(user.store))
+        || user.permissions?.includes('*')
+        || user.permissions?.includes('payment.manage.all')
+      if (!canReview) continue
+    }
     if (!hasPermission(item.permission, user)) continue
 
     const uniqueKey = item.path || item.permission

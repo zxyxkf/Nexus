@@ -88,6 +88,15 @@ function validateEnd(stageCode, data = {}) {
 }
 
 function deriveEndSnapshot(stageCode, data = {}) {
+  const paidExplicitlyDisabled = data.paid_enabled === false
+    || data.paid_enabled === 0
+    || data.paid_enabled === '0';
+  if (stageCode === 'testing' && paidExplicitlyDisabled) {
+    return {
+      endType: 'payment_not_enabled',
+      endReason: '店长未确认开启付费'
+    };
+  }
   if (stageCode === 'testing' && data.potential_status === '不符合') {
     const action = typeof data.unqualified_action === 'string' ? data.unqualified_action.trim() : '';
     return {

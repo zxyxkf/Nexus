@@ -99,7 +99,7 @@ function groupByRecordId(rows) {
   }, new Map());
 }
 
-function presentRecord(record, stages = [], images = [], user, stageData = {}, linkStatus = null) {
+function presentRecord(record, stages = [], images = [], user, stageData = {}, linkStatus = null, options = {}) {
   const presentedStageData = presentStageData(stageData);
   if (presentedStageData.testing) {
     presentedStageData.testing.searchVisitorShare = calculateSearchShare(
@@ -140,7 +140,11 @@ function presentRecord(record, stages = [], images = [], user, stageData = {}, l
     stageData: presentedStageData,
     linkStatus: presentLinkStatus(linkStatus),
     images: images.map(presentImage),
-    allowedActions: buildAllowedActions(record, user)
+    managerReviewPending: Boolean(options.managerReviewRequest),
+    allowedActions: buildAllowedActions(record, user, {
+      managerReviewPending: Boolean(options.managerReviewRequest),
+      forceReadOnly: Boolean(options.forceReadOnly)
+    })
   };
 }
 
@@ -183,14 +187,16 @@ async function listRecords(query, user) {
     repository.countRecords(filters)
   ]);
   const recordIds = records.map(record => record.id);
-  const [stages, images, linkStatuses] = await Promise.all([
+  const [stages, images, linkStatuses, managerReviewRequests] = await Promise.all([
     repository.listEnteredStagesForRecords(recordIds),
     repository.listProductImagesForRecords(recordIds),
-    repository.listLinkStatusesForRecords(recordIds)
+    repository.listLinkStatusesForRecords(recordIds),
+    repository.listManagerReviewRequestsForRecords(recordIds)
   ]);
   const stagesByRecord = groupByRecordId(stages);
   const imagesByRecord = groupByRecordId(images);
   const linkStatusByRecord = new Map(linkStatuses.map(status => [Number(status.record_id), status]));
+  const managerReviewByRecord = new Map(managerReviewRequests.map(item => [Number(item.record_id), item]));
   return {
     list: records.map(record => presentRecord(
       record,
@@ -198,7 +204,8 @@ async function listRecords(query, user) {
       imagesByRecord.get(record.id) || [],
       user,
       {},
-      linkStatusByRecord.get(Number(record.id)) || null
+      linkStatusByRecord.get(Number(record.id)) || null,
+      { managerReviewRequest: managerReviewByRecord.get(Number(record.id)) || null }
     )),
     total,
     page,
@@ -208,21 +215,27 @@ async function listRecords(query, user) {
 }
 
 async function getRecord(id, user, options = {}) {
-  assertAnyPermission(user, [PERMISSIONS.selection, PERMISSIONS.records, PERMISSIONS.viewAll]);
+  if (!options.skipPermission) {
+    assertAnyPermission(user, [PERMISSIONS.selection, PERMISSIONS.records, PERMISSIONS.viewAll]);
+  }
   const record = await repository.findRecordById(id);
   if (!record) throw new AppError(404, '选品记录不存在');
   assertStoreAccess(record, user);
   if (!options.skipViewPermission) assertRecordViewPermission(record, user);
-  const [stages, images, linkStatus] = await Promise.all([
+  const [stages, images, linkStatus, managerReviewRequest] = await Promise.all([
     repository.listEnteredStages(record.id),
     repository.listImages(record.id),
-    repository.findLinkStatus(record.id)
+    repository.findLinkStatus(record.id),
+    repository.findManagerReviewRequestByRecordId(record.id)
   ]);
   const entries = await Promise.all(stages.map(async stage => [
     stage.stage_code,
     await repository.loadStageData(record.id, stage.stage_code)
   ]));
-  return presentRecord(record, stages, images, user, Object.fromEntries(entries), linkStatus);
+  return presentRecord(record, stages, images, user, Object.fromEntries(entries), linkStatus, {
+    managerReviewRequest,
+    forceReadOnly: Boolean(options.forceReadOnly)
+  });
 }
 
 function isStoreSequenceConflict(error) {
@@ -281,6 +294,7 @@ async function deleteRecord(id, payload, user) {
     assertStoreAccess(record, user);
     if (record.deleted_at) return;
     assertVersion(record, version);
+    await repository.deleteManagerReviewRequestByRecordId(conn, record.id);
     const deleted = await repository.softDeleteRecord(record.id, version, conn);
     if (!deleted) throw conflictError();
   });

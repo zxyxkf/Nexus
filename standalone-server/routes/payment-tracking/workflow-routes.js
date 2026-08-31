@@ -8,7 +8,7 @@ router.use(requireAuth);
 
 router.put(
   '/records/:id/stages/:stageCode',
-  requirePermission('payment.selection.view'),
+  requireAnyPermission(['payment.selection.view', 'payment.manage.all']),
   async (req, res, next) => {
     try {
       const data = await workflowService.saveStage(
@@ -26,7 +26,7 @@ router.put(
 
 router.post(
   '/records/:id/advance',
-  requirePermission('payment.selection.view'),
+  requireAnyPermission(['payment.selection.view', 'payment.manage.all']),
   async (req, res, next) => {
     try {
       const data = await workflowService.advanceStage(req.params.id, req.body || {}, req.user);
@@ -39,7 +39,7 @@ router.post(
 
 router.post(
   '/records/:id/end',
-  requirePermission('payment.selection.view'),
+  requireAnyPermission(['payment.selection.view', 'payment.manage.all']),
   async (req, res, next) => {
     try {
       const data = await workflowService.endProcess(req.params.id, req.body || {}, req.user);
@@ -52,7 +52,7 @@ router.post(
 
 router.post(
   '/records/:id/restore',
-  requireAnyPermission(['payment.selection.view', 'payment.records.view']),
+  requireAnyPermission(['payment.selection.view', 'payment.records.view', 'payment.manage.all']),
   async (req, res, next) => {
     try {
       const data = await workflowService.restoreProcess(req.params.id, req.body || {}, req.user);
@@ -65,7 +65,7 @@ router.post(
 
 router.post(
   '/records/:id/stages/:stageCode/reopen',
-  requirePermission('payment.stage_reopen'),
+  requireAnyPermission(['payment.stage_reopen', 'payment.manage.all']),
   async (req, res, next) => {
     try {
       const data = await workflowService.reopenStage(

@@ -285,7 +285,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store'
-import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, onConnectionChange, getOnlineStatus, getTaskDetailApi, getMyStatsApi } from '@/api'
+import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, onConnectionChange, getOnlineStatus, getTaskDetailApi, getMyStatsApi, getPaymentManagerReviewCountApi } from '@/api'
 import { ROLE_LABEL, ROLE_TAG_TYPE } from '@/utils/format'
 import { useConfig } from '@/composables/useConfig'
 import { HomeFilled, Bell, Moon, Sunny, User, Connection, WarningFilled } from '@element-plus/icons-vue'
@@ -296,6 +296,7 @@ import GlobalTaskSearch from '@/components/GlobalTaskSearch.vue'
 import QuickActions from '@/components/QuickActions.vue'
 import { initNotificationToast, destroyNotificationToast } from '@/composables/useNotificationToast'
 import { openTask } from '@/utils/task-navigation'
+import { canUseManagerReview } from '@/utils/permissions'
 
 const appVersion = import.meta.env.VITE_APP_VERSION
 const route = useRoute()
@@ -334,6 +335,7 @@ const TYPE_LABELS = {
   task_comment: '任务评论',
   score_review: '分值审核',
   score_reject: '分值驳回',
+  payment_manager_review: '店长审核',
   system: '系统通知'
 }
 
@@ -387,15 +389,16 @@ async function loadUnreadCount() {
 }
 
 async function loadTodoCount() {
+  let badges = { ...sidebarBadges.value }
   try {
     const res = await getMyStatsApi()
     if (res.code === 0) {
       const stats = res.data || {}
       if (stats.sidebar_badges && typeof stats.sidebar_badges === 'object') {
-        sidebarBadges.value = stats.sidebar_badges
+        badges = stats.sidebar_badges
       } else {
         const todoCount = Number(stats.accepted_count || 0) + Number(stats.rejected_count || 0)
-        sidebarBadges.value = {
+        badges = {
           '/designer/tasks/todo': todoCount,
           '/basic/tasks/todo': todoCount,
           '/operator-assistant/tasks/todo': todoCount
@@ -403,6 +406,16 @@ async function loadTodoCount() {
       }
     }
   } catch (e) {}
+  if (canUseManagerReview(userStore.userInfo)) {
+    try {
+      const response = await getPaymentManagerReviewCountApi()
+      badges = {
+        ...badges,
+        '/payment-tracking/manager-reviews': Number(response.data?.count || 0)
+      }
+    } catch (e) {}
+  }
+  sidebarBadges.value = badges
 }
 
 function scheduleTodoCountRefresh() {
@@ -474,6 +487,7 @@ onMounted(() => {
   loadTodoCount()
   todoRefreshTimer = setInterval(loadTodoCount, 60000)
   window.addEventListener('nexus:task-updated', scheduleTodoCountRefresh)
+  window.addEventListener('nexus:payment-updated', scheduleTodoCountRefresh)
   onConnectionChange(online => { isConnected.value = online })
   initNotificationToast(() => {
     loadUnreadCount()
@@ -486,6 +500,7 @@ onUnmounted(() => {
   if (todoRefreshTimer) clearInterval(todoRefreshTimer)
   if (todoRefreshDebounceTimer) clearTimeout(todoRefreshDebounceTimer)
   window.removeEventListener('nexus:task-updated', scheduleTodoCountRefresh)
+  window.removeEventListener('nexus:payment-updated', scheduleTodoCountRefresh)
   if (hoverTimer) clearTimeout(hoverTimer)
   if (curtainTimer) clearTimeout(curtainTimer)
   destroyNotificationToast()

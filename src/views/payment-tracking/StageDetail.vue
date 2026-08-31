@@ -10,6 +10,7 @@
             <div class="heading-line">
               <h1>{{ stageTitle }}</h1>
               <el-tag v-if="record.processStatus === 'ended'" type="warning" effect="plain">已结束</el-tag>
+              <el-tag v-else-if="record.managerReviewPending" type="danger" effect="light">待店长审核</el-tag>
               <el-tag v-else-if="isEditable" type="primary" effect="plain">进行中</el-tag>
               <el-tag v-else type="info" effect="plain">只读</el-tag>
             </div>
@@ -28,11 +29,11 @@
         </div>
         <div class="stage-header-actions">
           <span v-if="!isEditable && record.processStatus === 'in_progress'" class="readonly-hint">
-            历史阶段需重开后才能修改
+            {{ record.managerReviewPending ? '店长审核通过后可继续填写第二阶段' : '历史阶段需重开后才能修改' }}
           </span>
           <div class="action-buttons">
             <el-tooltip
-              v-if="supportsLinkStatus"
+              v-if="supportsLinkStatus && !record.managerReviewPending"
               :disabled="!linkStatusBlocked"
               content="链接状态已填写在其他阶段，请先重开原阶段并清空"
               placement="top"

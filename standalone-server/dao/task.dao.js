@@ -127,7 +127,8 @@ async function insertTask(conn, data) {
 async function getTaskDetail(taskId) {
   const pool = getPool();
   const [tasks] = await pool.execute(
-    `SELECT t.*, u1.real_name as publisher_name, u2.real_name as designer_name
+    `SELECT t.*, u1.real_name as publisher_name, COALESCE(u1.store, '') as publisher_store,
+            u2.real_name as designer_name
      FROM task_info t
      LEFT JOIN sys_user u1 ON t.publisher_id = u1.id
      LEFT JOIN sys_user u2 ON t.designer_id = u2.id
@@ -358,6 +359,7 @@ async function getTaskBrief(taskId) {
 // ==================== 查询 ====================
 
 const TASK_SELECT = `t.*, u1.real_name as publisher_name, u1.username as publisher_username,
+  COALESCE(u1.store, '') as publisher_store,
   u2.real_name as designer_name, u2.username as designer_username,
   EXISTS (
     SELECT 1 FROM payment_selection_record ptr
@@ -388,7 +390,7 @@ function appendStatusFilter(where, params, status) {
 }
 
 /** 我发布的任务 */
-async function queryMyPublished({ userId, role, permissions = [], filterGroup, selfOnly, status, styleNumber, keyword, taskNo, designerId, publisherId, dateStart, dateEnd, dateField, sortField, sortOrder, page, pageSize }) {
+async function queryMyPublished({ userId, role, store, permissions = [], filterGroup, selfOnly, paymentOpenView = false, canViewAllPaymentTasks = false, status, styleNumber, keyword, taskNo, designerId, publisherId, dateStart, dateEnd, dateField, sortField, sortOrder, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE 1=1';
   const params = [];
@@ -396,7 +398,13 @@ async function queryMyPublished({ userId, role, permissions = [], filterGroup, s
   const hasPerm = (code) => role === 'admin' || role === 'sub_admin' || permissions.includes(code);
   const dateColumn = taskDateColumn(dateField);
 
-  if (role === 'admin' || role === 'sub_admin') {
+  if (paymentOpenView) {
+    where += " AND COALESCE(NULLIF(t.task_group, ''), 'design') = 'design'";
+    if (!canViewAllPaymentTasks) {
+      where += ' AND t.publisher_id IN (SELECT id FROM sys_user WHERE store = ?)';
+      params.push(store || '');
+    }
+  } else if (role === 'admin' || role === 'sub_admin') {
     if (group === 'design') where += ' AND (t.task_group = ? OR t.task_group IS NULL OR t.task_group = \'\')';
     else where += ' AND t.task_group = ?';
     params.push(group);
@@ -413,7 +421,7 @@ async function queryMyPublished({ userId, role, permissions = [], filterGroup, s
 
   const requiredPerm = group === 'operator' ? 'operator.tasks.assistant' : group === 'cs' ? 'cs.tasks.basic' : 'operator.tasks.design';
   const reviewPerm = group === 'operator' ? 'operator.review.assistant' : group === 'cs' ? 'cs.review.basic' : 'operator.review.design';
-  if (!hasPerm(requiredPerm) && !hasPerm(reviewPerm) && role !== 'admin' && role !== 'sub_admin') {
+  if (!paymentOpenView && !hasPerm(requiredPerm) && !hasPerm(reviewPerm) && role !== 'admin' && role !== 'sub_admin') {
     where += ' AND 1=0';
   }
 
