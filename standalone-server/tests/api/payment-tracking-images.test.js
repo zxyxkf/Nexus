@@ -217,11 +217,25 @@ it('isolates stage images and keeps feedback bound to stable adjustments', async
   await execute("INSERT INTO payment_selection_monitoring (record_id) VALUES (?)", [stageRecordId]);
   await execute("UPDATE payment_selection_record SET current_stage = 'monitoring' WHERE id = ?", [stageRecordId]);
 
+  const linkOptimizationUpload = await request(app)
+    .post(`/api/payment-tracking/records/${stageRecordId}/images/link_optimization`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', String(potentialUpload.body.data.version))
+    .attach('files', PNG, { filename: 'link-proof.png', contentType: 'image/png' });
+  expect(linkOptimizationUpload.body.code).toBe(0);
+  expect(linkOptimizationUpload.body.data.images).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      category: 'link_optimization',
+      originalName: 'link-proof.png',
+      adjustmentId: null
+    })
+  ]));
+
   const saved = await request(app)
     .put(`/api/payment-tracking/records/${stageRecordId}/stages/monitoring`)
     .set('Authorization', `Bearer ${storeAToken}`)
     .send({
-      version: potentialUpload.body.data.version,
+      version: linkOptimizationUpload.body.data.version,
       data: {
         adjustments: [
           { clientKey: 'feedback-first', reason: '第一次', detailText: '操作一', feedbackText: '备注一' },
@@ -294,11 +308,25 @@ it('isolates stage images and keeps feedback bound to stable adjustments', async
     .attach('files', PNG, { filename: 'locked.png', contentType: 'image/png' });
   expect(lockedUpload.body.code).toBe(403);
 
+  const lockedLinkUpload = await request(app)
+    .post(`/api/payment-tracking/records/${stageRecordId}/images/link_optimization`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', String(resaved.body.data.version))
+    .attach('files', PNG, { filename: 'locked-link.png', contentType: 'image/png' });
+  expect(lockedLinkUpload.body.code).toBe(403);
+
   await execute("UPDATE payment_selection_stage SET is_reopened = 1 WHERE record_id = ? AND stage_code = 'monitoring'", [stageRecordId]);
+  const reopenedLinkUpload = await request(app)
+    .post(`/api/payment-tracking/records/${stageRecordId}/images/link_optimization`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', String(resaved.body.data.version))
+    .attach('files', PNG, { filename: 'reopened-link.png', contentType: 'image/png' });
+  expect(reopenedLinkUpload.body.code).toBe(0);
+
   const reopenedUpload = await request(app)
     .post(`/api/payment-tracking/records/${stageRecordId}/images/adjustment_feedback`)
     .set('Authorization', `Bearer ${storeAToken}`)
-    .field('version', String(resaved.body.data.version))
+    .field('version', String(reopenedLinkUpload.body.data.version))
     .field('adjustmentId', String(firstAdjustment.id))
     .attach('files', PNG, { filename: 'reopened.png', contentType: 'image/png' });
   expect(reopenedUpload.body.code).toBe(0);

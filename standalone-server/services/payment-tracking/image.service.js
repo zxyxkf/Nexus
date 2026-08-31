@@ -23,6 +23,7 @@ const IMAGE_STAGE = {
   detail_screenshot: 'selection',
   competitor: 'selection',
   potential_judgment: 'testing',
+  link_optimization: 'monitoring',
   adjustment_feedback: 'monitoring'
 };
 const IMAGE_CATEGORIES = Object.keys(IMAGE_STAGE);
