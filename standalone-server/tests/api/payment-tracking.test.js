@@ -31,6 +31,79 @@ async function login(username) {
   return response.body.data.token;
 }
 
+async function createRecordAtSummary(styleNumber) {
+  const { execute } = require('../../config/database');
+  const created = await request(app)
+    .post('/api/payment-tracking/records')
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ styleNumber });
+  const recordId = created.body.data.id;
+
+  await execute(
+    `UPDATE payment_selection_stage
+     SET stage_status = 'completed', completed_at = CURRENT_TIMESTAMP
+     WHERE record_id = ? AND stage_code = 'selection'`,
+    [recordId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_stage (record_id, stage_code, stage_status, completed_at)
+     VALUES (?, 'testing', 'completed', CURRENT_TIMESTAMP),
+            (?, 'monitoring', 'completed', CURRENT_TIMESTAMP),
+            (?, 'summary', 'active', NULL)`,
+    [recordId, recordId, recordId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_testing
+       (record_id, paid_enabled, paid_at, promotion_method, potential_status,
+        unqualified_action, manager_report_date, wei_stock_reported)
+     VALUES (?, 1, '2026-08-20 09:00:00', '测试推广', '符合潜力款标准',
+             '', '2026-08-21', 1)`,
+    [recordId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_monitoring (record_id, link_optimized, link_status)
+     VALUES (?, 1, 'keep_breaking')`,
+    [recordId]
+  );
+  const [adjustment] = await execute(
+    `INSERT INTO payment_selection_adjustment
+       (record_id, client_key, sort_order, reason, detail_text, feedback_text)
+     VALUES (?, 'downstream-adjustment', 0, '旧调整', '旧操作', '旧备注')`,
+    [recordId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_summary (record_id, summary_text)
+     VALUES (?, '旧总结')`,
+    [recordId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_image
+       (record_id, category, adjustment_id, storage_root, relative_path,
+        original_name, mime_type, sort_order)
+     VALUES (?, 'potential_judgment', NULL, 'C:/payment-test-images', 'potential.png',
+             'potential.png', 'image/png', 0),
+            (?, 'link_optimization', NULL, 'C:/payment-test-images', 'link.png',
+             'link.png', 'image/png', 0),
+            (?, 'adjustment_feedback', ?, 'C:/payment-test-images', 'feedback.png',
+             'feedback.png', 'image/png', 0)`,
+    [recordId, recordId, recordId, adjustment.insertId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_link_status
+       (record_id, stage_code, flash_sale_registered, flash_sale_group,
+        rapid_order_entered, new_product_operation_registered, product_burst, product_burst_mode)
+     VALUES (?, 'monitoring', 1, 'potential_breakout', 1, 1, 1, 'super_breakout')`,
+    [recordId]
+  );
+  await execute(
+    `UPDATE payment_selection_record SET current_stage = 'summary'
+     WHERE id = ?`,
+    [recordId]
+  );
+
+  return created.body.data;
+}
+
 beforeAll(async () => {
   process.env.DISABLE_RATE_LIMIT = '1';
   app = await setupApp();
@@ -627,6 +700,47 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
     .send({ version: reopened.body.data.version, data: { detailText: '历史阶段已修正' } });
   expect(corrected.body.data.currentStage).toBe('summary');
   expect(corrected.body.data.stages.find(stage => stage.stageCode === 'selection').isReopened).toBe(false);
+});
+
+it('requires confirmation before a reopened terminal stage invalidates downstream data', async () => {
+  const seeded = await createRecordAtSummary(`INVALIDATE-CONFIRM-${suffix}`);
+  const reopened = await request(app)
+    .post(`/api/payment-tracking/records/${seeded.id}/stages/testing/reopen`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({ version: seeded.version });
+  expect(reopened.body).toMatchObject({
+    code: 0,
+    data: { currentStage: 'summary', processStatus: 'in_progress' }
+  });
+
+  const unconfirmed = await request(app)
+    .put(`/api/payment-tracking/records/${seeded.id}/stages/testing`)
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      version: reopened.body.data.version,
+      data: { paidEnabled: false, potentialStatus: '符合潜力款标准' }
+    });
+  expect(unconfirmed.body).toMatchObject({
+    code: 400,
+    data: { requiresDownstreamInvalidation: true, stageCode: 'testing' }
+  });
+
+  const unchanged = await request(app)
+    .get(`/api/payment-tracking/records/${seeded.id}`)
+    .set('Authorization', `Bearer ${adminToken}`);
+  expect(unchanged.body.data).toMatchObject({
+    version: reopened.body.data.version,
+    currentStage: 'summary',
+    processStatus: 'in_progress'
+  });
+  expect(unchanged.body.data.stageData.testing.paidEnabled).toBe(true);
+  expect(unchanged.body.data.stages.map(stage => stage.stageCode)).toEqual([
+    'selection', 'testing', 'monitoring', 'summary'
+  ]);
+  expect(unchanged.body.data.images.map(image => image.category)).toEqual(expect.arrayContaining([
+    'potential_judgment', 'link_optimization', 'adjustment_feedback'
+  ]));
+  expect(unchanged.body.data.linkStatus).toMatchObject({ stageCode: 'monitoring' });
 });
 
 it('keeps one editable stage-owned link status and allows explicit clearing before moving it', async () => {

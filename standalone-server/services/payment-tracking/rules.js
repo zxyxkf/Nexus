@@ -110,11 +110,28 @@ function deriveEndSnapshot(stageCode, data = {}) {
   return { endType: 'manual', endReason: '主动结束流程' };
 }
 
+function deriveExplicitTerminalSnapshot(stageCode, data = {}) {
+  if (stageCode === 'testing' && Number(data.paid_enabled) === 0) {
+    return {
+      endType: 'payment_not_enabled',
+      endReason: '店长未确认开启付费'
+    };
+  }
+  if (stageCode === 'testing' && data.potential_status === '不符合') {
+    return deriveEndSnapshot(stageCode, data);
+  }
+  if (stageCode === 'monitoring' && data.link_status === 'protect_roi') {
+    return deriveEndSnapshot(stageCode, data);
+  }
+  return null;
+}
+
 module.exports = {
   roundRatio,
   calculateGrossMargin,
   calculateSearchShare,
   validateAdvance,
   validateEnd,
-  deriveEndSnapshot
+  deriveEndSnapshot,
+  deriveExplicitTerminalSnapshot
 };
