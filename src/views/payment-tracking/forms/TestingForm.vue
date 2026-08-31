@@ -12,7 +12,7 @@
             <el-radio :value="false">否</el-radio>
           </el-radio-group>
         </el-form-item>
-        <el-form-item label="付费时间" prop="paidAt">
+        <el-form-item v-if="model.paidEnabled === true" label="付费时间" prop="paidAt">
           <el-date-picker
             v-model="model.paidAt"
             type="datetime"
@@ -24,7 +24,7 @@
       </div>
     </section>
 
-    <section class="form-section">
+    <section v-if="model.paidEnabled === true" class="form-section">
       <h2>推广信息</h2>
       <div class="form-grid">
         <el-form-item label="推广方式" prop="promotionMethod" class="span-2">
@@ -47,7 +47,7 @@
       </div>
     </section>
 
-    <section class="form-section">
+    <section v-if="model.paidEnabled === true" class="form-section">
       <h2>潜力款判断</h2>
       <div class="form-grid">
         <el-form-item label="是否符合潜力款" prop="potentialStatus" class="span-2">
@@ -73,14 +73,14 @@
       </div>
     </section>
 
-    <section class="form-section image-section">
-      <h2>潜力款判断图片</h2>
+    <section v-if="model.paidEnabled === true" class="form-section image-section">
+      <h2>图片上传区</h2>
       <ImageGallery
         :record-id="record.id"
         :version="record.version"
         :images="record.images"
         category="potential_judgment"
-        label="潜力款判断图片"
+        label="图片上传区"
         :readonly="readonly"
         @record-updated="emit('record-updated', $event)"
         @reload-requested="emit('reload-requested')"
@@ -137,7 +137,13 @@ const rules = {
       : callback(new Error('店长必须确认开启付费')),
     trigger: 'change'
   }],
-  paidAt: [{ required: true, message: '请选择付费时间', trigger: 'change' }],
+  paidAt: [{
+    validator: (_rule, value, callback) => {
+      if (model.value.paidEnabled !== true || value) return callback()
+      callback(new Error('请选择付费时间'))
+    },
+    trigger: 'change'
+  }],
   potentialStatus: [{
     validator: (_rule, value, callback) => value === '符合潜力款标准'
       ? callback()

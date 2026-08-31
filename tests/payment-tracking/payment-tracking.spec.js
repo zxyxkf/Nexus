@@ -243,6 +243,10 @@ const advanceTestingRecord = {
       weiStockReported: null
     }
   },
+  images: [
+    { id: 510, category: 'product_main', originalName: 'selection-main.png', sortOrder: 0 },
+    { id: 511, category: 'potential_judgment', originalName: 'testing-proof.png', sortOrder: 0 }
+  ],
   allowedActions: { edit: true, advance: true, end: true, managerReview: true }
 }
 
@@ -775,7 +779,7 @@ test('选品时间与未来节点按四阶段流程展示', async ({ page }, tes
   await expect(page.getByRole('heading', { name: '店长付费确认' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '推广信息' })).toBeVisible()
   await expect(page.getByRole('heading', { name: '潜力款判断', exact: true })).toBeVisible()
-  await expect(page.getByText('潜力款判断图片', { exact: true }).first()).toBeVisible()
+  await expect(page.getByText('图片上传区', { exact: true }).first()).toBeVisible()
   await expect(page.getByText('直通车测点率')).toHaveCount(0)
   await expect(page.getByRole('heading', { name: '全站推广', exact: true })).toHaveCount(0)
   await expect(page.getByText('不符合后续操作')).toBeVisible()
@@ -788,6 +792,11 @@ test('选品时间与未来节点按四阶段流程展示', async ({ page }, tes
   await expect(page.getByText('仅店长审核权限可修改')).toBeVisible()
   const paidReview = page.locator('.el-form-item').filter({ hasText: '确认开启付费' })
   await expect(paidReview.locator('.el-radio').first()).toHaveClass(/is-disabled/)
+  await expect(page.getByText('付费时间', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '推广信息' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '潜力款判断', exact: true })).toHaveCount(0)
+  await expect(page.getByText('图片上传区', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '进入下一阶段' })).toHaveCount(0)
 
   await expect(page.locator('.el-message')).toHaveCount(0, { timeout: 6_000 })
   await page.screenshot({ path: testInfo.outputPath('payment-testing-readonly-review.png'), fullPage: true })
@@ -879,6 +888,34 @@ test('有效第二阶段可以保存并进入第三阶段', async ({ page }) => 
   await expect(page).toHaveURL(/#\/payment-tracking\/records\/108\/stages\/monitoring$/)
 })
 
+test('第二阶段仅在确认付费后展示并保留后续内容', async ({ page }) => {
+  await page.goto('/#/payment-tracking/records/108/stages/testing')
+
+  const paidReview = page.locator('.el-form-item').filter({ hasText: '确认开启付费' })
+  const paidNo = paidReview.locator('.el-radio').filter({ hasText: '否' })
+  const paidYes = paidReview.locator('.el-radio').filter({ hasText: '是' })
+  const imageSection = page.locator('.image-section')
+
+  await expect(page.getByText('付费时间', { exact: true })).toBeVisible()
+  await expect(page.getByRole('heading', { name: '推广信息' })).toBeVisible()
+  await expect(imageSection).toContainText('testing-proof.png')
+  await expect(imageSection).not.toContainText('selection-main.png')
+
+  await paidNo.click()
+  await expect(paidNo).toHaveClass(/is-checked/)
+  await expect(page.getByText('付费时间', { exact: true })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '推广信息' })).toHaveCount(0)
+  await expect(page.getByRole('heading', { name: '潜力款判断', exact: true })).toHaveCount(0)
+  await expect(imageSection).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '进入下一阶段' })).toHaveCount(0)
+
+  await paidYes.click()
+  await expect(paidYes).toHaveClass(/is-checked/)
+  await expect(page.getByText('付费时间', { exact: true })).toBeVisible()
+  await expect(page.locator('.el-form-item').filter({ hasText: '推广方式' })).toContainText('直通车')
+  await expect(page.locator('.image-section')).toContainText('testing-proof.png')
+})
+
 test('保存遇到版本冲突时刷新服务器最新记录', async ({ page }) => {
   await installMocks(page, { stageSaveConflictId: 108 })
   await page.goto('/#/payment-tracking/records/108/stages/testing')
@@ -912,8 +949,7 @@ test('各阶段关键必填条件会阻止无效推进或结束', async ({ page 
   await expect(page.getByText('至少上传一张产品主图', { exact: true })).toBeVisible()
 
   await page.goto('/#/payment-tracking/records/104/stages/testing')
-  await page.getByRole('button', { name: '进入下一阶段' }).click()
-  await expect(page.getByText('店长必须确认开启付费', { exact: true })).toBeVisible()
+  await expect(page.getByRole('button', { name: '进入下一阶段' })).toHaveCount(0)
 
   await page.goto('/#/payment-tracking/records/110/stages/monitoring')
   await expect(page.getByRole('button', { name: '进入下一阶段' })).toHaveCount(0)

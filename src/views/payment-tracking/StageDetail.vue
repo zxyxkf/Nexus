@@ -212,7 +212,10 @@ const isEditable = computed(() => Boolean(
   && (isCurrentStage.value || currentStageEntry.value?.isReopened)
 ))
 const canAdvanceByBranch = computed(() => {
-  if (stageCode.value === 'testing') return formData.value.potentialStatus === '符合潜力款标准'
+  if (stageCode.value === 'testing') {
+    return formData.value.paidEnabled === true
+      && formData.value.potentialStatus === '符合潜力款标准'
+  }
   if (stageCode.value === 'monitoring') return formData.value.linkStatus === 'keep_breaking'
   return true
 })
