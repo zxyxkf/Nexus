@@ -2,10 +2,11 @@ const AppError = require('../../utils/AppError');
 const { executeTransaction } = require('../../config/database');
 const { ownsPermission } = require('../../middleware/auth');
 const repository = require('./repository');
+const categoryService = require('./category.service');
 const { PERMISSIONS, STAGES } = require('./constants');
 const { calculateGrossMargin, calculateSearchShare } = require('./rules');
 const {
-  isAdmin,
+  canManageAllPaymentData,
   assertPermission,
   assertAnyPermission,
   assertStoreAccess,
@@ -33,6 +34,9 @@ function presentImage(image) {
     mimeType: image.mime_type,
     fileSize: image.file_size,
     sortOrder: image.sort_order,
+    adjustmentId: image.adjustment_id === null || image.adjustment_id === undefined
+      ? null
+      : Number(image.adjustment_id),
     sourceTaskFileId: image.source_task_file_id,
     createdAt: image.create_time
   };
@@ -122,7 +126,7 @@ async function listRecords(query, user) {
   const stageCode = String(query.stageCode || '').trim();
   if (stageCode && !STAGES.includes(stageCode)) throw new AppError(400, '无效的阶段');
   const filters = {
-    store: isAdmin(user) ? (query.store || '') : user.store,
+    store: canManageAllPaymentData(user) ? (query.store || '') : user.store,
     processStatus,
     keyword: String(query.keyword || '').trim(),
     plannerId,
@@ -130,7 +134,7 @@ async function listRecords(query, user) {
     page,
     pageSize
   };
-  if (!isAdmin(user) && !filters.store) throw new AppError(400, '当前账号未配置店铺');
+  if (!canManageAllPaymentData(user) && !filters.store) throw new AppError(400, '当前账号未配置店铺');
 
   const [records, total] = await Promise.all([
     repository.listRecords(filters),
@@ -180,18 +184,31 @@ function isStoreSequenceConflict(error) {
     || message.includes('payment_selection_record.store, payment_selection_record.store_seq');
 }
 
+async function assertListingCategoryAllowed(value, options = {}) {
+  const normalized = categoryService.normalizeName(value);
+  if (!normalized) return normalized;
+  const historicalValue = categoryService.normalizeName(options.historicalValue);
+  if (options.allowHistorical && historicalValue && normalized === historicalValue) return normalized;
+  return categoryService.assertConfiguredListingCategory(normalized);
+}
+
 async function createManualRecord(data, user) {
   assertPermission(user, PERMISSIONS.selection);
-  if (!user?.store) throw new AppError(400, '当前账号未配置店铺，无法新增选品记录');
+  const recordStore = user?.store || (canManageAllPaymentData(user) ? '管理员' : '');
+  if (!recordStore) throw new AppError(400, '当前账号未配置店铺，无法新增选品记录');
+  const listingCategory = await assertListingCategoryAllowed(
+    data?.listingCategory ?? data?.listing_category
+  );
+  const recordData = { ...data, listingCategory };
 
   let recordId;
   for (let attempt = 0; attempt < 3; attempt += 1) {
     try {
       recordId = await executeTransaction(async conn => {
-        const storeSeq = await repository.allocateStoreSeq(conn, user.store);
+        const storeSeq = await repository.allocateStoreSeq(conn, recordStore);
         const id = await repository.insertRecord(conn, {
-          ...data,
-          store: user.store,
+          ...recordData,
+          store: recordStore,
           storeSeq,
           plannerId: user.id,
           plannerName: user.realName || user.username || ''
@@ -224,6 +241,7 @@ async function deleteRecord(id, payload, user) {
 
 module.exports = {
   presentRecord,
+  assertListingCategoryAllowed,
   listRecords,
   getRecord,
   createManualRecord,

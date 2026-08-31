@@ -550,26 +550,10 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
       data: { linkStatus: 'keep_breaking' }
     });
   expect(monitored.body.data.stageData.monitoring.linkStatus).toBe('keep_breaking');
-  const breakout = await request(app)
-    .post(`/api/payment-tracking/records/${recordId}/advance`)
-    .set('Authorization', `Bearer ${storeAToken}`)
-    .send({ version: monitored.body.data.version, stageCode: 'monitoring' });
-  expect(breakout.body.data.currentStage).toBe('breakout');
-
-  const undecidedBreakout = await request(app)
-    .post(`/api/payment-tracking/records/${recordId}/advance`)
-    .set('Authorization', `Bearer ${storeAToken}`)
-    .send({ version: breakout.body.data.version, stageCode: 'breakout' });
-  expect(undecidedBreakout.body.code).toBe(400);
-
-  const breakoutSaved = await request(app)
-    .put(`/api/payment-tracking/records/${recordId}/stages/breakout`)
-    .set('Authorization', `Bearer ${storeAToken}`)
-    .send({ version: breakout.body.data.version, data: { strongLiftQualified: false } });
   const summary = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/advance`)
     .set('Authorization', `Bearer ${storeAToken}`)
-    .send({ version: breakoutSaved.body.data.version, stageCode: 'breakout' });
+    .send({ version: monitored.body.data.version, stageCode: 'monitoring' });
   expect(summary.body.data.currentStage).toBe('summary');
 
   const summarySaved = await request(app)
@@ -636,7 +620,7 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
   expect(corrected.body.data.stages.find(stage => stage.stageCode === 'selection').isReopened).toBe(false);
 });
 
-it('migrates retired preparation stages and clears obsolete payment data idempotently', async () => {
+it('migrates retired stages and clears obsolete payment data idempotently', async () => {
   const { execute, getMode } = require('../../config/database');
   const { migratePaymentTracking } = require('../../config/payment-tracking-migration');
   const baseSeq = Number(String(Date.now()).slice(-8));
@@ -693,6 +677,47 @@ it('migrates retired preparation stages and clears obsolete payment data idempot
        (record_id, sort_order, reason, fee_ratio_7d, payers_7d, total_budget, detail_text, feedback_text)
      VALUES (?, 0, '旧调整', 18.8, 20, 500, '旧操作概述', '旧备注')`,
     [advancedId]
+  );
+
+  const [activeBreakoutResult] = await execute(
+    `INSERT INTO payment_selection_record
+       (store, store_seq, planner_id, planner_name, source_task_no, style_number, current_stage)
+     VALUES ('迁移店铺', ?, ?, '迁移人员', ?, 'LEGACY-BREAKOUT-ACTIVE', 'breakout')`,
+    [baseSeq + 2, storeAUserId, `LEGACY-PAYMENT-BREAKOUT-ACTIVE-${suffix}`]
+  );
+  const activeBreakoutId = activeBreakoutResult.insertId;
+  await execute(
+    `INSERT INTO payment_selection_stage (record_id, stage_code, stage_status)
+     VALUES (?, 'selection', 'completed'), (?, 'testing', 'completed'),
+            (?, 'monitoring', 'completed'), (?, 'breakout', 'active')`,
+    [activeBreakoutId, activeBreakoutId, activeBreakoutId, activeBreakoutId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_breakout
+       (record_id, pit_output_day1, strong_lift_qualified, detail_text)
+     VALUES (?, 123.45, 1, '必须清空的原第5阶段数据')`,
+    [activeBreakoutId]
+  );
+
+  const [endedBreakoutResult] = await execute(
+    `INSERT INTO payment_selection_record
+       (store, store_seq, planner_id, planner_name, source_task_no, style_number,
+        current_stage, process_status, end_stage, end_type, end_reason)
+     VALUES ('迁移店铺', ?, ?, '迁移人员', ?, 'LEGACY-BREAKOUT-ENDED',
+             'breakout', 'ended', 'breakout', 'manual', '原第5阶段结束')`,
+    [baseSeq + 3, storeAUserId, `LEGACY-PAYMENT-BREAKOUT-ENDED-${suffix}`]
+  );
+  const endedBreakoutId = endedBreakoutResult.insertId;
+  await execute(
+    `INSERT INTO payment_selection_stage (record_id, stage_code, stage_status)
+     VALUES (?, 'selection', 'completed'), (?, 'testing', 'completed'),
+            (?, 'monitoring', 'completed'), (?, 'breakout', 'ended')`,
+    [endedBreakoutId, endedBreakoutId, endedBreakoutId, endedBreakoutId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_breakout (record_id, pit_output_day2, feedback_text)
+     VALUES (?, 678.9, '也必须清空')`,
+    [endedBreakoutId]
   );
 
   await migratePaymentTracking({ execute, mode: getMode() });
@@ -753,4 +778,42 @@ it('migrates retired preparation stages and clears obsolete payment data idempot
     detail_text: '旧操作概述',
     feedback_text: '旧备注'
   });
+
+  const [activeBreakoutRows] = await execute(
+    'SELECT current_stage, end_stage FROM payment_selection_record WHERE id = ?',
+    [activeBreakoutId]
+  );
+  expect(activeBreakoutRows[0]).toMatchObject({ current_stage: 'summary', end_stage: null });
+  const [activeBreakoutStages] = await execute(
+    'SELECT stage_code, stage_status FROM payment_selection_stage WHERE record_id = ? ORDER BY id',
+    [activeBreakoutId]
+  );
+  expect(activeBreakoutStages).toEqual([
+    expect.objectContaining({ stage_code: 'selection' }),
+    expect.objectContaining({ stage_code: 'testing' }),
+    expect.objectContaining({ stage_code: 'monitoring' }),
+    expect.objectContaining({ stage_code: 'summary', stage_status: 'active' })
+  ]);
+
+  const [endedBreakoutRows] = await execute(
+    'SELECT current_stage, end_stage FROM payment_selection_record WHERE id = ?',
+    [endedBreakoutId]
+  );
+  expect(endedBreakoutRows[0]).toMatchObject({ current_stage: 'summary', end_stage: 'summary' });
+  const [endedBreakoutStages] = await execute(
+    'SELECT stage_code, stage_status FROM payment_selection_stage WHERE record_id = ? ORDER BY id',
+    [endedBreakoutId]
+  );
+  expect(endedBreakoutStages).toEqual([
+    expect.objectContaining({ stage_code: 'selection' }),
+    expect.objectContaining({ stage_code: 'testing' }),
+    expect.objectContaining({ stage_code: 'monitoring' }),
+    expect.objectContaining({ stage_code: 'summary', stage_status: 'ended' })
+  ]);
+  const [remainingBreakoutStages] = await execute(
+    "SELECT id FROM payment_selection_stage WHERE stage_code = 'breakout'"
+  );
+  expect(remainingBreakoutStages).toHaveLength(0);
+  const [remainingBreakoutData] = await execute('SELECT record_id FROM payment_selection_breakout');
+  expect(remainingBreakoutData).toHaveLength(0);
 });

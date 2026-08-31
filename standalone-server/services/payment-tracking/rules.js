@@ -71,8 +71,6 @@ function validateAdvance(stageCode, data = {}) {
     } else if (data.link_status !== 'keep_breaking') {
       errors.link_status = '只有持续打爆才能进入下一阶段';
     }
-  } else if (stageCode === 'breakout' && ![0, 1].includes(Number(data.strong_lift_qualified))) {
-    errors.strong_lift_qualified = '请选择是否符合强拉升标准';
   }
 
   return { ok: Object.keys(errors).length === 0, errors };

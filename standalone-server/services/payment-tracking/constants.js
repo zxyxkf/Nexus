@@ -1,10 +1,9 @@
-const STAGES = ['selection', 'testing', 'monitoring', 'breakout', 'summary'];
+const STAGES = ['selection', 'testing', 'monitoring', 'summary'];
 
 const NEXT_STAGE = {
   selection: 'testing',
   testing: 'monitoring',
-  monitoring: 'breakout',
-  breakout: 'summary',
+  monitoring: 'summary',
   summary: null
 };
 

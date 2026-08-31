@@ -191,6 +191,119 @@ it('uploads, previews, reorders and soft deletes independently stored images', a
   expect(countFiles(imageRoot)).toBe(filesBeforeDelete);
 });
 
+it('isolates stage images and keeps feedback bound to stable adjustments', async () => {
+  const created = await request(app)
+    .post('/api/payment-tracking/records')
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ styleNumber: `STAGE-IMAGES-${suffix}` });
+  const stageRecordId = created.body.data.id;
+  const { execute } = require('../../config/database');
+  await execute("UPDATE payment_selection_stage SET stage_status = 'completed' WHERE record_id = ? AND stage_code = 'selection'", [stageRecordId]);
+  await execute("INSERT INTO payment_selection_stage (record_id, stage_code, stage_status) VALUES (?, 'testing', 'active')", [stageRecordId]);
+  await execute("UPDATE payment_selection_record SET current_stage = 'testing' WHERE id = ?", [stageRecordId]);
+
+  const potentialUpload = await request(app)
+    .post(`/api/payment-tracking/records/${stageRecordId}/images/potential_judgment`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', String(created.body.data.version))
+    .attach('files', PNG, { filename: 'potential.png', contentType: 'image/png' });
+  expect(potentialUpload.body.code).toBe(0);
+  expect(potentialUpload.body.data.images).toEqual(expect.arrayContaining([
+    expect.objectContaining({ category: 'potential_judgment', originalName: 'potential.png' })
+  ]));
+
+  await execute("UPDATE payment_selection_stage SET stage_status = 'completed' WHERE record_id = ? AND stage_code = 'testing'", [stageRecordId]);
+  await execute("INSERT INTO payment_selection_stage (record_id, stage_code, stage_status) VALUES (?, 'monitoring', 'active')", [stageRecordId]);
+  await execute("INSERT INTO payment_selection_monitoring (record_id) VALUES (?)", [stageRecordId]);
+  await execute("UPDATE payment_selection_record SET current_stage = 'monitoring' WHERE id = ?", [stageRecordId]);
+
+  const saved = await request(app)
+    .put(`/api/payment-tracking/records/${stageRecordId}/stages/monitoring`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({
+      version: potentialUpload.body.data.version,
+      data: {
+        adjustments: [
+          { clientKey: 'feedback-first', reason: '第一次', detailText: '操作一', feedbackText: '备注一' },
+          { clientKey: 'feedback-second', reason: '第二次', detailText: '操作二', feedbackText: '备注二' }
+        ]
+      }
+    });
+  expect(saved.body.code).toBe(0);
+  const [firstAdjustment, secondAdjustment] = saved.body.data.stageData.monitoring.adjustments;
+  expect(firstAdjustment).toMatchObject({ clientKey: 'feedback-first', detailText: '操作一' });
+  expect(secondAdjustment).toMatchObject({ clientKey: 'feedback-second', detailText: '操作二' });
+
+  const firstUpload = await request(app)
+    .post(`/api/payment-tracking/records/${stageRecordId}/images/adjustment_feedback`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', String(saved.body.data.version))
+    .field('adjustmentId', String(firstAdjustment.id))
+    .attach('files', PNG, { filename: 'first-feedback.png', contentType: 'image/png' });
+  expect(firstUpload.body.code).toBe(0);
+  const firstImage = firstUpload.body.data.images.find(image => image.originalName === 'first-feedback.png');
+  expect(firstImage.adjustmentId).toBe(firstAdjustment.id);
+
+  const secondUpload = await request(app)
+    .post(`/api/payment-tracking/records/${stageRecordId}/images/adjustment_feedback`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', String(firstUpload.body.data.version))
+    .field('adjustmentId', String(secondAdjustment.id))
+    .attach('files', PNG, { filename: 'second-feedback.png', contentType: 'image/png' });
+  expect(secondUpload.body.code).toBe(0);
+  const secondImage = secondUpload.body.data.images.find(image => image.originalName === 'second-feedback.png');
+  expect(secondImage.adjustmentId).toBe(secondAdjustment.id);
+
+  const resaved = await request(app)
+    .put(`/api/payment-tracking/records/${stageRecordId}/stages/monitoring`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({
+      version: secondUpload.body.data.version,
+      data: {
+        adjustments: [
+          { ...firstAdjustment, reason: '第一次已更新' },
+          { ...secondAdjustment, reason: '第二次已更新' }
+        ]
+      }
+    });
+  expect(resaved.body.code).toBe(0);
+  expect(resaved.body.data.stageData.monitoring.adjustments.map(item => item.id))
+    .toEqual([firstAdjustment.id, secondAdjustment.id]);
+  expect(resaved.body.data.images.find(image => image.id === firstImage.id).adjustmentId)
+    .toBe(firstAdjustment.id);
+  expect(resaved.body.data.images.find(image => image.id === secondImage.id).adjustmentId)
+    .toBe(secondAdjustment.id);
+
+  const mixedOrder = await request(app)
+    .put(`/api/payment-tracking/records/${stageRecordId}/images/order`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({
+      imageIds: [firstImage.id, secondImage.id],
+      version: resaved.body.data.version
+    });
+  expect(mixedOrder.body.code).toBe(400);
+
+  await execute("UPDATE payment_selection_stage SET stage_status = 'completed' WHERE record_id = ? AND stage_code = 'monitoring'", [stageRecordId]);
+  await execute("INSERT INTO payment_selection_stage (record_id, stage_code, stage_status) VALUES (?, 'summary', 'active')", [stageRecordId]);
+  await execute("UPDATE payment_selection_record SET current_stage = 'summary' WHERE id = ?", [stageRecordId]);
+  const lockedUpload = await request(app)
+    .post(`/api/payment-tracking/records/${stageRecordId}/images/adjustment_feedback`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', String(resaved.body.data.version))
+    .field('adjustmentId', String(firstAdjustment.id))
+    .attach('files', PNG, { filename: 'locked.png', contentType: 'image/png' });
+  expect(lockedUpload.body.code).toBe(403);
+
+  await execute("UPDATE payment_selection_stage SET is_reopened = 1 WHERE record_id = ? AND stage_code = 'monitoring'", [stageRecordId]);
+  const reopenedUpload = await request(app)
+    .post(`/api/payment-tracking/records/${stageRecordId}/images/adjustment_feedback`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .field('version', String(resaved.body.data.version))
+    .field('adjustmentId', String(firstAdjustment.id))
+    .attach('files', PNG, { filename: 'reopened.png', contentType: 'image/png' });
+  expect(reopenedUpload.body.code).toBe(0);
+});
+
 it('rejects non-images and rolls back when the configured directory is not writable', async () => {
   const before = await request(app)
     .get(`/api/payment-tracking/records/${recordId}`)

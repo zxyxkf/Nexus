@@ -94,6 +94,71 @@ async function migrateStageRows(execute, mode) {
   await execute("DELETE FROM payment_selection_stage WHERE stage_code = 'preparation'");
 }
 
+async function migrateBreakoutToSummary(execute, mode) {
+  const insert = mode === 'mysql' ? 'INSERT IGNORE' : 'INSERT OR IGNORE';
+  await execute(
+    `${insert} INTO payment_selection_summary (record_id)
+     SELECT id FROM payment_selection_record
+     WHERE current_stage = 'breakout' OR end_stage = 'breakout'`
+  );
+  await execute(
+    `${insert} INTO payment_selection_summary (record_id)
+     SELECT record_id FROM payment_selection_stage WHERE stage_code = 'breakout'`
+  );
+  await execute(
+    `${insert} INTO payment_selection_stage
+       (record_id, stage_code, stage_status, is_reopened, entered_at, completed_at)
+     SELECT record_id, 'summary', stage_status, is_reopened, entered_at, completed_at
+     FROM payment_selection_stage WHERE stage_code = 'breakout'`
+  );
+  await execute(
+    `UPDATE payment_selection_stage
+     SET stage_status = 'ended'
+     WHERE stage_code = 'summary'
+       AND record_id IN (
+         SELECT record_id FROM payment_selection_stage
+         WHERE stage_code = 'breakout' AND stage_status = 'ended'
+       )`
+  );
+  await execute(
+    `UPDATE payment_selection_stage
+     SET stage_status = 'active', completed_at = NULL
+     WHERE stage_code = 'summary' AND stage_status != 'ended'
+       AND record_id IN (
+         SELECT record_id FROM payment_selection_stage
+         WHERE stage_code = 'breakout' AND stage_status = 'active'
+       )`
+  );
+  await execute(
+    `${insert} INTO payment_selection_stage (record_id, stage_code, stage_status)
+     SELECT id, 'summary',
+            CASE WHEN process_status = 'ended' OR end_stage = 'breakout' THEN 'ended' ELSE 'active' END
+     FROM payment_selection_record
+     WHERE current_stage = 'breakout' OR end_stage = 'breakout'`
+  );
+  await execute(
+    `UPDATE payment_selection_stage SET stage_status = 'ended'
+     WHERE stage_code = 'summary'
+       AND record_id IN (
+         SELECT id FROM payment_selection_record
+         WHERE (current_stage = 'breakout' AND process_status = 'ended')
+            OR end_stage = 'breakout'
+       )`
+  );
+  await execute(
+    `UPDATE payment_selection_stage SET stage_status = 'active', completed_at = NULL
+     WHERE stage_code = 'summary'
+       AND record_id IN (
+         SELECT id FROM payment_selection_record
+         WHERE current_stage = 'breakout' AND process_status != 'ended'
+       )`
+  );
+  await execute("UPDATE payment_selection_record SET current_stage = 'summary' WHERE current_stage = 'breakout'");
+  await execute("UPDATE payment_selection_record SET end_stage = 'summary' WHERE end_stage = 'breakout'");
+  await execute("DELETE FROM payment_selection_stage WHERE stage_code = 'breakout'");
+  await execute('DELETE FROM payment_selection_breakout');
+}
+
 async function backfillSelectionDates(execute) {
   await execute(
     `UPDATE payment_selection_record
@@ -154,6 +219,7 @@ async function migratePaymentTracking({ execute, mode }) {
   await ensureTestingRows(execute, mode);
   await migratePreparationData(execute);
   await migrateStageRows(execute, mode);
+  await migrateBreakoutToSummary(execute, mode);
   await backfillSelectionDates(execute);
   await migrateMonitoringStatus(execute);
   await clearRetiredValues(execute, mode);

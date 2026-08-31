@@ -39,24 +39,6 @@ const FIELD_MAP = {
     linkOptimized: 'link_optimized',
     linkStatus: 'link_status'
   },
-  breakout: {
-    pitOutputDay1: 'pit_output_day1',
-    pitOutputDay2: 'pit_output_day2',
-    pitOutputDay3: 'pit_output_day3',
-    flashSaleAt: 'flash_sale_at',
-    superBreakoutAt: 'super_breakout_at',
-    rapidBreakoutAt: 'rapid_breakout_at',
-    strongLiftQualified: 'strong_lift_qualified',
-    searchGrowthTrend: 'search_growth_trend',
-    payerTrend: 'payer_trend',
-    currentBudget: 'current_budget',
-    feeRatio7d: 'fee_ratio_7d',
-    payers7d: 'payers_7d',
-    adjustedAt: 'adjusted_at',
-    totalBudget: 'total_budget',
-    detailText: 'detail_text',
-    feedbackText: 'feedback_text'
-  },
   summary: {
     exploded: 'exploded',
     linkMaintenance: 'link_maintenance',
@@ -68,18 +50,16 @@ const FIELD_MAP = {
 
 const BOOLEAN_FIELDS = new Set([
   'paid_enabled', 'wei_stock_reported', 'link_optimized',
-  'strong_lift_qualified', 'exploded'
+  'exploded'
 ]);
 
 const NUMBER_FIELDS = new Set([
-  'cost', 'sale_price',
-  'pit_output_day1', 'pit_output_day2', 'pit_output_day3', 'current_budget',
-  'fee_ratio_7d', 'payers_7d', 'total_budget'
+  'cost', 'sale_price'
 ]);
 
 const DATE_FIELDS = new Set([
   'selection_date', 'listing_date', 'paid_at', 'manager_report_date',
-  'flash_sale_at', 'super_breakout_at', 'rapid_breakout_at', 'adjusted_at'
+  'adjusted_at'
 ]);
 
 function validationError(errors) {
@@ -120,7 +100,7 @@ function normalizeValue(field, value) {
 
 function normalizeAdjustments(value) {
   if (!Array.isArray(value)) throw validationError({ adjustments: '推广调整格式不正确' });
-  return value.map(item => ({
+  const normalized = value.map(item => ({
     id: item?.id ? Number(item.id) : null,
     client_key: normalizeValue('client_key', item?.clientKey ?? item?.client_key),
     reason: normalizeValue('reason', item?.reason),
@@ -128,6 +108,22 @@ function normalizeAdjustments(value) {
     detail_text: normalizeValue('detail_text', item?.detailText ?? item?.detail_text),
     feedback_text: normalizeValue('feedback_text', item?.feedbackText ?? item?.feedback_text)
   }));
+  const ids = normalized.filter(item => item.id).map(item => item.id);
+  const clientKeys = normalized.filter(item => item.client_key).map(item => item.client_key);
+  if (ids.some(id => !Number.isInteger(id) || id < 1)
+    || new Set(ids).size !== ids.length
+    || new Set(clientKeys).size !== clientKeys.length) {
+    throw validationError({ adjustments: '推广调整标识重复或无效' });
+  }
+  return normalized;
+}
+
+async function assertAdjustmentOwnership(conn, recordId, adjustments = []) {
+  for (const item of adjustments) {
+    if (!item.id) continue;
+    const existing = await repository.findAdjustmentById(recordId, item.id, conn);
+    if (!existing) throw validationError({ adjustments: '推广调整不存在或不属于当前记录' });
+  }
 }
 
 function normalizeStageInput(stageCode, input = {}) {
@@ -204,6 +200,10 @@ async function saveStage(recordId, stageCode, payload, user) {
       && managerFieldsChanged(existing, changes)
       && !ownsPermission(user, PERMISSIONS.managerReview)) {
       throw new AppError(403, '只有拥有店长审核权限的用户可以修改付费审核');
+    }
+
+    if (stageCode === 'monitoring' && changes.adjustments) {
+      await assertAdjustmentOwnership(conn, record.id, changes.adjustments);
     }
 
     await repository.saveStageData(conn, record.id, stageCode, changes);

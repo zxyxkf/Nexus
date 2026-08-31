@@ -3,7 +3,7 @@ const multer = require('multer');
 const express = require('express');
 const AppError = require('../../utils/AppError');
 const { getMaxFileSizeMB, getMaxFileCount } = require('../../utils/share');
-const { requireAuth, requirePermission, optionalAuth } = require('../../middleware/auth');
+const { requireAuth, requireAnyPermission, optionalAuth } = require('../../middleware/auth');
 const imageService = require('../../services/payment-tracking/image.service');
 
 const router = express.Router();
@@ -49,7 +49,7 @@ router.use(requireAuth);
 
 router.post(
   '/records/:id/images/:category',
-  requirePermission('payment.selection.view'),
+  requireAnyPermission(['payment.selection.view', 'payment.manage.all']),
   receiveImages,
   async (req, res, next) => {
     try {
@@ -58,7 +58,8 @@ router.post(
         req.params.category,
         req.files,
         req.body?.version,
-        req.user
+        req.user,
+        req.body?.adjustmentId
       );
       res.json({ code: 0, msg: '上传成功', data });
     } catch (error) {
@@ -69,7 +70,7 @@ router.post(
 
 router.put(
   '/records/:id/images/order',
-  requirePermission('payment.selection.view'),
+  requireAnyPermission(['payment.selection.view', 'payment.manage.all']),
   async (req, res, next) => {
     try {
       const data = await imageService.reorderImages(
@@ -87,7 +88,7 @@ router.put(
 
 router.delete(
   '/records/:id/images/:imageId',
-  requirePermission('payment.selection.view'),
+  requireAnyPermission(['payment.selection.view', 'payment.manage.all']),
   async (req, res, next) => {
     try {
       const data = await imageService.deleteImage(

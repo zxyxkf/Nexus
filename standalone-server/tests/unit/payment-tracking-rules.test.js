@@ -38,12 +38,11 @@ describe('payment tracking stage advancement', () => {
     expect(result.errors).toEqual({ product_images: '至少上传一张产品主图' });
   });
 
-  it('uses the confirmed five-stage graph', () => {
+  it('uses the confirmed four-stage graph', () => {
     expect(NEXT_STAGE).toEqual({
       selection: 'testing',
       testing: 'monitoring',
-      monitoring: 'breakout',
-      breakout: 'summary',
+      monitoring: 'summary',
       summary: null
     });
   });
@@ -76,10 +75,8 @@ describe('payment tracking stage advancement', () => {
     expect(validateAdvance('monitoring', { link_status: 'keep_breaking' }).ok).toBe(true);
   });
 
-  it('requires a breakout decision but allows either decision to advance', () => {
-    expect(validateAdvance('breakout', {}).ok).toBe(false);
-    expect(validateAdvance('breakout', { strong_lift_qualified: 1 }).ok).toBe(true);
-    expect(validateAdvance('breakout', { strong_lift_qualified: 0 }).ok).toBe(true);
+  it('rejects the retired breakout stage and does not advance summary', () => {
+    expect(validateAdvance('breakout', {}).errors).toEqual({ stage: '无效阶段' });
     expect(validateAdvance('summary', {}).ok).toBe(false);
   });
 });

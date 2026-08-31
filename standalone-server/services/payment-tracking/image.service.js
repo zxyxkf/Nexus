@@ -18,7 +18,14 @@ const {
 } = require('./access');
 const { conflictError, requireVersion, assertVersion } = require('./optimistic-lock');
 
-const IMAGE_CATEGORIES = ['product_main', 'detail_screenshot', 'competitor'];
+const IMAGE_STAGE = {
+  product_main: 'selection',
+  detail_screenshot: 'selection',
+  competitor: 'selection',
+  potential_judgment: 'testing',
+  adjustment_feedback: 'monitoring'
+};
+const IMAGE_CATEGORIES = Object.keys(IMAGE_STAGE);
 const MIME_EXTENSIONS = {
   'image/png': '.png',
   'image/jpeg': '.jpg',
@@ -73,16 +80,41 @@ async function loadEditableRecord(conn, recordId, user) {
   if (!record) throw new AppError(404, '选品记录不存在');
   assertStoreAccess(record, user);
   if (record.process_status !== 'in_progress') throw new AppError(400, '流程已结束，请先恢复流程');
-  const selectionStage = await repository.findStage(record.id, 'selection', conn);
-  if (!selectionStage) throw new AppError(403, '信息及选品阶段尚未进入');
-  if (record.current_stage !== 'selection' && !Number(selectionStage.is_reopened)) {
-    throw new AppError(403, '信息及选品阶段未重开，当前不可修改图片');
-  }
   return record;
 }
 
-async function uploadImages(recordId, category, files, versionValue, user) {
+async function assertCategoryEditable(conn, record, category) {
+  const stageCode = IMAGE_STAGE[category];
+  const stage = await repository.findStage(record.id, stageCode, conn);
+  if (!stage) throw new AppError(403, '图片所属阶段尚未进入');
+  if (record.current_stage !== stageCode && !Number(stage.is_reopened)) {
+    throw new AppError(403, '图片所属历史阶段未重开，当前不可修改');
+  }
+}
+
+function normalizeAdjustmentId(category, value) {
+  if (category !== 'adjustment_feedback') {
+    if (value !== undefined && value !== null && value !== '') {
+      throw new AppError(400, '该图片分类不能绑定推广调整');
+    }
+    return null;
+  }
+  const adjustmentId = Number(value);
+  if (!Number.isInteger(adjustmentId) || adjustmentId < 1) {
+    throw new AppError(400, '请选择数据反馈所属的推广调整');
+  }
+  return adjustmentId;
+}
+
+async function assertAdjustmentOwner(conn, recordId, category, adjustmentId) {
+  if (category !== 'adjustment_feedback') return;
+  const adjustment = await repository.findAdjustmentById(recordId, adjustmentId, conn);
+  if (!adjustment) throw new AppError(400, '推广调整不存在或不属于当前记录');
+}
+
+async function uploadImages(recordId, category, files, versionValue, user, adjustmentIdValue) {
   validateCategory(category);
+  const adjustmentId = normalizeAdjustmentId(category, adjustmentIdValue);
   const version = requireVersion(versionValue);
   if (!Array.isArray(files) || !files.length) throw new AppError(400, '请选择要上传的图片');
   for (const file of files) extensionForMime(file.mimetype);
@@ -92,8 +124,10 @@ async function uploadImages(recordId, category, files, versionValue, user) {
     await executeTransaction(async conn => {
       const record = await loadEditableRecord(conn, recordId, user);
       assertVersion(record, version);
+      await assertCategoryEditable(conn, record, category);
+      await assertAdjustmentOwner(conn, record.id, category, adjustmentId);
       const storageRoot = path.resolve(getPaymentTrackingImageDir());
-      let sortOrder = await repository.getNextImageSortOrder(record.id, category, conn);
+      let sortOrder = await repository.getNextImageSortOrder(record.id, category, conn, adjustmentId);
 
       for (const file of files) {
         const relativePath = createRelativePath(record.id, extensionForMime(file.mimetype));
@@ -110,6 +144,7 @@ async function uploadImages(recordId, category, files, versionValue, user) {
           mimeType: file.mimetype,
           fileSize: file.size,
           sortOrder,
+          adjustmentId,
           uploaderId: user.id
         });
         sortOrder += 1;
@@ -148,7 +183,17 @@ async function reorderImages(recordId, imageIds, versionValue, user) {
     if (selected.some(image => image.category !== category)) {
       throw new AppError(400, '不同分类的图片不能混合排序');
     }
-    const categoryImages = await repository.listImages(record.id, category, conn);
+    const adjustmentId = selected[0].adjustment_id === null
+      ? null
+      : Number(selected[0].adjustment_id);
+    if (selected.some(image => (
+      image.adjustment_id === null ? null : Number(image.adjustment_id)
+    ) !== adjustmentId)) {
+      throw new AppError(400, '不同推广调整的图片不能混合排序');
+    }
+    await assertCategoryEditable(conn, record, category);
+    await assertAdjustmentOwner(conn, record.id, category, adjustmentId);
+    const categoryImages = await repository.listImages(record.id, category, conn, adjustmentId);
     if (categoryImages.length !== ids.length) throw new AppError(400, '请提交该分类的完整图片顺序');
 
     for (let index = 0; index < ids.length; index += 1) {
@@ -170,6 +215,9 @@ async function deleteImage(recordId, imageId, versionValue, user) {
     if (!image || Number(image.record_id) !== Number(record.id)) {
       throw new AppError(404, '图片不存在');
     }
+    const adjustmentId = image.adjustment_id === null ? null : Number(image.adjustment_id);
+    await assertCategoryEditable(conn, record, image.category);
+    await assertAdjustmentOwner(conn, record.id, image.category, adjustmentId);
     await repository.softDeleteImage(image.id, conn);
     const updated = await repository.updateRecordWithVersion(conn, record.id, version);
     if (!updated) throw conflictError();
@@ -235,6 +283,7 @@ async function copyTaskImages(conn, options) {
 }
 
 module.exports = {
+  IMAGE_STAGE,
   IMAGE_CATEGORIES,
   MIME_EXTENSIONS,
   resolveStoredImagePath,

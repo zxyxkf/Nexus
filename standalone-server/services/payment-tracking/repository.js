@@ -1,10 +1,10 @@
+const { randomUUID } = require('crypto');
 const { getPool, getMode } = require('../../config/database');
 
 const STAGE_TABLES = {
   preparation: 'payment_selection_preparation',
   testing: 'payment_selection_testing',
   monitoring: 'payment_selection_monitoring',
-  breakout: 'payment_selection_breakout',
   summary: 'payment_selection_summary'
 };
 
@@ -20,12 +20,6 @@ const STAGE_FIELDS = {
   ],
   monitoring: [
     'link_optimized', 'link_status'
-  ],
-  breakout: [
-    'pit_output_day1', 'pit_output_day2', 'pit_output_day3', 'flash_sale_at',
-    'super_breakout_at', 'rapid_breakout_at', 'strong_lift_qualified',
-    'search_growth_trend', 'payer_trend', 'current_budget', 'fee_ratio_7d',
-    'payers_7d', 'adjusted_at', 'total_budget', 'detail_text', 'feedback_text'
   ],
   summary: ['exploded', 'link_maintenance', 'style_definition', 'summary_text', 'notes']
 };
@@ -190,14 +184,23 @@ async function insertInitialStage(conn, recordId) {
   );
 }
 
-async function listImages(recordId, category, conn) {
+async function listImages(recordId, category, conn, adjustmentId) {
   const params = [recordId];
   const categoryClause = category ? 'AND category = ?' : '';
   if (category) params.push(category);
+  let adjustmentClause = '';
+  if (adjustmentId !== undefined) {
+    if (adjustmentId === null) {
+      adjustmentClause = 'AND adjustment_id IS NULL';
+    } else {
+      adjustmentClause = 'AND adjustment_id = ?';
+      params.push(adjustmentId);
+    }
+  }
   const [rows] = await executor(conn).execute(
     `SELECT * FROM payment_selection_image
-     WHERE record_id = ? AND deleted_at IS NULL ${categoryClause}
-     ORDER BY category ASC, sort_order ASC, id ASC`,
+     WHERE record_id = ? AND deleted_at IS NULL ${categoryClause} ${adjustmentClause}
+     ORDER BY category ASC, adjustment_id ASC, sort_order ASC, id ASC`,
     params
   );
   return rows;
@@ -221,8 +224,8 @@ async function insertImage(conn, data) {
   const [result] = await conn.execute(
     `INSERT INTO payment_selection_image
        (record_id, category, storage_root, relative_path, original_name, mime_type,
-        file_size, sort_order, source_task_file_id, uploader_id)
-     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        file_size, sort_order, adjustment_id, source_task_file_id, uploader_id)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [
       data.recordId,
       data.category,
@@ -232,6 +235,7 @@ async function insertImage(conn, data) {
       data.mimeType || '',
       data.fileSize || 0,
       data.sortOrder || 0,
+      data.adjustmentId || null,
       data.sourceTaskFileId || null,
       data.uploaderId || null
     ]
@@ -257,12 +261,16 @@ async function findImageById(imageId, conn) {
   return rows[0] || null;
 }
 
-async function getNextImageSortOrder(recordId, category, conn) {
+async function getNextImageSortOrder(recordId, category, conn, adjustmentId = null) {
+  const adjustmentClause = adjustmentId === null ? 'AND adjustment_id IS NULL' : 'AND adjustment_id = ?';
+  const params = adjustmentId === null
+    ? [recordId, category]
+    : [recordId, category, adjustmentId];
   const [rows] = await executor(conn).execute(
     `SELECT COALESCE(MAX(sort_order), -1) + 1 AS next_order
      FROM payment_selection_image
-     WHERE record_id = ? AND category = ? AND deleted_at IS NULL`,
-    [recordId, category]
+     WHERE record_id = ? AND category = ? AND deleted_at IS NULL ${adjustmentClause}`,
+    params
   );
   return Number(rows[0]?.next_order || 0);
 }
@@ -322,26 +330,93 @@ async function ensureStageDataRow(conn, recordId, stageCode) {
   }
 }
 
+async function findAdjustmentById(recordId, adjustmentId, conn) {
+  const [rows] = await executor(conn).execute(
+    `SELECT id, record_id, client_key, sort_order, reason, adjusted_at, detail_text, feedback_text
+     FROM payment_selection_adjustment WHERE record_id = ? AND id = ?`,
+    [recordId, adjustmentId]
+  );
+  return rows[0] || null;
+}
+
+async function findAdjustmentByClientKey(recordId, clientKey, conn) {
+  if (!clientKey) return null;
+  const [rows] = await executor(conn).execute(
+    `SELECT id, record_id, client_key, sort_order, reason, adjusted_at, detail_text, feedback_text
+     FROM payment_selection_adjustment WHERE record_id = ? AND client_key = ?`,
+    [recordId, clientKey]
+  );
+  return rows[0] || null;
+}
+
 async function replaceAdjustments(conn, recordId, adjustments) {
-  await conn.execute('DELETE FROM payment_selection_adjustment WHERE record_id = ?', [recordId]);
+  const [existingRows] = await conn.execute(
+    'SELECT id, client_key FROM payment_selection_adjustment WHERE record_id = ?',
+    [recordId]
+  );
+  await conn.execute(
+    'UPDATE payment_selection_adjustment SET sort_order = -id WHERE record_id = ?',
+    [recordId]
+  );
+  const retainedIds = [];
   for (let index = 0; index < adjustments.length; index += 1) {
     const item = adjustments[index] || {};
+    const existing = item.id
+      ? await findAdjustmentById(recordId, item.id, conn)
+      : await findAdjustmentByClientKey(recordId, item.client_key, conn);
+    const clientKey = existing?.client_key || item.client_key || `server-${randomUUID()}`;
+    if (existing) {
+      await conn.execute(
+        `UPDATE payment_selection_adjustment
+         SET client_key = ?, sort_order = ?, reason = ?, adjusted_at = ?,
+             detail_text = ?, feedback_text = ?
+         WHERE id = ? AND record_id = ?`,
+        [
+          clientKey,
+          index,
+          item.reason || '',
+          item.adjusted_at || null,
+          item.detail_text || '',
+          item.feedback_text || '',
+          existing.id,
+          recordId
+        ]
+      );
+      retainedIds.push(Number(existing.id));
+    } else {
+      const [result] = await conn.execute(
+        `INSERT INTO payment_selection_adjustment
+           (record_id, client_key, sort_order, reason, adjusted_at, detail_text, feedback_text)
+         VALUES (?, ?, ?, ?, ?, ?, ?)`,
+        [
+          recordId,
+          clientKey,
+          index,
+          item.reason || '',
+          item.adjusted_at || null,
+          item.detail_text || '',
+          item.feedback_text || ''
+        ]
+      );
+      retainedIds.push(Number(result.insertId));
+    }
+  }
+
+  const removedIds = existingRows
+    .map(row => Number(row.id))
+    .filter(id => !retainedIds.includes(id));
+  if (removedIds.length) {
+    const placeholders = removedIds.map(() => '?').join(',');
     await conn.execute(
-      `INSERT INTO payment_selection_adjustment
-         (record_id, sort_order, reason, adjusted_at, fee_ratio_7d, payers_7d,
-          total_budget, detail_text, feedback_text)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-      [
-        recordId,
-        index,
-        item.reason || '',
-        item.adjusted_at || null,
-        item.fee_ratio_7d ?? null,
-        item.payers_7d ?? null,
-        item.total_budget ?? null,
-        item.detail_text || '',
-        item.feedback_text || ''
-      ]
+      `UPDATE payment_selection_image SET deleted_at = CURRENT_TIMESTAMP
+       WHERE record_id = ? AND category = 'adjustment_feedback'
+         AND adjustment_id IN (${placeholders}) AND deleted_at IS NULL`,
+      [recordId, ...removedIds]
+    );
+    await conn.execute(
+      `DELETE FROM payment_selection_adjustment
+       WHERE record_id = ? AND id IN (${placeholders})`,
+      [recordId, ...removedIds]
     );
   }
 }
@@ -592,5 +667,7 @@ module.exports = {
   findImageById,
   getNextImageSortOrder,
   updateImageOrder,
+  findAdjustmentById,
+  findAdjustmentByClientKey,
   STAGE_FIELDS
 };
