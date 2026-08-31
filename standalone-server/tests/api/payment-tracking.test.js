@@ -494,9 +494,17 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
     .set('Authorization', `Bearer ${managerToken}`)
     .send({
       version: 3,
-      data: { paidEnabled: true, paidAt: '2026-09-01' }
+      data: {
+        paidEnabled: true,
+        paidAt: '2026-09-01',
+        weiStockReported: false
+      }
     });
   expect(reviewed.body.data.version).toBe(4);
+  expect(reviewed.body.data.stageData.testing).toMatchObject({
+    paidEnabled: true,
+    weiStockReported: false
+  });
 
   const unqualified = await request(app)
     .put(`/api/payment-tracking/records/${recordId}/stages/testing`)
@@ -533,7 +541,7 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
       data: { linkOptimized: true, linkStatus: 'protect_roi' }
     });
   expect(protectedLink.body.data.stageData.monitoring).toMatchObject({
-    linkOptimized: 1,
+    linkOptimized: true,
     linkStatus: 'protect_roi'
   });
   const blockedMonitoring = await request(app)
@@ -559,7 +567,8 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
   const summarySaved = await request(app)
     .put(`/api/payment-tracking/records/${recordId}/stages/summary`)
     .set('Authorization', `Bearer ${storeAToken}`)
-    .send({ version: summary.body.data.version, data: {} });
+    .send({ version: summary.body.data.version, data: { exploded: false } });
+  expect(summarySaved.body.data.stageData.summary.exploded).toBe(false);
   const ended = await request(app)
     .post(`/api/payment-tracking/records/${recordId}/end`)
     .set('Authorization', `Bearer ${storeAToken}`)

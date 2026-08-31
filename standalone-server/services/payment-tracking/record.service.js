@@ -15,6 +15,12 @@ const {
 } = require('./access');
 const { requireVersion, assertVersion, conflictError } = require('./optimistic-lock');
 
+const STAGE_BOOLEAN_FIELDS = {
+  testing: ['paidEnabled', 'weiStockReported'],
+  monitoring: ['linkOptimized'],
+  summary: ['exploded']
+};
+
 function presentStage(stage) {
   return {
     id: stage.id,
@@ -43,7 +49,8 @@ function presentImage(image) {
 }
 
 function presentNullableBoolean(value) {
-  return value === null || value === undefined ? null : Boolean(value);
+  if (value === null || value === undefined) return null;
+  return value === true || Number(value) === 1;
 }
 
 function presentLinkStatus(status) {
@@ -71,6 +78,17 @@ function snakeToCamel(value) {
   ]));
 }
 
+function presentStageData(stageData) {
+  const presented = snakeToCamel(stageData);
+  for (const [stageCode, fields] of Object.entries(STAGE_BOOLEAN_FIELDS)) {
+    if (!presented[stageCode]) continue;
+    for (const field of fields) {
+      presented[stageCode][field] = presentNullableBoolean(presented[stageCode][field]);
+    }
+  }
+  return presented;
+}
+
 function groupByRecordId(rows) {
   return rows.reduce((groups, row) => {
     const items = groups.get(row.record_id) || [];
@@ -81,7 +99,7 @@ function groupByRecordId(rows) {
 }
 
 function presentRecord(record, stages = [], images = [], user, stageData = {}, linkStatus = null) {
-  const presentedStageData = snakeToCamel(stageData);
+  const presentedStageData = presentStageData(stageData);
   if (presentedStageData.testing) {
     presentedStageData.testing.searchVisitorShare = calculateSearchShare(
       presentedStageData.testing.searchVisitors,
