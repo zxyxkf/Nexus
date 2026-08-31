@@ -42,6 +42,26 @@ function presentImage(image) {
   };
 }
 
+function presentNullableBoolean(value) {
+  return value === null || value === undefined ? null : Boolean(value);
+}
+
+function presentLinkStatus(status) {
+  if (!status) return null;
+  return {
+    stageCode: status.stage_code,
+    flashSaleRegistered: presentNullableBoolean(status.flash_sale_registered),
+    flashSaleGroup: status.flash_sale_group || '',
+    rapidOrderEntered: presentNullableBoolean(status.rapid_order_entered),
+    newProductOperationRegistered: presentNullableBoolean(status.new_product_operation_registered),
+    newProductPeak: presentNullableBoolean(status.new_product_peak),
+    productBurst: presentNullableBoolean(status.product_burst),
+    productBurstMode: status.product_burst_mode || '',
+    createdAt: status.create_time,
+    updatedAt: status.update_time
+  };
+}
+
 function snakeToCamel(value) {
   if (Array.isArray(value)) return value.map(snakeToCamel);
   if (!value || typeof value !== 'object') return value;
@@ -60,7 +80,7 @@ function groupByRecordId(rows) {
   }, new Map());
 }
 
-function presentRecord(record, stages = [], images = [], user, stageData = {}) {
+function presentRecord(record, stages = [], images = [], user, stageData = {}, linkStatus = null) {
   const presentedStageData = snakeToCamel(stageData);
   if (presentedStageData.testing) {
     presentedStageData.testing.searchVisitorShare = calculateSearchShare(
@@ -99,6 +119,7 @@ function presentRecord(record, stages = [], images = [], user, stageData = {}) {
     updatedAt: record.update_time,
     stages: stages.map(presentStage),
     stageData: presentedStageData,
+    linkStatus: presentLinkStatus(linkStatus),
     images: images.map(presentImage),
     allowedActions: buildAllowedActions(record, user)
   };
@@ -141,18 +162,22 @@ async function listRecords(query, user) {
     repository.countRecords(filters)
   ]);
   const recordIds = records.map(record => record.id);
-  const [stages, images] = await Promise.all([
+  const [stages, images, linkStatuses] = await Promise.all([
     repository.listEnteredStagesForRecords(recordIds),
-    repository.listProductImagesForRecords(recordIds)
+    repository.listProductImagesForRecords(recordIds),
+    repository.listLinkStatusesForRecords(recordIds)
   ]);
   const stagesByRecord = groupByRecordId(stages);
   const imagesByRecord = groupByRecordId(images);
+  const linkStatusByRecord = new Map(linkStatuses.map(status => [Number(status.record_id), status]));
   return {
     list: records.map(record => presentRecord(
       record,
       stagesByRecord.get(record.id) || [],
       imagesByRecord.get(record.id) || [],
-      user
+      user,
+      {},
+      linkStatusByRecord.get(Number(record.id)) || null
     )),
     total,
     page,
@@ -167,15 +192,16 @@ async function getRecord(id, user, options = {}) {
   if (!record) throw new AppError(404, '选品记录不存在');
   assertStoreAccess(record, user);
   if (!options.skipViewPermission) assertRecordViewPermission(record, user);
-  const [stages, images] = await Promise.all([
+  const [stages, images, linkStatus] = await Promise.all([
     repository.listEnteredStages(record.id),
-    repository.listImages(record.id)
+    repository.listImages(record.id),
+    repository.findLinkStatus(record.id)
   ]);
   const entries = await Promise.all(stages.map(async stage => [
     stage.stage_code,
     await repository.loadStageData(record.id, stage.stage_code)
   ]));
-  return presentRecord(record, stages, images, user, Object.fromEntries(entries));
+  return presentRecord(record, stages, images, user, Object.fromEntries(entries), linkStatus);
 }
 
 function isStoreSequenceConflict(error) {

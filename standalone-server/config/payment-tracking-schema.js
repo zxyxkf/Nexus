@@ -151,6 +151,19 @@ const sqlite = [
     summary_text TEXT DEFAULT '',
     notes TEXT DEFAULT ''
   )`,
+  `CREATE TABLE IF NOT EXISTS payment_selection_link_status (
+    record_id INTEGER PRIMARY KEY,
+    stage_code TEXT NOT NULL,
+    flash_sale_registered INTEGER,
+    flash_sale_group TEXT DEFAULT '',
+    rapid_order_entered INTEGER,
+    new_product_operation_registered INTEGER,
+    new_product_peak INTEGER,
+    product_burst INTEGER,
+    product_burst_mode TEXT DEFAULT '',
+    create_time TEXT DEFAULT (datetime('now', 'localtime')),
+    update_time TEXT DEFAULT (datetime('now', 'localtime'))
+  )`,
   `CREATE TABLE IF NOT EXISTS payment_listing_category (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
@@ -316,6 +329,19 @@ const mysql = [
     style_definition VARCHAR(50) DEFAULT '',
     summary_text TEXT,
     notes TEXT
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS payment_selection_link_status (
+    record_id INT PRIMARY KEY,
+    stage_code VARCHAR(30) NOT NULL,
+    flash_sale_registered TINYINT DEFAULT NULL,
+    flash_sale_group VARCHAR(50) DEFAULT '',
+    rapid_order_entered TINYINT DEFAULT NULL,
+    new_product_operation_registered TINYINT DEFAULT NULL,
+    new_product_peak TINYINT DEFAULT NULL,
+    product_burst TINYINT DEFAULT NULL,
+    product_burst_mode VARCHAR(50) DEFAULT '',
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS payment_listing_category (
     id INT AUTO_INCREMENT PRIMARY KEY,

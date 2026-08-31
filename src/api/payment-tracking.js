@@ -10,6 +10,7 @@ export const advancePaymentStageApi = (id, data) => request.post(`/api/payment-t
 export const endPaymentProcessApi = (id, data) => request.post(`/api/payment-tracking/records/${id}/end`, data)
 export const restorePaymentProcessApi = (id, data) => request.post(`/api/payment-tracking/records/${id}/restore`, data)
 export const reopenPaymentStageApi = (id, stageCode, data) => request.post(`/api/payment-tracking/records/${id}/stages/${stageCode}/reopen`, data)
+export const savePaymentLinkStatusApi = (id, stageCode, data) => request.put(`/api/payment-tracking/records/${id}/stages/${stageCode}/link-status`, data)
 export const deletePaymentRecordApi = (id, version) => request.delete(`/api/payment-tracking/records/${id}`, { data: { version } })
 export const openPaymentFromTaskApi = taskId => request.post(`/api/payment-tracking/open/task/${taskId}`)
 export const openPaymentBatchApi = taskIds => request.post('/api/payment-tracking/open/batch', { taskIds })

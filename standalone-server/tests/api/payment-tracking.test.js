@@ -620,6 +620,153 @@ it('runs the workflow without exposing future stages and enforces optimistic loc
   expect(corrected.body.data.stages.find(stage => stage.stageCode === 'selection').isReopened).toBe(false);
 });
 
+it('keeps one editable stage-owned link status and allows explicit clearing before moving it', async () => {
+  const { execute } = require('../../config/database');
+  const created = await request(app)
+    .post('/api/payment-tracking/records')
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ styleNumber: `LINK-STATUS-${suffix}` });
+  const linkRecordId = created.body.data.id;
+  await execute(
+    "UPDATE payment_selection_stage SET stage_status = 'completed' WHERE record_id = ? AND stage_code = 'selection'",
+    [linkRecordId]
+  );
+  await execute(
+    "INSERT INTO payment_selection_stage (record_id, stage_code, stage_status) VALUES (?, 'testing', 'active')",
+    [linkRecordId]
+  );
+  await execute("UPDATE payment_selection_record SET current_stage = 'testing' WHERE id = ?", [linkRecordId]);
+
+  const missingFlashGroup = await request(app)
+    .put(`/api/payment-tracking/records/${linkRecordId}/stages/testing/link-status`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({
+      version: created.body.data.version,
+      data: { flashSaleRegistered: true }
+    });
+  expect(missingFlashGroup.body).toMatchObject({ code: 400 });
+
+  const missingBurstMode = await request(app)
+    .put(`/api/payment-tracking/records/${linkRecordId}/stages/testing/link-status`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({
+      version: created.body.data.version,
+      data: { productBurst: true }
+    });
+  expect(missingBurstMode.body).toMatchObject({ code: 400 });
+
+  const savedTesting = await request(app)
+    .put(`/api/payment-tracking/records/${linkRecordId}/stages/testing/link-status`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({
+      version: created.body.data.version,
+      data: {
+        flashSaleRegistered: true,
+        flashSaleGroup: 'new_product_cold_start',
+        rapidOrderEntered: true,
+        newProductOperationRegistered: true,
+        newProductPeak: false,
+        productBurst: true,
+        productBurstMode: 'trade_price_for_volume'
+      }
+    });
+  expect(savedTesting.body.code).toBe(0);
+  expect(savedTesting.body.data.linkStatus).toMatchObject({
+    stageCode: 'testing',
+    flashSaleRegistered: true,
+    flashSaleGroup: 'new_product_cold_start',
+    rapidOrderEntered: true,
+    newProductOperationRegistered: true,
+    newProductPeak: false,
+    productBurst: true,
+    productBurstMode: 'trade_price_for_volume'
+  });
+
+  await execute(
+    "UPDATE payment_selection_stage SET stage_status = 'completed', is_reopened = 0 WHERE record_id = ? AND stage_code = 'testing'",
+    [linkRecordId]
+  );
+  await execute(
+    "INSERT INTO payment_selection_stage (record_id, stage_code, stage_status) VALUES (?, 'monitoring', 'active')",
+    [linkRecordId]
+  );
+  await execute('INSERT INTO payment_selection_monitoring (record_id) VALUES (?)', [linkRecordId]);
+  await execute("UPDATE payment_selection_record SET current_stage = 'monitoring' WHERE id = ?", [linkRecordId]);
+
+  const duplicateOwner = await request(app)
+    .put(`/api/payment-tracking/records/${linkRecordId}/stages/monitoring/link-status`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({
+      version: savedTesting.body.data.version,
+      data: { newProductOperationRegistered: true }
+    });
+  expect(duplicateOwner.body).toMatchObject({ code: 400 });
+
+  await execute(
+    "UPDATE payment_selection_stage SET is_reopened = 1 WHERE record_id = ? AND stage_code = 'testing'",
+    [linkRecordId]
+  );
+  const clearedTesting = await request(app)
+    .put(`/api/payment-tracking/records/${linkRecordId}/stages/testing/link-status`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ version: savedTesting.body.data.version, clear: true });
+  expect(clearedTesting.body).toMatchObject({ code: 0, data: { linkStatus: null } });
+
+  const savedMonitoring = await request(app)
+    .put(`/api/payment-tracking/records/${linkRecordId}/stages/monitoring/link-status`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({
+      version: clearedTesting.body.data.version,
+      data: {
+        flashSaleRegistered: false,
+        rapidOrderEntered: true,
+        newProductOperationRegistered: true,
+        newProductPeak: true,
+        productBurst: true,
+        productBurstMode: 'super_breakout'
+      }
+    });
+  expect(savedMonitoring.body.code).toBe(0);
+  expect(savedMonitoring.body.data.linkStatus).toMatchObject({
+    stageCode: 'monitoring',
+    flashSaleRegistered: false,
+    flashSaleGroup: '',
+    rapidOrderEntered: null,
+    newProductOperationRegistered: true,
+    newProductPeak: true,
+    productBurst: true,
+    productBurstMode: 'super_breakout'
+  });
+
+  const listed = await request(app)
+    .get(`/api/payment-tracking/records?keyword=LINK-STATUS-${suffix}`)
+    .set('Authorization', `Bearer ${storeAToken}`);
+  expect(listed.body.data.list[0].linkStatus).toMatchObject({ stageCode: 'monitoring' });
+
+  await execute(
+    "UPDATE payment_selection_stage SET stage_status = 'completed' WHERE record_id = ? AND stage_code = 'monitoring'",
+    [linkRecordId]
+  );
+  await execute(
+    "INSERT INTO payment_selection_stage (record_id, stage_code, stage_status) VALUES (?, 'summary', 'active')",
+    [linkRecordId]
+  );
+  await execute("UPDATE payment_selection_record SET current_stage = 'summary' WHERE id = ?", [linkRecordId]);
+  const lockedHistorical = await request(app)
+    .put(`/api/payment-tracking/records/${linkRecordId}/stages/monitoring/link-status`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({
+      version: savedMonitoring.body.data.version,
+      data: { productBurst: false }
+    });
+  expect(lockedHistorical.body).toMatchObject({ code: 403 });
+
+  const forbidden = await request(app)
+    .get(`/api/payment-tracking/records/${linkRecordId}`)
+    .set('Authorization', `Bearer ${storeBToken}`);
+  expect(forbidden.body.code).toBe(403);
+});
+
 it('migrates retired stages and clears obsolete payment data idempotently', async () => {
   const { execute, getMode } = require('../../config/database');
   const { migratePaymentTracking } = require('../../config/payment-tracking-migration');

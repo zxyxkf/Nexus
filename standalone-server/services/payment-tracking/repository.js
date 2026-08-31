@@ -220,6 +220,67 @@ async function listProductImagesForRecords(recordIds) {
   return rows;
 }
 
+async function findLinkStatus(recordId, conn) {
+  const [rows] = await executor(conn).execute(
+    'SELECT * FROM payment_selection_link_status WHERE record_id = ?',
+    [recordId]
+  );
+  return rows[0] || null;
+}
+
+async function listLinkStatusesForRecords(recordIds) {
+  if (!recordIds.length) return [];
+  const placeholders = recordIds.map(() => '?').join(',');
+  const [rows] = await getPool().execute(
+    `SELECT * FROM payment_selection_link_status
+     WHERE record_id IN (${placeholders}) ORDER BY record_id ASC`,
+    recordIds
+  );
+  return rows;
+}
+
+async function upsertLinkStatus(conn, recordId, stageCode, data) {
+  const existing = await findLinkStatus(recordId, conn);
+  const values = [
+    stageCode,
+    data.flashSaleRegistered,
+    data.flashSaleGroup,
+    data.rapidOrderEntered,
+    data.newProductOperationRegistered,
+    data.newProductPeak,
+    data.productBurst,
+    data.productBurstMode
+  ];
+  if (existing) {
+    await conn.execute(
+      `UPDATE payment_selection_link_status
+       SET stage_code = ?, flash_sale_registered = ?, flash_sale_group = ?,
+           rapid_order_entered = ?, new_product_operation_registered = ?,
+           new_product_peak = ?, product_burst = ?, product_burst_mode = ?,
+           update_time = CURRENT_TIMESTAMP
+       WHERE record_id = ?`,
+      [...values, recordId]
+    );
+    return;
+  }
+  await conn.execute(
+    `INSERT INTO payment_selection_link_status
+       (record_id, stage_code, flash_sale_registered, flash_sale_group,
+        rapid_order_entered, new_product_operation_registered, new_product_peak,
+        product_burst, product_burst_mode)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+    [recordId, ...values]
+  );
+}
+
+async function deleteLinkStatus(conn, recordId) {
+  const [result] = await conn.execute(
+    'DELETE FROM payment_selection_link_status WHERE record_id = ?',
+    [recordId]
+  );
+  return Number(result.affectedRows || 0) > 0;
+}
+
 async function insertImage(conn, data) {
   const [result] = await conn.execute(
     `INSERT INTO payment_selection_image
@@ -662,6 +723,10 @@ module.exports = {
   deletePromotionMethod,
   listImages,
   listProductImagesForRecords,
+  findLinkStatus,
+  listLinkStatusesForRecords,
+  upsertLinkStatus,
+  deleteLinkStatus,
   insertImage,
   softDeleteImage,
   findImageById,
