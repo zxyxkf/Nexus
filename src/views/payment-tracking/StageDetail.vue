@@ -389,7 +389,7 @@ async function saveLinkStatus(payload) {
     })
     if (await reloadOnVersionConflict(response)) return
     if (response.code === 0) {
-      applyRecord(response.data)
+      applyRecord(response.data, false)
       linkStatusDialogVisible.value = false
       ElMessage.success(payload.clear ? '链接状态已清空' : '链接状态已保存')
     }

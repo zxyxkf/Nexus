@@ -959,6 +959,11 @@ test('各阶段关键必填条件会阻止无效推进或结束', async ({ page 
 test('链接状态弹窗保存、清空与状态框只影响所属阶段', async ({ page }) => {
   await page.goto('/#/payment-tracking/records/105/stages/monitoring')
 
+  const linkOptimization = page.locator('.el-form-item').filter({ hasText: '是否做链接优化' })
+  const optimizedNo = linkOptimization.locator('.el-radio').filter({ hasText: '否' })
+  await optimizedNo.click()
+  await expect(optimizedNo).toHaveClass(/is-checked/)
+
   const timeline = page.locator('.stage-timeline')
   const monitoringNode = timeline.locator('.stage-column').filter({ hasText: '第三阶段' })
   await expect(monitoringNode.locator('.link-status-frame')).toHaveCount(4)
@@ -986,8 +991,23 @@ test('链接状态弹窗保存、清空与状态框只影响所属阶段', async
   const request = await clearRequest
   expect(request.postDataJSON()).toMatchObject({ clear: true })
   await expect(monitoringNode.locator('.link-status-row')).toHaveCount(0)
+  await expect(optimizedNo).toHaveClass(/is-checked/)
 
   await page.goto('/#/payment-tracking/records/102/stages/testing')
+  const promotionMethod = page.locator('.el-form-item').filter({ hasText: '推广方式' })
+  await promotionMethod.locator('.el-select__wrapper').click()
+  await page.getByRole('option', { name: '全站推广', exact: true }).click()
+  await expect(promotionMethod).toContainText('全站推广')
+
+  const testingLinkSave = page.waitForRequest(request => (
+    request.method() === 'PUT'
+    && new URL(request.url()).pathname === '/api/payment-tracking/records/102/stages/testing/link-status'
+  ))
+  await page.locator('.action-buttons').getByRole('button', { name: '链接状态' }).click()
+  await page.getByRole('dialog', { name: '链接状态' }).getByRole('button', { name: '保存' }).click()
+  await testingLinkSave
+  await expect(promotionMethod).toContainText('全站推广')
+
   const testingFrames = page.locator('.stage-column').filter({ hasText: '第二阶段' }).locator('.link-status-frame')
   await expect(testingFrames).toHaveCount(4)
   await expect(page.locator('.stage-column').filter({ hasText: '第二阶段' }).locator('.link-status-frame.active')).toHaveCount(2)
