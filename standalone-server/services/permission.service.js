@@ -7,6 +7,7 @@ const LEGACY_BOARD_PERMISSIONS = {
   'board.operator': 'dashboard.operator',
   'board.cs': 'dashboard.cs'
 };
+const RETIRED_PERMISSIONS = ['payment.manager_review'];
 
 async function seedPermissions() {
   for (const p of PERMISSIONS) {
@@ -28,6 +29,13 @@ async function seedPermissions() {
     ).catch(() => {});
   }
   await migrateLegacyBoardPermissions();
+  await removeRetiredPermissions();
+}
+
+async function removeRetiredPermissions() {
+  const placeholders = RETIRED_PERMISSIONS.map(() => '?').join(',');
+  await execute(`DELETE FROM sys_user_permission WHERE permission_code IN (${placeholders})`, RETIRED_PERMISSIONS).catch(() => {});
+  await execute(`DELETE FROM sys_permission WHERE code IN (${placeholders})`, RETIRED_PERMISSIONS).catch(() => {});
 }
 
 async function migrateLegacyBoardPermissions() {

@@ -9,6 +9,21 @@ function canManageAllPaymentData(user) {
   return isAdmin(user) || (user?.permissions || []).includes('payment.manage.all');
 }
 
+function canViewAllPaymentData(user) {
+  return canManageAllPaymentData(user)
+    || user?.role === 'sub_admin'
+    || ownsPermission(user, 'payment.view.all');
+}
+
+function canWritePaymentData(user) {
+  return canManageAllPaymentData(user) || ownsPermission(user, 'payment.selection.view');
+}
+
+function canSetPaymentDecision(record, user) {
+  return canManageAllPaymentData(user)
+    || (Boolean(user?.isStoreManager) && Boolean(user?.store) && record?.store === user.store);
+}
+
 function hasPaymentPermission(user, permission) {
   return ownsPermission(user, permission)
     || (canManageAllPaymentData(user) && String(permission || '').startsWith('payment.'));
@@ -27,13 +42,14 @@ function assertAnyPermission(user, permissions) {
 }
 
 function assertStoreAccess(record, user) {
-  if (canManageAllPaymentData(user)) return;
+  if (canViewAllPaymentData(user)) return;
   if (!user?.store || record.store !== user.store) {
     throw new AppError(403, '无权访问其他店铺的选品记录');
   }
 }
 
 function assertRecordViewPermission(record, user) {
+  if (canViewAllPaymentData(user)) return;
   assertPermission(
     user,
     record.process_status === 'ended' ? 'payment.records.view' : 'payment.selection.view'
@@ -55,7 +71,7 @@ function buildAllowedActions(record, user) {
     end: inProgress && canManageOwnerRecord(record, user),
     restore: ended && canManageOwnerRecord(record, user),
     reopen: inProgress && hasPaymentPermission(user, 'payment.stage_reopen'),
-    managerReview: inProgress && hasPaymentPermission(user, 'payment.manager_review'),
+    managerReview: inProgress && canSetPaymentDecision(record, user),
     delete: hasPaymentPermission(user, 'payment.delete')
   };
 }
@@ -63,6 +79,9 @@ function buildAllowedActions(record, user) {
 module.exports = {
   isAdmin,
   canManageAllPaymentData,
+  canViewAllPaymentData,
+  canWritePaymentData,
+  canSetPaymentDecision,
   hasPaymentPermission,
   assertPermission,
   assertAnyPermission,

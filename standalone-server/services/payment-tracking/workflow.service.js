@@ -1,6 +1,5 @@
 const AppError = require('../../utils/AppError');
 const { executeTransaction } = require('../../config/database');
-const { ownsPermission } = require('../../middleware/auth');
 const repository = require('./repository');
 const promotionService = require('./promotion.service');
 const recordService = require('./record.service');
@@ -16,7 +15,8 @@ const {
   assertPermission,
   assertAnyPermission,
   assertStoreAccess,
-  canManageOwnerRecord
+  canManageOwnerRecord,
+  canSetPaymentDecision
 } = require('./access');
 
 const FIELD_MAP = {
@@ -204,8 +204,8 @@ async function saveStage(recordId, stageCode, payload, user) {
 
     if (stageCode === 'testing'
       && managerFieldsChanged(existing, changes)
-      && !ownsPermission(user, PERMISSIONS.managerReview)) {
-      throw new AppError(403, '只有拥有店长审核权限的用户可以修改付费审核');
+      && !canSetPaymentDecision(record, user)) {
+      throw new AppError(403, '只有店长可以修改付费审核');
     }
 
     if (stageCode === 'monitoring' && changes.adjustments) {

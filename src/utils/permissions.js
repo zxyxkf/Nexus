@@ -6,7 +6,8 @@ const ROLE_PERMISSION_FALLBACK = {
     'dashboard.design', 'dashboard.operator', 'dashboard.cs',
     'admin.tasks.design', 'admin.tasks.operator', 'admin.tasks.cs',
     'score.review.basic', 'score.records.basic',
-    'task.view.all', 'task.download.file', 'task.export', 'dashboard.export', 'notification.center'
+    'task.view.all', 'task.download.file', 'task.export', 'dashboard.export', 'notification.center',
+    'payment.view.all'
   ],
   operator: [
     'operator.publish.design', 'operator.tasks.design', 'operator.review.design',
@@ -36,6 +37,14 @@ const ROLE_PERMISSION_FALLBACK = {
 }
 
 const PERMISSION_IMPLICATIONS = {
+  'payment.manage.all': [
+    'payment.view.all',
+    'payment.selection.view',
+    'payment.records.view',
+    'payment.open',
+    'payment.stage_reopen',
+    'payment.delete'
+  ],
   'task.create.design': ['operator.publish.design'],
   'task.create.operator': ['operator.publish.assistant'],
   'task.create.cs': ['cs.publish.basic'],

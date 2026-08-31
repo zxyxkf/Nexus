@@ -7,6 +7,7 @@ const { PERMISSIONS, STAGES } = require('./constants');
 const { calculateGrossMargin, calculateSearchShare } = require('./rules');
 const {
   canManageAllPaymentData,
+  canViewAllPaymentData,
   assertPermission,
   assertAnyPermission,
   assertStoreAccess,
@@ -149,12 +150,14 @@ function resolveListStatus(query, user) {
     throw new AppError(400, '无效的流程状态');
   }
   const status = requested || (ownsPermission(user, PERMISSIONS.selection) ? 'in_progress' : 'ended');
-  assertPermission(user, status === 'ended' ? PERMISSIONS.records : PERMISSIONS.selection);
+  if (!canViewAllPaymentData(user)) {
+    assertPermission(user, status === 'ended' ? PERMISSIONS.records : PERMISSIONS.selection);
+  }
   return status;
 }
 
 async function listRecords(query, user) {
-  assertAnyPermission(user, [PERMISSIONS.selection, PERMISSIONS.records]);
+  assertAnyPermission(user, [PERMISSIONS.selection, PERMISSIONS.records, PERMISSIONS.viewAll]);
   const processStatus = resolveListStatus(query, user);
   const page = Math.max(1, parseInt(query.page, 10) || 1);
   const pageSize = Math.min(100, Math.max(1, parseInt(query.pageSize, 10) || 20));
@@ -165,7 +168,7 @@ async function listRecords(query, user) {
   const stageCode = String(query.stageCode || '').trim();
   if (stageCode && !STAGES.includes(stageCode)) throw new AppError(400, '无效的阶段');
   const filters = {
-    store: canManageAllPaymentData(user) ? (query.store || '') : user.store,
+    store: canViewAllPaymentData(user) ? (query.store || '') : user.store,
     processStatus,
     keyword: String(query.keyword || '').trim(),
     plannerId,
@@ -173,7 +176,7 @@ async function listRecords(query, user) {
     page,
     pageSize
   };
-  if (!canManageAllPaymentData(user) && !filters.store) throw new AppError(400, '当前账号未配置店铺');
+  if (!canViewAllPaymentData(user) && !filters.store) throw new AppError(400, '当前账号未配置店铺');
 
   const [records, total] = await Promise.all([
     repository.listRecords(filters),
@@ -205,7 +208,7 @@ async function listRecords(query, user) {
 }
 
 async function getRecord(id, user, options = {}) {
-  assertAnyPermission(user, [PERMISSIONS.selection, PERMISSIONS.records]);
+  assertAnyPermission(user, [PERMISSIONS.selection, PERMISSIONS.records, PERMISSIONS.viewAll]);
   const record = await repository.findRecordById(id);
   if (!record) throw new AppError(404, '选品记录不存在');
   assertStoreAccess(record, user);

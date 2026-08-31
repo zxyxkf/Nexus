@@ -10,9 +10,9 @@ const NEXT_STAGE = {
 const PERMISSIONS = {
   selection: 'payment.selection.view',
   records: 'payment.records.view',
+  viewAll: 'payment.view.all',
   manageAll: 'payment.manage.all',
   open: 'payment.open',
-  managerReview: 'payment.manager_review',
   reopen: 'payment.stage_reopen',
   delete: 'payment.delete'
 };

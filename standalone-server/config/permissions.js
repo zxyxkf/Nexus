@@ -29,6 +29,8 @@ const PERMISSIONS = [
   { code: 'notification.center', name: '通知中心', type: 'page', group: '通用' },
   { code: 'payment.selection.view', name: '选品收集', type: 'page', group: '打款跟踪' },
   { code: 'payment.records.view', name: '打款记录', type: 'page', group: '打款跟踪' },
+  { code: 'payment.view.all', name: '查看全部店铺打款数据', type: 'action', group: '打款跟踪' },
+  { code: 'payment.manage.all', name: '管理全部店铺打款数据', type: 'action', group: '打款跟踪' },
 
   { code: 'task.create.design', name: '创建美工任务', type: 'action', group: '任务操作' },
   { code: 'task.create.operator', name: '创建运营助理任务', type: 'action', group: '任务操作' },
@@ -45,7 +47,6 @@ const PERMISSIONS = [
   { code: 'task.export', name: '导出任务报表', type: 'action', group: '导出' },
   { code: 'dashboard.export', name: '导出仪表盘报表', type: 'action', group: '导出' },
   { code: 'payment.open', name: '开启打款', type: 'action', group: '打款跟踪' },
-  { code: 'payment.manager_review', name: '店长审核准备工作', type: 'action', group: '打款跟踪' },
   { code: 'payment.stage_reopen', name: '阶段重开与流程恢复', type: 'action', group: '打款跟踪' },
   { code: 'payment.delete', name: '删除选品记录', type: 'action', group: '打款跟踪' }
 ];
@@ -56,7 +57,8 @@ const ROLE_DEFAULTS = {
     'dashboard.design', 'dashboard.operator', 'dashboard.cs',
     'admin.tasks.design', 'admin.tasks.operator', 'admin.tasks.cs',
     'score.review.basic', 'score.records.basic',
-    'task.view.all', 'task.download.file', 'task.export', 'dashboard.export', 'notification.center'
+    'task.view.all', 'task.download.file', 'task.export', 'dashboard.export', 'notification.center',
+    'payment.view.all'
   ],
   operator: [
     'operator.publish.design', 'operator.tasks.design', 'operator.review.design',
@@ -87,6 +89,14 @@ const ROLE_DEFAULTS = {
 const TEAM_LEAD_EXTRA = ['score.review.basic', 'score.records.basic'];
 
 const PERMISSION_IMPLICATIONS = {
+  'payment.manage.all': [
+    'payment.view.all',
+    'payment.selection.view',
+    'payment.records.view',
+    'payment.open',
+    'payment.stage_reopen',
+    'payment.delete'
+  ],
   'task.create.design': ['operator.publish.design'],
   'task.create.operator': ['operator.publish.assistant'],
   'task.create.cs': ['cs.publish.basic'],

@@ -10,6 +10,7 @@ let recordsOnlyToken;
 let managerToken;
 let reopenerToken;
 let globalManagerToken;
+let readOnlySubAdminToken;
 let storeAUserId;
 let globalManagerUserId;
 
@@ -21,7 +22,8 @@ const users = {
   recordsOnly: `payment_records_${suffix}`,
   manager: `payment_manager_${suffix}`,
   reopener: `payment_reopener_${suffix}`,
-  globalManager: `payment_global_${suffix}`
+  globalManager: `payment_global_${suffix}`,
+  readOnlySubAdmin: `payment_read_all_${suffix}`
 };
 
 async function login(username) {
@@ -120,7 +122,8 @@ beforeAll(async () => {
     [users.recordsOnly, 'A店'],
     [users.manager, 'A店'],
     [users.reopener, 'A店'],
-    [users.globalManager, '']
+    [users.globalManager, ''],
+    [users.readOnlySubAdmin, '']
   ]) {
     await request(app)
       .post('/api/user/create')
@@ -129,8 +132,9 @@ beforeAll(async () => {
         username,
         password: 'test123456',
         realName: username,
-        role: username === users.globalManager ? 'sub_admin' : 'operator',
-        store
+        role: [users.globalManager, users.readOnlySubAdmin].includes(username) ? 'sub_admin' : 'operator',
+        store,
+        isStoreManager: username === users.manager ? 1 : 0
       });
   }
 
@@ -175,7 +179,7 @@ beforeAll(async () => {
     .set('Authorization', `Bearer ${adminToken}`)
     .send({
       userId: byName.get(users.manager).id,
-      permissions: ['payment.selection.view', 'payment.manager_review'],
+      permissions: ['payment.selection.view'],
       deniedPermissions: []
     });
 
@@ -195,6 +199,7 @@ beforeAll(async () => {
   managerToken = await login(users.manager);
   reopenerToken = await login(users.reopener);
   globalManagerToken = await login(users.globalManager);
+  readOnlySubAdminToken = await login(users.readOnlySubAdmin);
 }, 30000);
 
 it('creates store-scoped records with independent store sequences', async () => {
@@ -381,6 +386,55 @@ it('allows a global payment manager without a store to manage records across sto
     .set('Authorization', `Bearer ${globalManagerToken}`)
     .send({ version: storeARecord.body.data.version });
   expect(deleted.body.code).toBe(0);
+});
+
+it('allows a sub-admin to view all stores but rejects every payment write operation', async () => {
+  const storeARecord = await request(app)
+    .post('/api/payment-tracking/records')
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ styleNumber: `READONLY-A-${suffix}` });
+  const storeBRecord = await request(app)
+    .post('/api/payment-tracking/records')
+    .set('Authorization', `Bearer ${storeBToken}`)
+    .send({ styleNumber: `READONLY-B-${suffix}` });
+
+  const listRes = await request(app)
+    .get('/api/payment-tracking/records?processStatus=in_progress&keyword=READONLY-')
+    .set('Authorization', `Bearer ${readOnlySubAdminToken}`);
+  expect(listRes.body.code).toBe(0);
+  expect(listRes.body.data.list.map(record => record.store).sort()).toEqual(['A店', 'B店']);
+  expect(listRes.body.data.list.every(record => Object.values(record.allowedActions).every(value => value === false))).toBe(true);
+
+  const detailRes = await request(app)
+    .get(`/api/payment-tracking/records/${storeBRecord.body.data.id}`)
+    .set('Authorization', `Bearer ${readOnlySubAdminToken}`);
+  expect(detailRes.body).toMatchObject({ code: 0, data: { store: 'B店' } });
+
+  const attempts = [
+    request(app)
+      .post('/api/payment-tracking/records')
+      .set('Authorization', `Bearer ${readOnlySubAdminToken}`)
+      .send({ styleNumber: `DENIED-${suffix}` }),
+    request(app)
+      .put(`/api/payment-tracking/records/${storeBRecord.body.data.id}/stages/selection`)
+      .set('Authorization', `Bearer ${readOnlySubAdminToken}`)
+      .send({ version: storeBRecord.body.data.version, data: { detailText: '不可写' } }),
+    request(app)
+      .delete(`/api/payment-tracking/records/${storeBRecord.body.data.id}`)
+      .set('Authorization', `Bearer ${readOnlySubAdminToken}`)
+      .send({ version: storeBRecord.body.data.version }),
+    request(app)
+      .post(`/api/payment-tracking/records/${storeBRecord.body.data.id}/restore`)
+      .set('Authorization', `Bearer ${readOnlySubAdminToken}`)
+      .send({ version: storeBRecord.body.data.version }),
+    request(app)
+      .post(`/api/payment-tracking/records/${storeBRecord.body.data.id}/stages/selection/reopen`)
+      .set('Authorization', `Bearer ${readOnlySubAdminToken}`)
+      .send({ version: storeBRecord.body.data.version })
+  ];
+
+  const results = await Promise.all(attempts);
+  expect(results.map(result => result.status)).toEqual([403, 403, 403, 403, 403]);
 });
 
 it('provides configurable listing categories and rejects unknown active values', async () => {
