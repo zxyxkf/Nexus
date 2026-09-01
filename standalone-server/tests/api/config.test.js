@@ -59,6 +59,19 @@ describe('GET /api/config/list', () => {
     expect(config).toMatchObject({ editable: 1, config_group: 'upload' });
     expect(config.config_value).toContain('payment-tracking');
   });
+
+  it('seeds the editable user avatar directory and user schema', async () => {
+    const res = await request(app)
+      .get('/api/config/list?group=upload')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const config = res.body.data.find(item => item.config_key === 'upload.user_avatar_dir');
+    expect(config).toMatchObject({ editable: 1, config_group: 'upload' });
+    expect(config.config_value.replace(/\\/g, '/')).toContain('user/avatars');
+
+    const { execute } = require('../../config/database');
+    const [columns] = await execute("PRAGMA table_info('sys_user')");
+    expect(columns.some(column => column.name === 'avatar_path')).toBe(true);
+  });
 });
 
 describe('GET /api/config/get-value', () => {

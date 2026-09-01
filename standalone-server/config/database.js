@@ -26,6 +26,7 @@ const CREATE_TABLES_SQL = {
       email TEXT DEFAULT '',
       phone TEXT DEFAULT '',
       remark TEXT DEFAULT '',
+      avatar_path TEXT DEFAULT '',
       status INTEGER DEFAULT 1,
       last_login_time TEXT,
       create_time TEXT DEFAULT (datetime('now', 'localtime')),
@@ -255,6 +256,7 @@ const CREATE_TABLES_SQL = {
       email VARCHAR(200) DEFAULT '',
       phone VARCHAR(50) DEFAULT '',
       remark TEXT,
+      avatar_path VARCHAR(500) DEFAULT '',
       status TINYINT DEFAULT 1,
       last_login_time DATETIME,
       create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
@@ -631,6 +633,7 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN task_file_path VARCHAR(1000) DEFAULT ''`,
       `ALTER TABLE sys_user ADD COLUMN is_team_lead TINYINT DEFAULT 0`,
       `ALTER TABLE sys_user ADD COLUMN is_store_manager TINYINT DEFAULT 0`,
+      `ALTER TABLE sys_user ADD COLUMN avatar_path VARCHAR(500) DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN applied_score DECIMAL(10,2) DEFAULT 0`,
       `ALTER TABLE task_info ADD COLUMN score_review_status VARCHAR(20) DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN score_review_reason TEXT`,
@@ -701,6 +704,7 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN task_file_path TEXT DEFAULT ''`,
       `ALTER TABLE sys_user ADD COLUMN is_team_lead INTEGER DEFAULT 0`,
       `ALTER TABLE sys_user ADD COLUMN is_store_manager INTEGER DEFAULT 0`,
+      `ALTER TABLE sys_user ADD COLUMN avatar_path TEXT DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN applied_score REAL DEFAULT 0`,
       `ALTER TABLE task_info ADD COLUMN score_review_status TEXT DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN score_review_reason TEXT DEFAULT ''`,
@@ -857,6 +861,9 @@ function generateConfigSeed(mode) {
   const path = require('path');
   const insert = mode === 'mysql' ? 'INSERT IGNORE INTO' : 'INSERT OR IGNORE INTO';
   const uploadRoot = path.resolve(__dirname, '..', 'upload').replace(/\\/g, '/');
+  const userAvatarDir = mode === 'mysql'
+    ? '/app/host-uploads/user/avatars'
+    : path.join(uploadRoot, 'user', 'avatars').replace(/\\/g, '/');
   const configs = [
     ['upload.max_file_size_mb', '50', 'upload', '上传文件大小上限（MB）', 1],
     ['upload.max_file_count', '10', 'upload', '单次上传最多文件数', 1],
@@ -867,6 +874,7 @@ function generateConfigSeed(mode) {
     ['upload.operator_images_dir', '/app/host-uploads/operator/images', 'upload', '运营+运营助理图片存储目录', 1],
     ['upload.operator_attachments_dir', '/app/host-uploads/operator/attachments', 'upload', '运营+运营助理附件存储目录', 1],
     ['upload.payment_tracking_images_dir', '/app/host-uploads/payment-tracking/images', 'upload', '打款跟踪图片存储目录', 1],
+    ['upload.user_avatar_dir', userAvatarDir, 'upload', '用户头像存储目录', 1],
   ];
   return configs.map(([key, value, group, desc, editable]) =>
     `${insert} sys_config (config_key, config_value, config_group, config_desc, editable) VALUES ('${key}', '${value}', '${group}', '${desc}', ${editable})`

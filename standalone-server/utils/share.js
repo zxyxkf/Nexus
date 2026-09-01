@@ -25,6 +25,7 @@ const DEFAULT_CONFIG = {
   operator_images_dir: process.env.OPERATOR_IMAGE_DIR || path.join(HOST_UPLOAD_ROOT, 'operator', 'images'),
   operator_attachments_dir: process.env.OPERATOR_ATTACHMENT_DIR || path.join(HOST_UPLOAD_ROOT, 'operator', 'attachments'),
   payment_tracking_images_dir: process.env.PAYMENT_TRACKING_IMAGE_DIR || path.join(HOST_UPLOAD_ROOT, 'payment-tracking', 'images'),
+  user_avatar_dir: process.env.USER_AVATAR_DIR || path.join(HOST_UPLOAD_ROOT, 'user', 'avatars'),
 };
 
 let storageConfig = { ...DEFAULT_CONFIG };
@@ -59,6 +60,7 @@ async function initStorageConfig(pool) {
     'upload.operator_images_dir',
     'upload.operator_attachments_dir',
     'upload.payment_tracking_images_dir',
+    'upload.user_avatar_dir',
   ];
   const propMap = {
     'upload.design_images_dir': 'design_images_dir',
@@ -68,6 +70,7 @@ async function initStorageConfig(pool) {
     'upload.operator_images_dir': 'operator_images_dir',
     'upload.operator_attachments_dir': 'operator_attachments_dir',
     'upload.payment_tracking_images_dir': 'payment_tracking_images_dir',
+    'upload.user_avatar_dir': 'user_avatar_dir',
   };
 
   for (const key of keys) {
@@ -129,6 +132,12 @@ function getStorageDir(group, type) {
 
 function getPaymentTrackingImageDir() {
   const dir = storageConfig.payment_tracking_images_dir || DEFAULT_CONFIG.payment_tracking_images_dir;
+  ensureDir(dir);
+  return dir;
+}
+
+function getUserAvatarDir() {
+  const dir = storageConfig.user_avatar_dir || DEFAULT_CONFIG.user_avatar_dir;
   ensureDir(dir);
   return dir;
 }
@@ -238,6 +247,7 @@ module.exports = {
   initStorageConfig,
   getStorageDir,
   getPaymentTrackingImageDir,
+  getUserAvatarDir,
   resolvePath,
   saveImage,
   saveAttachment,
