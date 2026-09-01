@@ -114,7 +114,14 @@
         <el-col :span="24">
           <el-card shadow="never" class="chart-card">
             <template #header>
-              <div class="card-header"><span class="card-title">项目类型完成统计</span></div>
+              <div class="card-header project-stat-header">
+                <span class="card-title">项目类型完成统计</span>
+                <el-radio-group v-model="projectPeriod" size="small">
+                  <el-radio-button value="all">全部</el-radio-button>
+                  <el-radio-button value="current">当月</el-radio-button>
+                  <el-radio-button value="last">上月</el-radio-button>
+                </el-radio-group>
+              </div>
             </template>
             <el-table :data="projectFlatData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
               <el-table-column prop="designer_name" label="美工" fixed="left" min-width="80" />
@@ -432,6 +439,12 @@ const showOperatorSection = computed(() => allowedGroups.value.includes('operato
 const showCsSection = computed(() => allowedGroups.value.includes('cs'))
 const nowForView = new Date()
 const currentMonthTitle = `${nowForView.getFullYear()}年${nowForView.getMonth() + 1}月`
+const projectPeriod = ref('all')
+const projectCountKey = computed(() => ({
+  all: 'count',
+  current: 'current_month_count',
+  last: 'last_month_count'
+}[projectPeriod.value] || 'count'))
 const monthDays = computed(() => {
   const count = new Date(nowForView.getFullYear(), nowForView.getMonth() + 1, 0).getDate()
   return Array.from({ length: count }, (_, i) => ({ key: `d${i + 1}`, label: `${i + 1}日` }))
@@ -491,7 +504,7 @@ const projectFlatData = computed(() => {
     const row = { designer_name: d.name }
     if (d.project_stats) {
       for (const p of d.project_stats) {
-        row[p.project_name] = p.count
+        row[p.project_name] = Number(p[projectCountKey.value] || 0)
       }
     }
     for (const p of allProjectNames.value) {
@@ -895,6 +908,13 @@ onUnmounted(() => {
 </script>
 
 <style scoped>
+.project-stat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
 .stat-card {
   text-align: center;
   border-radius: var(--dd-radius-lg) !important;

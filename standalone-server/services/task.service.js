@@ -1065,6 +1065,7 @@ async function getMyStats(user) {
   // designer / basic_designer / operator_assistant
   const base = await taskDao.getDesignerSummary(userId);
   const detailRows = await taskDao.getDesignerDetailRows(userId);
+  const scoreItems = role === 'designer' ? await taskDao.getScoreItems() : [];
 
   const now = new Date();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -1116,8 +1117,44 @@ async function getMyStats(user) {
       ...item,
       score: Math.round(item.score * 100) / 100,
       rate: item.total > 0 ? Math.round(item.finished / item.total * 1000) / 10 : null
-    }))
+    })),
+    ...(role === 'designer' ? {
+      project_stats: buildProjectCompletionStats(
+        detailRows.filter(task => task.task_group === 'design' || !task.task_group),
+        scoreItems.filter(item => item.source === 'design'),
+        now
+      )
+    } : {})
   });
+}
+
+function buildProjectCompletionStats(tasks, scoreItems, refDate = new Date()) {
+  const currentStart = new Date(refDate.getFullYear(), refDate.getMonth(), 1);
+  const nextStart = new Date(refDate.getFullYear(), refDate.getMonth() + 1, 1);
+  const lastStart = new Date(refDate.getFullYear(), refDate.getMonth() - 1, 1);
+  const year = refDate.getFullYear();
+  const rows = new Map((scoreItems || []).map(item => [Number(item.id), {
+    project_name: item.name,
+    count: 0,
+    current_month_count: 0,
+    last_month_count: 0,
+    monthly_counts: Array.from({ length: 12 }, (_, index) => ({ month: index + 1, count: 0 }))
+  }]));
+
+  for (const task of tasks || []) {
+    if (task.status !== 'finished') continue;
+    const row = rows.get(Number(task.score_item_id));
+    if (!row) continue;
+    row.count += 1;
+
+    const finishedAt = parseDateTime(task.finish_time);
+    if (!finishedAt) continue;
+    if (finishedAt >= currentStart && finishedAt < nextStart) row.current_month_count += 1;
+    if (finishedAt >= lastStart && finishedAt < currentStart) row.last_month_count += 1;
+    if (finishedAt.getFullYear() === year) row.monthly_counts[finishedAt.getMonth()].count += 1;
+  }
+
+  return [...rows.values()];
 }
 
 function buildDesignerStats(users, tasks, scoreItems, refDate, taskGroup) {
@@ -1145,8 +1182,6 @@ function buildDesignerStats(users, tasks, scoreItems, refDate, taskGroup) {
     for (let m = 1; m <= 12; m++) {
       monthlyMap[m] = { month: CN_MONTHS_SHORT[m - 1], score: 0, finished: 0, total: 0 };
     }
-
-    const projectMap = {};
 
     for (const task of userTasks) {
       const actualQty = Number(task.actual_quantity) || 0;
@@ -1178,8 +1213,6 @@ function buildDesignerStats(users, tasks, scoreItems, refDate, taskGroup) {
         }
       }
 
-      const siid = task.score_item_id;
-      if (siid) projectMap[siid] = (projectMap[siid] || 0) + 1;
     }
 
     const total = userTasks.length || 1;
@@ -1199,7 +1232,7 @@ function buildDesignerStats(users, tasks, scoreItems, refDate, taskGroup) {
         score: Math.round(m.score * 100) / 100,
         rate: m.total > 0 ? Math.round(m.finished / m.total * 1000) / 10 : null
       })),
-      project_stats: relevantItems.map(si => ({ project_name: si.name, count: projectMap[si.id] || 0 }))
+      project_stats: buildProjectCompletionStats(userTasks, relevantItems, now)
     };
   });
 }

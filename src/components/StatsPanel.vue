@@ -51,6 +51,21 @@
           </el-table-column>
         </el-table>
       </div>
+
+      <div v-if="showProjectMonthly && projectMonthlyRows.length > 0" style="margin-top:24px;">
+        <h4 style="margin:0 0 12px;font-size:14px;font-weight:600;">月度项目类型完成统计 ({{ new Date().getFullYear() }})</h4>
+        <el-table :data="projectMonthlyRows" stripe size="small" style="width:100%;">
+          <el-table-column prop="project_name" label="工作项目类型" fixed="left" min-width="140" />
+          <el-table-column
+            v-for="month in projectMonths"
+            :key="month.key"
+            :prop="month.key"
+            :label="month.label"
+            width="86"
+            align="center"
+          />
+        </el-table>
+      </div>
     </el-card>
   </div>
 </template>
@@ -60,7 +75,8 @@ import { ref, computed, onMounted } from 'vue'
 import { getMyStatsApi } from '@/api'
 
 const props = defineProps({
-  cards: { type: Array, required: true }
+  cards: { type: Array, required: true },
+  showProjectMonthly: { type: Boolean, default: false }
 })
 
 const stats = ref({})
@@ -68,6 +84,19 @@ const loading = ref(false)
 
 // 8 张卡片用 3 列（24/3=8），5 张用 4 列（24/5≈5 取 4）
 const span = computed(() => props.cards.length > 5 ? 3 : Math.floor(24 / props.cards.length))
+const projectMonths = Array.from({ length: 12 }, (_, index) => ({
+  key: `m${index + 1}`,
+  label: `${index + 1}月`,
+  month: index + 1
+}))
+const projectMonthlyRows = computed(() => (stats.value.project_stats || []).map(project => {
+  const row = { project_name: project.project_name }
+  for (const month of projectMonths) {
+    const value = project.monthly_counts?.find(item => Number(item.month) === month.month)?.count
+    row[month.key] = Number(value || 0)
+  }
+  return row
+}))
 
 async function loadStats() {
   loading.value = true

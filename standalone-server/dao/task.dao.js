@@ -747,7 +747,7 @@ async function getDesignerSummary(userId) {
 async function getDesignerDetailRows(userId) {
   const pool = getPool();
   const [rows] = await pool.execute(
-    `SELECT finish_time, create_time, score, actual_quantity, status, score_review_status
+    `SELECT finish_time, create_time, score, actual_quantity, status, score_review_status, score_item_id, task_group
      FROM task_info WHERE designer_id = ?`, [userId]
   );
   return rows;

@@ -418,6 +418,82 @@ test('advanced designer dashboard shows simplified cards without efficiency rank
   await expect(page.getByText('美工完成效率排行', { exact: true })).toHaveCount(0)
 })
 
+test('project type completion period switch stays inside its dashboard card', async ({ page }) => {
+  const monthlyCounts = Array.from({ length: 12 }, (_, index) => ({ month: index + 1, count: index + 1 }))
+  await page.route('**/api/task/stats/admin/detail', route => json(route, {
+    code: 0,
+    data: {
+      designerStats: [{
+        id: 1,
+        name: '美工A',
+        monthly_stats: [],
+        project_stats: [{
+          project_name: '主图',
+          count: 7,
+          current_month_count: 2,
+          last_month_count: 1,
+          monthly_counts: monthlyCounts
+        }]
+      }],
+      designerDailyStats: [],
+      operatorStats: [],
+      operatorAssistantStats: [],
+      operatorAssistantDailyStats: [],
+      operatorPublishStats: [],
+      basicDesignerStats: [],
+      basicDesignerDailyStats: [],
+      csAgentStats: [],
+      scoreItems: ['主图']
+    }
+  }))
+  await loginAs(page, users.admin)
+  await page.goto('/#/dashboard')
+
+  const projectCard = page.locator('.chart-card').filter({ hasText: '项目类型完成统计' })
+  await expect(projectCard).toBeVisible()
+  await expect(projectCard.locator('.el-card__header').getByText('全部', { exact: true })).toBeVisible()
+  const projectRow = projectCard.locator('.el-table__body tr').filter({ hasText: '美工A' })
+  await expect(projectRow.getByText('7', { exact: true })).toBeVisible()
+
+  await projectCard.getByText('当月', { exact: true }).click()
+  await expect(projectRow.getByText('2', { exact: true })).toBeVisible()
+
+  await projectCard.getByText('上月', { exact: true }).click()
+  await expect(projectRow.getByText('1', { exact: true })).toBeVisible()
+})
+
+test('designer monthly project type table shows 12 months and stays role-specific', async ({ page, browser }) => {
+  const projectStats = [{
+    project_name: '主图',
+    count: 12,
+    current_month_count: 9,
+    last_month_count: 8,
+    monthly_counts: Array.from({ length: 12 }, (_, index) => ({ month: index + 1, count: index + 1 }))
+  }]
+  await page.route('**/api/task/stats/my', route => json(route, {
+    code: 0,
+    data: { ...statsPayload(), project_stats: projectStats }
+  }))
+  await loginAs(page, users.designer)
+  await page.goto('/#/designer/stats')
+
+  await expect(page.getByText('月度项目类型完成统计', { exact: false })).toBeVisible()
+  const projectTable = page.locator('.el-table').filter({ hasText: '工作项目类型' })
+  await expect(projectTable.getByRole('columnheader', { name: '1月', exact: true })).toBeVisible()
+  await expect(projectTable.getByRole('columnheader', { name: '12月', exact: true })).toBeVisible()
+  const projectRow = projectTable.locator('.el-table__body tr').filter({ hasText: '主图' })
+  await expect(projectRow.locator('td').nth(1)).toHaveText('1')
+  await expect(projectRow.locator('td').nth(12)).toHaveText('12')
+
+  const basicContext = await browser.newContext({ viewport: { width: 1600, height: 900 } })
+  const basicPage = await basicContext.newPage()
+  await mockApis(basicPage)
+  await loginAs(basicPage, users.basic)
+  await basicPage.goto('/#/basic/stats')
+  await expect(basicPage.getByText('月度项目类型完成统计', { exact: false })).toHaveCount(0)
+  await basicContext.close()
+})
+
 test('design all tasks expose draggable reference and work previews', async ({ page }) => {
   await loginAs(page, users.admin)
   await page.goto('/#/admin/tasks/design')

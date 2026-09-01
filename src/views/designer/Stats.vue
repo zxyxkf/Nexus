@@ -1,5 +1,5 @@
 <template>
-  <StatsPanel :cards="cards" />
+  <StatsPanel :cards="cards" show-project-monthly />
 </template>
 
 <script setup>
