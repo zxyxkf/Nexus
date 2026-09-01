@@ -19,7 +19,10 @@ const {
   canViewByAllTasksPermission,
   allowedAllTaskGroups
 } = require('../utils/task-permissions');
-const { canManageAllPaymentData } = require('./payment-tracking/access');
+const {
+  canManageAllPaymentData,
+  canViewAllPaymentData
+} = require('./payment-tracking/access');
 
 // ==================== 辅助 ====================
 
@@ -38,9 +41,7 @@ function normalizedTaskGroup(task) {
 }
 
 function canViewAllPaymentTasks(user) {
-  return user?.role === 'admin'
-    || user?.role === 'sub_admin'
-    || canManageAllPaymentData(user);
+  return canViewAllPaymentData(user);
 }
 
 function canOpenPaymentTask(task, user) {

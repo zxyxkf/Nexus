@@ -13,6 +13,8 @@ let adminToken;
 let storeAToken;
 let storeBToken;
 let paymentOnlyToken;
+let allStorePaymentToken;
+let viewAllOnlyToken;
 let globalManagerToken;
 let recordId;
 let imageConfigId;
@@ -111,6 +113,48 @@ beforeAll(async () => {
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ userId: paymentOnlyUser.id, permissions: ['payment.open'], deniedPermissions: [] });
   paymentOnlyToken = await login(paymentOnlyUsername);
+
+  const allStorePaymentUsername = `image_payment_all_store_${suffix}`;
+  const viewAllOnlyUsername = `image_payment_view_only_${suffix}`;
+  for (const user of [
+    { username: allStorePaymentUsername, realName: 'All-store payment opener' },
+    { username: viewAllOnlyUsername, realName: 'All-store payment viewer' }
+  ]) {
+    await request(app)
+      .post('/api/user/create')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        ...user,
+        password: 'test123456',
+        role: 'operator_assistant',
+        store: '图片A店',
+        isStoreManager: false
+      });
+  }
+  const permissionUsers = await request(app)
+    .get('/api/user/list?role=operator_assistant&pageSize=100')
+    .set('Authorization', `Bearer ${adminToken}`);
+  const permissionUserByName = new Map(
+    permissionUsers.body.data.list.map(user => [user.username, user])
+  );
+  await request(app)
+    .post('/api/user/permissions/save')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      userId: permissionUserByName.get(allStorePaymentUsername).id,
+      permissions: ['payment.open', 'payment.view.all'],
+      deniedPermissions: []
+    });
+  await request(app)
+    .post('/api/user/permissions/save')
+    .set('Authorization', `Bearer ${adminToken}`)
+    .send({
+      userId: permissionUserByName.get(viewAllOnlyUsername).id,
+      permissions: ['payment.view.all'],
+      deniedPermissions: []
+    });
+  allStorePaymentToken = await login(allStorePaymentUsername);
+  viewAllOnlyToken = await login(viewAllOnlyUsername);
 
   await request(app)
     .post('/api/user/create')
@@ -462,6 +506,17 @@ it('opens payment tracking from task images and reports batch skip reasons', asy
   ]));
   expect(restrictedList.body.data.list.some(task => Number(task.id) === Number(restrictedCrossStoreTask))).toBe(false);
 
+  const allStoreList = await request(app)
+    .get('/api/task/my-published?taskGroup=design&status=doing&pageSize=100')
+    .set('Authorization', `Bearer ${allStorePaymentToken}`);
+  expect(allStoreList.body.code).toBe(0);
+  expect(allStoreList.body.data.list).toEqual(expect.arrayContaining([
+    expect.objectContaining({
+      id: restrictedCrossStoreTask,
+      allowedActions: { review: false, openPayment: true }
+    })
+  ]));
+
   const restrictedDetail = await request(app)
     .get(`/api/task/detail?taskId=${restrictedSameStoreTask}`)
     .set('Authorization', `Bearer ${paymentOnlyToken}`);
@@ -481,6 +536,29 @@ it('opens payment tracking from task images and reports batch skip reasons', asy
     .set('Authorization', `Bearer ${paymentOnlyToken}`)
     .send({ taskIds: [restrictedSameStoreTask] });
   expect(forbiddenBatchReview.body.code).toBe(403);
+
+  const forbiddenAllStoreReview = await request(app)
+    .post('/api/task/review')
+    .set('Authorization', `Bearer ${allStorePaymentToken}`)
+    .send({ taskId: restrictedCrossStoreTask, action: 'pass' });
+  expect(forbiddenAllStoreReview.body.code).toBe(403);
+
+  const forbiddenAllStoreBatchReview = await request(app)
+    .post('/api/task/batch-review')
+    .set('Authorization', `Bearer ${allStorePaymentToken}`)
+    .send({ taskIds: [restrictedCrossStoreTask] });
+  expect(forbiddenAllStoreBatchReview.body.code).toBe(403);
+
+  const viewOnlyOpen = await request(app)
+    .post(`/api/payment-tracking/open/task/${restrictedCrossStoreTask}`)
+    .set('Authorization', `Bearer ${viewAllOnlyToken}`);
+  expect(viewOnlyOpen.status).toBe(403);
+
+  const allStoreOpened = await request(app)
+    .post(`/api/payment-tracking/open/task/${restrictedCrossStoreTask}`)
+    .set('Authorization', `Bearer ${allStorePaymentToken}`);
+  expect(allStoreOpened.body.code).toBe(0);
+  expect(allStoreOpened.body.data.store).toBe('图片B店');
 
   const restrictedOpened = await request(app)
     .post(`/api/payment-tracking/open/task/${restrictedSameStoreTask}`)

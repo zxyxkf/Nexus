@@ -4,7 +4,7 @@ const repository = require('./repository');
 const recordService = require('./record.service');
 const imageService = require('./image.service');
 const { PERMISSIONS } = require('./constants');
-const { assertPermission, assertStoreAccess, canManageAllPaymentData } = require('./access');
+const { assertPermission, assertStoreAccess, canViewAllPaymentData } = require('./access');
 const { conflictError } = require('./optimistic-lock');
 
 async function findSourceTask(taskId) {
@@ -67,7 +67,7 @@ function assertTaskCanOpen(task, user) {
   if (!task.publisher_id || !task.publisher_store) {
     throw attachTask(new AppError(400, '任务发布人未绑定店铺'), task);
   }
-  if (user?.role !== 'sub_admin' && !canManageAllPaymentData(user) && user.store !== task.publisher_store) {
+  if (!canViewAllPaymentData(user) && user.store !== task.publisher_store) {
     throw attachTask(new AppError(403, '无权为其他店铺的任务开启打款'), task);
   }
 }
