@@ -14,6 +14,8 @@ describe('payment tracking calculations', () => {
 
   it('handles empty and invalid ratio inputs', () => {
     expect(calculateGrossMargin('', '')).toBeNull();
+    expect(calculateGrossMargin(null, 75)).toBeNull();
+    expect(calculateGrossMargin(24, null)).toBeNull();
     expect(() => calculateGrossMargin(10, 0)).toThrow('售价必须大于0');
     expect(() => calculateGrossMargin(-1, 10)).toThrow('成本不能为负数');
     expect(calculateSearchShare(0, 0)).toBeNull();
@@ -36,6 +38,22 @@ describe('payment tracking stage advancement', () => {
 
     expect(result.ok).toBe(false);
     expect(result.errors).toEqual({ product_images: '至少上传一张产品主图' });
+  });
+
+  it('allows selection cost and sale price to remain empty', () => {
+    const result = validateAdvance('selection', {
+      selection_date: '2026-09-01',
+      style_number: 'NK-OPTIONAL',
+      cost: null,
+      sale_price: null,
+      product_id: 'OPTIONAL-1',
+      selection_method: '方式五：跟款',
+      listing_date: '2026-09-02',
+      listing_category: '女装',
+      product_image_count: 1
+    });
+
+    expect(result).toEqual({ ok: true, errors: {} });
   });
 
   it('uses the confirmed four-stage graph', () => {

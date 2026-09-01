@@ -5,7 +5,7 @@ function roundRatio(value) {
 }
 
 function calculateGrossMargin(cost, salePrice) {
-  if (salePrice === null || salePrice === undefined || salePrice === '') return null;
+  if (isBlank(cost) || isBlank(salePrice)) return null;
   const sale = Number(salePrice);
   const normalizedCost = Number(cost);
   if (!Number.isFinite(sale) || sale <= 0) throw new Error('售价必须大于0');
@@ -37,10 +37,10 @@ function validateSelection(data, errors) {
     if (isBlank(data[field])) errors[field] = message;
   }
 
-  if (isBlank(data.cost) || !Number.isFinite(Number(data.cost)) || Number(data.cost) < 0) {
+  if (!isBlank(data.cost) && (!Number.isFinite(Number(data.cost)) || Number(data.cost) < 0)) {
     errors.cost = '成本必须为非负数';
   }
-  if (isBlank(data.sale_price) || !Number.isFinite(Number(data.sale_price)) || Number(data.sale_price) <= 0) {
+  if (!isBlank(data.sale_price) && (!Number.isFinite(Number(data.sale_price)) || Number(data.sale_price) <= 0)) {
     errors.sale_price = '售价必须大于0';
   }
   if (Number(data.product_image_count || 0) < 1) {

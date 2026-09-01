@@ -150,12 +150,14 @@ async function loadListingCategories() {
 }
 
 const positivePrice = (_rule, value, callback) => {
-  if (value === null || value === undefined || Number(value) <= 0) callback(new Error('售价必须大于 0'))
-  else callback()
+  if (value === null || value === undefined || value === '') return callback()
+  if (!Number.isFinite(Number(value)) || Number(value) <= 0) return callback(new Error('售价必须大于 0'))
+  callback()
 }
 const nonNegative = (_rule, value, callback) => {
-  if (value === null || value === undefined || Number(value) < 0) callback(new Error('请输入非负数字'))
-  else callback()
+  if (value === null || value === undefined || value === '') return callback()
+  if (!Number.isFinite(Number(value)) || Number(value) < 0) return callback(new Error('请输入非负数字'))
+  callback()
 }
 
 const rules = {

@@ -544,6 +544,52 @@ it('provides super-admin promotion methods and rejects unconfigured stage values
   expect(removed.body.code).toBe(0);
 });
 
+it('saves and advances a selection without cost or sale price', async () => {
+  const created = await request(app)
+    .post('/api/payment-tracking/records')
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ styleNumber: 'OPTIONAL-PRICE' });
+  const recordId = created.body.data.id;
+
+  const { execute } = require('../../config/database');
+  await execute(
+    `INSERT INTO payment_selection_image
+       (record_id, category, storage_root, relative_path, original_name, mime_type, file_size)
+     VALUES (?, 'product_main', ?, ?, 'fixture.png', 'image/png', 8)`,
+    [recordId, 'test-fixtures', 'fixture.png']
+  );
+
+  const selection = await request(app)
+    .put(`/api/payment-tracking/records/${recordId}/stages/selection`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({
+      version: 1,
+      data: {
+        selectionDate: '2026-09-01',
+        styleNumber: 'OPTIONAL-PRICE',
+        productId: 'OPTIONAL-1',
+        selectionMethod: '方式五：跟款',
+        listingDate: '2026-09-02',
+        listingCategory: '女装'
+      }
+    });
+  expect(selection.body.data).toMatchObject({
+    version: 2,
+    cost: null,
+    salePrice: null,
+    grossMargin: null
+  });
+
+  const advanced = await request(app)
+    .post(`/api/payment-tracking/records/${recordId}/advance`)
+    .set('Authorization', `Bearer ${storeAToken}`)
+    .send({ version: 2, stageCode: 'selection' });
+  expect(advanced.body).toMatchObject({
+    code: 0,
+    data: { currentStage: 'testing' }
+  });
+});
+
 it('runs the workflow without exposing future stages and enforces optimistic locking', async () => {
   const created = await request(app)
     .post('/api/payment-tracking/records')

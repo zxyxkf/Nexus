@@ -1211,8 +1211,6 @@ test('各阶段关键必填条件会阻止无效推进或结束', async ({ page 
   for (const message of [
     '请选择选品日期',
     '请填写货号',
-    '请输入非负数字',
-    '售价必须大于 0',
     '请填写产品 ID',
     '请选择选品方式',
     '请选择上架日期',
@@ -1220,6 +1218,8 @@ test('各阶段关键必填条件会阻止无效推进或结束', async ({ page 
   ]) {
     await expect(page.getByText(message, { exact: true }).first()).toBeVisible()
   }
+  await expect(page.getByText('请输入非负数字', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('售价必须大于 0', { exact: true })).toHaveCount(0)
 
   await page.goto('/#/payment-tracking/records/101/stages/selection')
   await page.getByRole('button', { name: '进入下一阶段' }).click()
