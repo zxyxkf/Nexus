@@ -33,30 +33,19 @@
       </el-tooltip>
     </section>
 
-    <section class="review-table" v-loading="loading">
-      <el-table :data="reviews" stripe empty-text="暂无待审核记录">
-        <el-table-column prop="store" label="店铺" min-width="120" show-overflow-tooltip />
-        <el-table-column label="序号" width="90" align="center">
-          <template #default="{ row }">#{{ String(row.storeSeq || 0).padStart(3, '0') }}</template>
-        </el-table-column>
-        <el-table-column prop="styleNumber" label="货号" min-width="140" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.styleNumber || '-' }}</template>
-        </el-table-column>
-        <el-table-column prop="productId" label="产品 ID" min-width="140" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.productId || '-' }}</template>
-        </el-table-column>
-        <el-table-column prop="applicantName" label="申请人" min-width="110" show-overflow-tooltip />
-        <el-table-column prop="createdAt" label="申请时间" width="170">
-          <template #default="{ row }">{{ formatDate(row.createdAt) }}</template>
-        </el-table-column>
-        <el-table-column label="操作" width="250" fixed="right">
-          <template #default="{ row }">
-            <el-button type="primary" link @click="viewRecord(row)">查看记录</el-button>
-            <el-button type="success" link @click="openApprove(row)">通过</el-button>
-            <el-button type="danger" link @click="rejectReview(row)">拒绝</el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+    <section class="record-list" v-loading="loading">
+      <ProductRowCard
+        v-for="review in reviews"
+        :key="review.id"
+        :record="review.record"
+      >
+        <template #actions>
+          <el-button type="primary" plain :icon="View" @click="viewRecord(review)">查看记录</el-button>
+          <el-button type="success" plain :icon="Check" @click="openApprove(review)">通过</el-button>
+          <el-button type="danger" plain :icon="Close" @click="rejectReview(review)">拒绝</el-button>
+        </template>
+      </ProductRowCard>
+      <el-empty v-if="!loading && reviews.length === 0" description="暂无待审核记录" />
     </section>
 
     <Pagination
@@ -168,7 +157,7 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
-import { Refresh, Search } from '@element-plus/icons-vue'
+import { Check, Close, Refresh, Search, View } from '@element-plus/icons-vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import {
   approvePaymentManagerReviewApi,
@@ -178,9 +167,9 @@ import {
   rejectPaymentManagerReviewApi
 } from '@/api'
 import Pagination from '@/components/Pagination.vue'
+import ProductRowCard from '@/components/payment-tracking/ProductRowCard.vue'
 import StageTimeline from '@/components/payment-tracking/StageTimeline.vue'
 import { getUser } from '@/utils/auth'
-import { formatDate } from '@/utils/format'
 
 const user = getUser()
 const canViewAllStores = computed(() => (
@@ -321,27 +310,29 @@ onMounted(loadReviews)
 
 <style scoped>
 .manager-review-page {
-  min-height: calc(100vh - 60px);
-  margin: -24px;
-  padding: 36px 40px 48px;
-  background: #fff;
+  min-width: 0;
 }
 
 .page-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
+  gap: 16px;
   margin-bottom: 18px;
+}
+
+.page-header > div {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
 }
 
 h1 {
   margin: 0;
-  font-size: 24px;
+  font-size: 22px;
 }
 
 .record-count {
-  display: block;
-  margin-top: 5px;
   color: var(--dd-text-secondary, #909399);
   font-size: 13px;
 }
@@ -358,11 +349,17 @@ h1 {
 }
 
 .keyword-input {
-  width: min(360px, 100%);
+  width: min(340px, 100%);
 }
 
-.review-table {
-  min-height: 280px;
+.filter-bar :deep(.el-select) {
+  width: 150px;
+}
+
+.record-list {
+  display: grid;
+  gap: 10px;
+  min-height: 180px;
 }
 
 .detail-scroll {
@@ -476,8 +473,9 @@ h1 {
 }
 
 @media (max-width: 720px) {
-  .manager-review-page {
-    padding: 28px;
+  .filter-bar :deep(.el-select),
+  .keyword-input {
+    width: 100%;
   }
 
   .detail-grid {

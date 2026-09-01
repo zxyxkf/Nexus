@@ -57,32 +57,34 @@
     </div>
 
     <div class="card-actions">
-      <el-button
-        v-if="record.processStatus === 'in_progress'"
-        type="primary"
-        :plain="record.managerReviewPending"
-        :icon="record.managerReviewPending ? View : EditPen"
-        @click="emit('continue')"
-      >{{ record.managerReviewPending ? '查看记录' : '继续填写' }}</el-button>
-      <el-button
-        v-else
-        type="primary"
-        plain
-        :icon="View"
-        @click="emit('select-stage', endedStage)"
-      >查看记录</el-button>
-      <el-button
-        v-if="record.allowedActions?.restore"
-        :icon="RefreshRight"
-        @click="emit('restore')"
-      >恢复流程</el-button>
-      <el-button
-        v-if="record.allowedActions?.delete"
-        type="danger"
-        plain
-        :icon="Delete"
-        @click="emit('delete')"
-      >删除</el-button>
+      <slot name="actions" :record="record">
+        <el-button
+          v-if="record.processStatus === 'in_progress'"
+          type="primary"
+          :plain="record.managerReviewPending"
+          :icon="record.managerReviewPending ? View : EditPen"
+          @click="emit('continue')"
+        >{{ record.managerReviewPending ? '查看记录' : '继续填写' }}</el-button>
+        <el-button
+          v-else
+          type="primary"
+          plain
+          :icon="View"
+          @click="emit('select-stage', endedStage)"
+        >查看记录</el-button>
+        <el-button
+          v-if="record.allowedActions?.restore"
+          :icon="RefreshRight"
+          @click="emit('restore')"
+        >恢复流程</el-button>
+        <el-button
+          v-if="record.allowedActions?.delete"
+          type="danger"
+          plain
+          :icon="Delete"
+          @click="emit('delete')"
+        >删除</el-button>
+      </slot>
     </div>
   </article>
 </template>

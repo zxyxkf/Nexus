@@ -42,6 +42,42 @@ function presentRequest(request) {
   };
 }
 
+function groupByRecordId(rows) {
+  return rows.reduce((groups, row) => {
+    const recordId = Number(row.record_id);
+    const items = groups.get(recordId) || [];
+    items.push(row);
+    groups.set(recordId, items);
+    return groups;
+  }, new Map());
+}
+
+function toRecordRow(request) {
+  return {
+    id: Number(request.record_id),
+    store: request.store,
+    store_seq: request.store_seq,
+    planner_id: request.planner_id,
+    planner_name: request.planner_name,
+    source_task_id: request.source_task_id,
+    source_task_no: request.source_task_no,
+    selection_date: request.selection_date,
+    style_number: request.style_number,
+    cost: request.cost,
+    sale_price: request.sale_price,
+    product_id: request.product_id,
+    current_stage: request.current_stage,
+    process_status: request.process_status,
+    end_stage: request.end_stage,
+    end_type: request.end_type,
+    end_reason: request.end_reason,
+    ended_at: request.ended_at,
+    version: request.record_version,
+    create_time: request.record_create_time,
+    update_time: request.record_update_time
+  };
+}
+
 async function notifyReviewers(review) {
   try {
     const [users] = await execute(
@@ -115,8 +151,28 @@ async function listRequests(query, user) {
     repository.listManagerReviewRequests(filters),
     repository.countManagerReviewRequests(filters)
   ]);
+  const recordIds = rows.map(row => Number(row.record_id));
+  const [stages, images, linkStatuses] = await Promise.all([
+    repository.listEnteredStagesForRecords(recordIds),
+    repository.listProductImagesForRecords(recordIds),
+    repository.listLinkStatusesForRecords(recordIds)
+  ]);
+  const stagesByRecord = groupByRecordId(stages);
+  const imagesByRecord = groupByRecordId(images);
+  const linkStatusByRecord = new Map(linkStatuses.map(status => [Number(status.record_id), status]));
   return {
-    list: rows.map(presentRequest),
+    list: rows.map(row => ({
+      ...presentRequest(row),
+      record: recordService.presentRecord(
+        toRecordRow(row),
+        stagesByRecord.get(Number(row.record_id)) || [],
+        imagesByRecord.get(Number(row.record_id)) || [],
+        user,
+        {},
+        linkStatusByRecord.get(Number(row.record_id)) || null,
+        { managerReviewRequest: row, forceReadOnly: true }
+      )
+    })),
     total,
     page: filters.page,
     pageSize: filters.pageSize,

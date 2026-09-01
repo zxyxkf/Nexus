@@ -164,6 +164,23 @@ it('creates a store-scoped active request and locks normal workflow writes', asy
   expect(list.body.code).toBe(0);
   const review = list.body.data.list.find(item => Number(item.recordId) === Number(pending.id));
   expect(review).toMatchObject({ store: '审核A店', applicantId, requestVersion: pending.version });
+  expect(review.record).toMatchObject({
+    id: pending.id,
+    currentStage: 'testing',
+    processStatus: 'in_progress',
+    managerReviewPending: true,
+    allowedActions: {
+      edit: false,
+      advance: false,
+      end: false,
+      restore: false,
+      reopen: false,
+      managerReview: false,
+      delete: false
+    }
+  });
+  expect(review.record.stages.map(stage => stage.stageCode)).toEqual(['selection', 'testing']);
+  expect(review.record.images.some(image => image.category === 'product_main')).toBe(true);
 
   const { execute } = require('../../config/database');
   const [requestNotifications] = await execute(

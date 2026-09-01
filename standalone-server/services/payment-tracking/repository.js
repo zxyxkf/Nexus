@@ -157,9 +157,11 @@ async function listManagerReviewRequests(filters = {}) {
   const pageSize = Math.min(100, Math.max(1, Number(filters.pageSize) || 20));
   const offset = (page - 1) * pageSize;
   const [rows] = await getPool().execute(
-    `SELECT r.*, p.store_seq, p.style_number, p.product_id, p.source_task_no,
-            p.planner_name, p.current_stage, p.process_status,
-            p.version AS record_version, p.create_time AS record_create_time
+    `SELECT r.*, p.store_seq, p.planner_id, p.planner_name, p.source_task_id,
+            p.source_task_no, p.selection_date, p.style_number, p.cost, p.sale_price,
+            p.product_id, p.current_stage, p.process_status, p.end_stage, p.end_type,
+            p.end_reason, p.ended_at, p.version AS record_version,
+            p.create_time AS record_create_time, p.update_time AS record_update_time
      FROM payment_manager_review_request r
      JOIN payment_selection_record p ON p.id = r.record_id
      ${where}

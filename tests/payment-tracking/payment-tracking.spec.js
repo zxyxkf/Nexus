@@ -445,7 +445,8 @@ async function installMocks(page, options = {}) {
     productId: managerReviewRecord.productId,
     sourceTaskNo: managerReviewRecord.sourceTaskNo,
     currentStage: 'testing',
-    createdAt: '2026-08-31 09:30:00'
+    createdAt: '2026-08-31 09:30:00',
+    record: managerReviewRecord
   }]
   const getMockRecord = id => recordOverrides.get(Number(id))
     || allDetailRecords.find(record => record.id === Number(id))
@@ -1321,11 +1322,21 @@ test('四阶段页面在桌面与窄窗口保持可用布局', async ({ page }, 
   }
 })
 
-test('店长审核页只读查看记录并选择付费时间通过', async ({ page }) => {
+test('店长审核页只读查看记录并选择付费时间通过', async ({ page }, testInfo) => {
   await page.goto('/#/payment-tracking/manager-reviews')
 
   await expect(page.getByRole('heading', { name: '店长审核' })).toBeVisible()
   await expect(page.getByText('1 条待审核')).toBeVisible()
+  await expect(page.locator('.manager-review-page .product-row-card')).toHaveCount(1)
+  await expect(page.locator('.manager-review-page .el-table')).toHaveCount(0)
+  await expect(page.locator('.manager-review-page .stage-timeline')).toBeVisible()
+  const actions = page.locator('.manager-review-page .card-actions')
+  await expect(actions.getByRole('button')).toHaveText(['查看记录', '通过', '拒绝'])
+  await expect(actions.getByRole('button', { name: '查看记录' })).toHaveClass(/el-button--primary/)
+  await expect(actions.getByRole('button', { name: '通过' })).toHaveClass(/el-button--success/)
+  await expect(actions.getByRole('button', { name: '拒绝' })).toHaveClass(/el-button--danger/)
+  await expectNoHorizontalPageOverflow(page)
+  await page.screenshot({ path: testInfo.outputPath('manager-review-card.png'), fullPage: true })
   await expect(page.getByRole('button', { name: '查看记录' })).toHaveCount(1)
   await expect(page.getByRole('button', { name: '通过', exact: true })).toHaveCount(1)
   await expect(page.getByRole('button', { name: '拒绝', exact: true })).toHaveCount(1)
