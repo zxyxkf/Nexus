@@ -110,7 +110,56 @@ async function replaceAvatar(userId, file) {
   return { hasAvatar: true };
 }
 
+function validateAvatarRoot(value) {
+  const target = String(value || '').trim();
+  if (!target || !path.isAbsolute(target)) {
+    throw new AppError(400, '头像存储目录必须是绝对路径');
+  }
+  const resolved = path.resolve(target);
+  const probe = path.join(resolved, `.avatar-write-${uuidv4()}.tmp`);
+  try {
+    fs.mkdirSync(resolved, { recursive: true });
+    fs.writeFileSync(probe, 'ok');
+    fs.unlinkSync(probe);
+  } catch (error) {
+    removeFile(probe);
+    throw new AppError(400, `头像存储目录不可写：${error.message}`);
+  }
+  return resolved;
+}
+
+async function relocateAvatarStorage(oldRootValue, newRootValue) {
+  const oldRoot = path.resolve(String(oldRootValue || getUserAvatarDir()));
+  const newRoot = validateAvatarRoot(newRootValue);
+  if (oldRoot === newRoot) return newRoot;
+
+  const [rows] = await getPool().execute(
+    "SELECT avatar_path FROM sys_user WHERE avatar_path IS NOT NULL AND avatar_path <> ''"
+  );
+  const copiedFiles = [];
+  try {
+    for (const row of rows) {
+      const sourcePath = resolveAvatarPath(oldRoot, row.avatar_path);
+      if (!fs.existsSync(sourcePath) || !fs.statSync(sourcePath).isFile()) {
+        throw new AppError(400, `现有头像文件不存在：${row.avatar_path}`);
+      }
+      const destinationPath = resolveAvatarPath(newRoot, row.avatar_path);
+      fs.mkdirSync(path.dirname(destinationPath), { recursive: true });
+      const existed = fs.existsSync(destinationPath);
+      fs.copyFileSync(sourcePath, destinationPath);
+      if (!existed) copiedFiles.push(destinationPath);
+    }
+  } catch (error) {
+    for (const filePath of copiedFiles.reverse()) removeFile(filePath);
+    if (error instanceof AppError) throw error;
+    throw new AppError(400, `头像目录迁移失败：${error.message}`);
+  }
+  return newRoot;
+}
+
 module.exports = {
   getAvatar,
-  replaceAvatar
+  replaceAvatar,
+  validateAvatarRoot,
+  relocateAvatarStorage
 };

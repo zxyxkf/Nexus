@@ -158,3 +158,100 @@ describe('current user avatar API', () => {
     expect(response.body.code).toBe(400);
   });
 });
+
+describe('avatar storage configuration', () => {
+  let avatarConfigId;
+
+  beforeAll(async () => {
+    const [configs] = await execute(
+      "SELECT id FROM sys_config WHERE config_key = 'upload.user_avatar_dir'"
+    );
+    avatarConfigId = configs[0].id;
+  });
+
+  it('copies the referenced avatar before switching roots', async () => {
+    const before = await getAdminAvatarPath();
+    const oldFile = storedFile(before);
+    expect(fs.existsSync(oldFile)).toBe(true);
+    const nextRoot = path.join(getTmpDir(), 'avatars-next');
+
+    const update = await request(app)
+      .put('/api/config/update')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ id: avatarConfigId, configValue: nextRoot });
+    expect(update.body.code).toBe(0);
+    expect(fs.existsSync(path.join(nextRoot, before))).toBe(true);
+    expect(fs.existsSync(oldFile)).toBe(true);
+
+    avatarDir = nextRoot;
+    await request(app)
+      .get('/api/user/avatar')
+      .set('Authorization', `Bearer ${token}`)
+      .expect(200);
+  });
+
+  it('allows only a super administrator to update the avatar root', async () => {
+    const username = `avatar_config_${Date.now()}`;
+    await request(app)
+      .post('/api/user/create')
+      .set('Authorization', `Bearer ${token}`)
+      .send({
+        username,
+        password: 'test123456',
+        realName: '头像配置测试用户',
+        role: 'designer'
+      });
+
+    const userList = await request(app)
+      .get('/api/user/list?role=designer')
+      .set('Authorization', `Bearer ${token}`);
+    const user = userList.body.data.list.find(item => item.username === username);
+    expect(user).toBeDefined();
+
+    try {
+      await request(app)
+        .post('/api/user/permissions/save')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ userId: user.id, permissions: ['admin.config'], deniedPermissions: [] });
+      const login = await request(app)
+        .post('/api/auth/login')
+        .send({ username, password: 'test123456' });
+
+      const denied = await request(app)
+        .put('/api/config/update')
+        .set('Authorization', `Bearer ${login.body.data.token}`)
+        .send({ id: avatarConfigId, configValue: path.join(getTmpDir(), 'denied-root') });
+      expect(denied.body.code).toBe(403);
+
+      const [configs] = await execute('SELECT config_value FROM sys_config WHERE id = ?', [avatarConfigId]);
+      expect(path.resolve(configs[0].config_value)).toBe(path.resolve(avatarDir));
+    } finally {
+      await request(app)
+        .post('/api/user/delete')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: user.id });
+    }
+  });
+
+  it('rejects relative or unusable roots without changing the config', async () => {
+    const [beforeRows] = await execute('SELECT config_value FROM sys_config WHERE id = ?', [avatarConfigId]);
+    const before = beforeRows[0].config_value;
+
+    const relative = await request(app)
+      .put('/api/config/update')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ id: avatarConfigId, configValue: 'relative/avatar/path' });
+    expect(relative.body.code).toBe(400);
+
+    const blockedPath = path.join(getTmpDir(), 'avatar-root-is-a-file');
+    fs.writeFileSync(blockedPath, 'not a directory');
+    const blocked = await request(app)
+      .put('/api/config/update')
+      .set('Authorization', `Bearer ${token}`)
+      .send({ id: avatarConfigId, configValue: blockedPath });
+    expect(blocked.body.code).toBe(400);
+
+    const [afterRows] = await execute('SELECT config_value FROM sys_config WHERE id = ?', [avatarConfigId]);
+    expect(afterRows[0].config_value).toBe(before);
+  });
+});

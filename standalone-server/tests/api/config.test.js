@@ -126,6 +126,19 @@ describe('PUT /api/config/update', () => {
 });
 
 describe('POST /api/config/delete', () => {
+  it('does not delete the required avatar directory config', async () => {
+    const list = await request(app)
+      .get('/api/config/list?group=upload')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const avatarConfig = list.body.data.find(item => item.config_key === 'upload.user_avatar_dir');
+
+    const res = await request(app)
+      .post('/api/config/delete')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ id: avatarConfig.id });
+    expect(res.body.code).toBe(400);
+  });
+
   it('没有 admin.config 权限不能删除配置', async () => {
     const username = `cfg_op_${Date.now()}`;
     const createOp = await request(app)

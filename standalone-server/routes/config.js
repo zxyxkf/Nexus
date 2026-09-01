@@ -8,6 +8,7 @@ const router = express.Router();
 const { getPool } = require('../config/database');
 const { requireAuth, requireAnyPermission } = require('../middleware/auth');
 const { initStorageConfig } = require('../utils/share');
+const avatarService = require('../services/avatar.service');
 
 router.use(requireAuth);
 
@@ -51,7 +52,7 @@ router.put('/update', requireAnyPermission(['admin.config'], 'admin'), async (re
 
     // 检查是否可编辑
     const [configs] = await pool.execute(
-      `SELECT id, config_key, editable FROM sys_config WHERE id = ?`,
+      `SELECT id, config_key, config_value, editable FROM sys_config WHERE id = ?`,
       [id]
     );
 
@@ -63,9 +64,20 @@ router.put('/update', requireAnyPermission(['admin.config'], 'admin'), async (re
       return res.json({ code: 400, msg: '该配置不可编辑' });
     }
 
+    let nextValue = configValue;
+    if (configs[0].config_key === 'upload.user_avatar_dir') {
+      if (req.user.role !== 'admin') {
+        return res.json({ code: 403, msg: '仅超级管理员可配置头像存储目录' });
+      }
+      nextValue = await avatarService.relocateAvatarStorage(
+        configs[0].config_value,
+        configValue
+      );
+    }
+
     await pool.execute(
       `UPDATE sys_config SET config_value = ? WHERE id = ?`,
-      [configValue, id]
+      [nextValue, id]
     );
 
     // 如果修改的是上传目录相关配置，刷新内存缓存
@@ -114,6 +126,13 @@ router.post('/delete', requireAnyPermission(['admin.config'], 'admin'), async (r
     const { id } = req.body;
     if (!id) return res.json({ code: 400, msg: '参数不完整' });
     const pool = getPool();
+    const [configs] = await pool.execute(
+      'SELECT config_key FROM sys_config WHERE id = ?',
+      [id]
+    );
+    if (configs[0]?.config_key === 'upload.user_avatar_dir') {
+      return res.json({ code: 400, msg: '用户头像存储目录为内置配置，不能删除' });
+    }
     await pool.execute('DELETE FROM sys_config WHERE id = ?', [id]);
     res.json({ code: 0, msg: '删除成功' });
   } catch (err) {

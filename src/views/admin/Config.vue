@@ -35,10 +35,10 @@
             <el-table-column prop="config_desc" label="描述" width="220" show-overflow-tooltip />
             <el-table-column label="操作" width="110" fixed="right" align="center">
               <template #default="{ row, $index }">
-                <el-button type="primary" link size="small" :disabled="row.editable !== 1" @click="startEdit(row, $index)">编辑</el-button>
+                <el-button type="primary" link size="small" :disabled="!canEditConfig(row)" @click="startEdit(row, $index)">编辑</el-button>
                 <el-popconfirm title="确认删除此配置项？" confirm-button-text="删除" @confirm="handleConfigDelete(row)">
                   <template #reference>
-                    <el-button type="danger" link size="small">删除</el-button>
+                    <el-button type="danger" link size="small" :disabled="isProtectedConfig(row)">删除</el-button>
                   </template>
                 </el-popconfirm>
               </template>
@@ -416,6 +416,9 @@ import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Plus } from '@element-plus/icons-vue'
 import { getConfigListApi, updateConfigApi, deleteConfigApi, getScoreItemsApi, saveScoreItemApi, deleteScoreItemApi, getAnnouncementListApi, createAnnouncementApi, updateAnnouncementApi, deleteAnnouncementApi, getShopListApi, createShopApi, updateShopApi, deleteShopApi, listPaymentListingCategoriesApi, createPaymentListingCategoryApi, updatePaymentListingCategoryApi, deletePaymentListingCategoryApi, listPaymentPromotionMethodsApi, createPaymentPromotionMethodApi, updatePaymentPromotionMethodApi, deletePaymentPromotionMethodApi } from '@/api'
+import { useUserStore } from '@/store'
+
+const userStore = useUserStore()
 
 // ===== 系统配置 =====
 const configLoading = ref(false)
@@ -448,9 +451,19 @@ async function loadConfig() {
 }
 
 function startEdit(row, index) {
-  if (row.editable !== 1) return
+  if (!canEditConfig(row)) return
   editIndex.value = index
   editValue.value = row.config_value
+}
+
+function isProtectedConfig(row) {
+  return row.config_key === 'upload.user_avatar_dir'
+}
+
+function canEditConfig(row) {
+  if (row.editable !== 1) return false
+  if (isProtectedConfig(row)) return userStore.isSuperAdmin
+  return true
 }
 
 function cancelEdit() {
