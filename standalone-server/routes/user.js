@@ -4,13 +4,65 @@
  */
 
 const express = require('express');
+const fs = require('fs');
+const multer = require('multer');
 const router = express.Router();
 
 const { requireAuth, requireRole, requireAnyPermission } = require('../middleware/auth');
+const AppError = require('../utils/AppError');
 const userService = require('../services/user.service');
+const avatarService = require('../services/avatar.service');
 
 // 所有接口需要登录
 router.use(requireAuth);
+
+const uploadAvatar = multer({
+  storage: multer.memoryStorage(),
+  limits: { fileSize: 5 * 1024 * 1024, files: 1 },
+  fileFilter: (_req, file, callback) => {
+    const accepted = ['image/jpeg', 'image/png', 'image/webp']
+      .includes(String(file.mimetype || '').toLowerCase());
+    callback(
+      accepted ? null : new AppError(400, '只允许上传 JPG、PNG 或 WebP 图片'),
+      accepted
+    );
+  }
+}).single('avatar');
+
+function receiveAvatar(req, res, next) {
+  uploadAvatar(req, res, error => {
+    if (error instanceof multer.MulterError) {
+      const message = error.code === 'LIMIT_FILE_SIZE'
+        ? '头像文件不能超过 5 MB'
+        : '头像上传参数不正确';
+      return next(new AppError(400, message));
+    }
+    return next(error);
+  });
+}
+
+router.get('/avatar', async (req, res, next) => {
+  try {
+    const avatar = await avatarService.getAvatar(req.user.id);
+    if (!avatar) return res.status(204).end();
+    res.setHeader('Content-Type', avatar.mimeType);
+    res.setHeader('Cache-Control', 'private, no-store');
+    const stream = fs.createReadStream(avatar.filePath);
+    stream.on('error', next);
+    return stream.pipe(res);
+  } catch (error) {
+    return next(error);
+  }
+});
+
+router.post('/avatar', receiveAvatar, async (req, res, next) => {
+  try {
+    const data = await avatarService.replaceAvatar(req.user.id, req.file);
+    return res.json({ code: 0, msg: '头像已更新', data });
+  } catch (error) {
+    return next(error);
+  }
+});
 
 /**
  * GET /api/user/list - 分页获取用户列表（admin / sub_admin 可访问）
