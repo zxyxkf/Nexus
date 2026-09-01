@@ -9,7 +9,7 @@
 
       <!-- 筛选栏 -->
       <div class="filter-bar">
-        <el-input v-model="filter.keyword" placeholder="搜索编号/标题" clearable style="width:200px;" @clear="loadData" @keyup.enter="loadData" />
+        <el-input v-model="filter.keyword" :placeholder="filterPlaceholder" clearable style="width:200px;" @clear="loadData" @keyup.enter="loadData" />
         <el-select v-model="filter.status" placeholder="状态" clearable style="width:120px;" @change="loadData">
           <el-option label="全部" value="" />
           <el-option label="待接单" value="wait" />
@@ -58,6 +58,47 @@
         </el-table-column>
         <el-table-column prop="publisher_name" :label="publisherLabel" />
         <el-table-column prop="designer_name" :label="designerLabel" />
+        <el-table-column v-if="taskGroup === 'design'" label="参考图" width="120" align="center">
+          <template #default="{ row }">
+            <div
+              v-if="getRefImages(row.files).length"
+              draggable="true"
+              @dragstart="setupFileDrag($event, getRefImages(row.files)[0])"
+              @mouseenter="preloadFilesForDrag(getRefImages(row.files))"
+              style="display:inline-block;"
+            >
+              <el-image
+                :src="getFileUrl(getRefImages(row.files)[0])"
+                fit="cover"
+                :preview-src-list="getRefImageSrcList(row.files)"
+                preview-teleported
+                style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
+              />
+            </div>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="taskGroup === 'design'" label="作品预览" width="120" align="center">
+          <template #default="{ row }">
+            <div
+              v-if="getFirstImage(row.files)"
+              draggable="true"
+              @dragstart="setupFileDrag($event, getFirstImage(row.files))"
+              @mouseenter="preloadFilesForDrag(row.files || [])"
+              style="display:inline-block;"
+            >
+              <el-image
+                :src="getFileUrl(getFirstImage(row.files))"
+                fit="cover"
+                :preview-src-list="getImageSrcList(row.files)"
+                :initial-index="0"
+                preview-teleported
+                style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
+              />
+            </div>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="create_time" label="发布时间" width="170" sortable="custom" show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
         </el-table-column>
@@ -253,6 +294,7 @@ import RejectHistory from '@/components/RejectHistory.vue'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
+import { useFileHelpers } from '@/composables/useFileHelpers'
 import { exportTasksApi } from '@/api/export'
 
 const route = useRoute()
@@ -289,8 +331,10 @@ const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
 
 const taskGroup = computed(() => route.meta.taskGroup || 'design')
 const pageTitle = computed(() => `${route.meta.title || '全量任务'}管理`)
+const filterPlaceholder = computed(() => taskGroup.value === 'design' ? '搜索编号/标题/款号' : '搜索编号/标题')
 const publisherLabel = computed(() => '发布人')
 const designerLabel = computed(() => taskGroup.value === 'cs' ? '基础美工' : taskGroup.value === 'operator' ? '运营助理' : '美工')
+const { getRefImages, getFirstImage, getRefImageSrcList, getImageSrcList } = useFileHelpers()
 
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }

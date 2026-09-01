@@ -388,6 +388,54 @@ for (const pageCase of pageCases) {
   })
 }
 
+test('advanced designer dashboard shows simplified cards without efficiency rank', async ({ page }) => {
+  await page.route('**/api/task/stats/dashboard', route => json(route, {
+    code: 0,
+    data: {
+      designStats: {
+        total: 6,
+        wait_count: 0,
+        accepted_count: 1,
+        doing_count: 5,
+        finished_count: 0,
+        rejected_count: 2
+      },
+      operatorStats: {},
+      csStats: {},
+      designerCurrentMonthRank: [],
+      designerLastMonthRank: [],
+      designerRank: [{ name: '美工', finished_count: 1, rejected_count: 1 }]
+    }
+  }))
+  await page.route('**/api/task/stats/admin/detail', route => json(route, { code: 0, data: {} }))
+  await loginAs(page, users.admin)
+  await page.goto('/#/dashboard')
+  await expect(page.locator('.page-card').first()).toBeVisible()
+
+  await expect(page.getByText('待审核', { exact: true })).toBeVisible()
+  await expect(page.getByText('作图中', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('已驳回', { exact: true })).toHaveCount(0)
+  await expect(page.getByText('美工完成效率排行', { exact: true })).toHaveCount(0)
+})
+
+test('design all tasks expose draggable reference and work previews', async ({ page }) => {
+  await loginAs(page, users.admin)
+  await page.goto('/#/admin/tasks/design')
+  await expect(page.locator('.page-card')).toBeVisible()
+
+  await expect(page.getByPlaceholder('搜索编号/标题/款号')).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '参考图' })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '作品预览' })).toBeVisible()
+
+  const row = page.locator('.el-table__body tr').filter({ hasText: 'T-ACCEPTED' })
+  const previews = row.locator('[draggable="true"]')
+  await expect(previews).toHaveCount(2)
+  expectBrowserDragData(await dispatchDragStart(previews.first()))
+
+  await row.locator('.el-image img').first().click()
+  await expect(page.locator('.el-image-viewer__wrapper')).toBeVisible()
+})
+
 test('detail overlays preserve task detail and file affordances', async ({ page }) => {
   await loginAs(page, users.designer)
   await page.goto('/#/designer/tasks')

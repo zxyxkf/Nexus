@@ -44,18 +44,6 @@
         </el-col>
       </el-row>
 
-      <!-- 美工完成效率排行 -->
-      <el-row :gutter="20" class="chart-row">
-        <el-col :span="24">
-          <el-card shadow="never" class="chart-card">
-            <template #header>
-              <div class="card-header"><span class="card-title">美工完成效率排行</span></div>
-            </template>
-            <div ref="designerChartRef" style="height:300px;"></div>
-          </el-card>
-        </el-col>
-      </el-row>
-
       <!-- 美工综合统计表 -->
       <el-row :gutter="20" class="chart-row" v-if="detailStats.designerStats?.length">
         <el-col :span="24">
@@ -416,7 +404,6 @@ const basicCurrentMonthRef = ref(null)
 const basicLastMonthRef = ref(null)
 const opAssistantCurrentMonthRef = ref(null)
 const opAssistantLastMonthRef = ref(null)
-const designerChartRef = ref(null)
 
 let designerCurrentMonthChart = null
 let designerLastMonthChart = null
@@ -424,11 +411,10 @@ let basicCurrentMonthChart = null
 let basicLastMonthChart = null
 let opAssistantCurrentMonthChart = null
 let opAssistantLastMonthChart = null
-let designerChart = null
 let refreshTimer = null
 
 function disposeCharts() {
-  ;[designerCurrentMonthChart, designerLastMonthChart, basicCurrentMonthChart, basicLastMonthChart, opAssistantCurrentMonthChart, opAssistantLastMonthChart, designerChart].forEach(chart => {
+  ;[designerCurrentMonthChart, designerLastMonthChart, basicCurrentMonthChart, basicLastMonthChart, opAssistantCurrentMonthChart, opAssistantLastMonthChart].forEach(chart => {
     chart?.dispose()
   })
   designerCurrentMonthChart = null
@@ -437,7 +423,6 @@ function disposeCharts() {
   basicLastMonthChart = null
   opAssistantCurrentMonthChart = null
   opAssistantLastMonthChart = null
-  designerChart = null
 }
 
 const months = ['1月', '2月', '3月', '4月', '5月', '6月', '7月', '8月', '9月', '10月', '11月', '12月']
@@ -456,9 +441,8 @@ const statCards = [
   { key: 'total', label: '任务总量', color: '#4361ee' },
   { key: 'wait_count', label: '待接单', color: '#7b8ba3' },
   { key: 'accepted_count', label: '已接单', color: '#f7931a' },
-  { key: 'doing_count', label: '作图中', color: '#4361ee' },
-  { key: 'finished_count', label: '已完成', color: '#2ec4b6' },
-  { key: 'rejected_count', label: '已驳回', color: '#e63946' }
+  { key: 'doing_count', label: '待审核', color: '#4361ee' },
+  { key: 'finished_count', label: '已完成', color: '#2ec4b6' }
 ]
 
 const operatorStatCards = [
@@ -843,38 +827,6 @@ function initCharts(data) {
       })
     }
 
-    // 美工完成效率排行
-    if (designerChartRef.value && data.designerRank?.length) {
-      designerChart = designerChart || echarts.init(designerChartRef.value)
-      designerChart.setOption({
-        tooltip: { trigger: 'axis' },
-        grid: { left: '3%', right: '4%', bottom: '10%', containLabel: true },
-        xAxis: {
-          type: 'category',
-          data: data.designerRank.map(d => d.name),
-          axisLabel: { fontSize: 11 }
-        },
-        yAxis: { type: 'value', minInterval: 1 },
-        series: [
-          {
-            name: '完成',
-            type: 'bar',
-            data: data.designerRank.map(d => d.finished_count),
-            itemStyle: { color: '#2ec4b6', borderRadius: [4, 4, 0, 0] },
-            barMaxWidth: 28
-          },
-          {
-            name: '驳回',
-            type: 'bar',
-            data: data.designerRank.map(d => d.rejected_count),
-            itemStyle: { color: '#e63946', borderRadius: [4, 4, 0, 0] },
-            barMaxWidth: 28
-          }
-        ],
-        legend: { bottom: 0 }
-      })
-    }
-
   })
 }
 
@@ -903,7 +855,7 @@ async function loadDetailStats() {
 }
 
 function handleResize() {
-  [designerCurrentMonthChart, designerLastMonthChart, basicCurrentMonthChart, basicLastMonthChart, opAssistantCurrentMonthChart, opAssistantLastMonthChart, designerChart].forEach(chart => {
+  [designerCurrentMonthChart, designerLastMonthChart, basicCurrentMonthChart, basicLastMonthChart, opAssistantCurrentMonthChart, opAssistantLastMonthChart].forEach(chart => {
     chart?.resize()
   })
 }

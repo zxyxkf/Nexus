@@ -548,7 +548,16 @@ async function queryAllTasks({ status, keyword, publisherId, designerId, startDa
   const dateColumn = taskDateColumn(dateField);
 
   where = appendStatusFilter(where, params, status);
-  if (keyword) { where += ' AND (t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`); }
+  if (keyword) {
+    const like = `%${keyword}%`;
+    if (taskGroup === 'design') {
+      where += ' AND (t.title LIKE ? OR t.task_no LIKE ? OR t.style_number LIKE ?)';
+      params.push(like, like, like);
+    } else {
+      where += ' AND (t.title LIKE ? OR t.task_no LIKE ?)';
+      params.push(like, like);
+    }
+  }
   if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
   if (designerId) { where += ' AND t.designer_id = ?'; params.push(designerId); }
   if (startDate) { where += ` AND ${dateColumn} >= ?`; params.push(startDate + ' 00:00:00'); }
@@ -563,13 +572,15 @@ async function queryAllTasks({ status, keyword, publisherId, designerId, startDa
     }
   }
 
-  return paginate({
+  const result = await paginate({
     countSql: `SELECT COUNT(*) as total FROM task_info t ${where}`,
     countParams: params,
     dataSql: `SELECT ${TASK_SELECT} FROM task_info t ${TASK_JOIN} ${where} ${buildTaskOrderBy(sortField, sortOrder, 't.create_time DESC')} LIMIT ? OFFSET ?`,
     dataParams: [...params, pageSize, offset],
     page, pageSize
   });
+  result.list = await attachFilesToTasksForList(result.list);
+  return result;
 }
 
 async function searchTasks({ userId, role, store, permissions = [], keyword, pageSize }) {

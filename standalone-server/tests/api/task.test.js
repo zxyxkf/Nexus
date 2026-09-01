@@ -496,6 +496,55 @@ describe('任务查询', () => {
     expect(res.body.data.total).toBeGreaterThanOrEqual(1);
   });
 
+  it('运营美工全量任务支持按款号搜索并返回文件列表', async () => {
+    const suffix = Date.now();
+    const styleNumber = `ALL-STYLE-${suffix}`;
+    const created = await request(app)
+      .post('/api/task/create')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({
+        title: `全量任务图片预览 ${suffix}`,
+        taskGroup: 'design',
+        priority: 1,
+        designerId,
+        shopName: '测试店铺',
+        styleNumber
+      });
+    expect(created.body.code).toBe(0);
+    const taskId = created.body.data.id;
+    const { execute } = require('../../config/database');
+
+    try {
+      for (const file of [
+        { name: `reference-${suffix}.png`, category: 'reference' },
+        { name: `work-${suffix}.png`, category: 'work' }
+      ]) {
+        await execute(
+          `INSERT INTO task_file
+             (task_id, file_name, file_path, file_size, file_type, mime_type, uploader_id, file_category)
+           VALUES (?, ?, ?, 1, 'image', 'image/png', ?, ?)`,
+          [taskId, file.name, `design/images/${file.name}`, operatorId, file.category]
+        );
+      }
+
+      const result = await request(app)
+        .get(`/api/task/all?taskGroup=design&keyword=${encodeURIComponent(`STYLE-${suffix}`)}&pageSize=20`)
+        .set('Authorization', `Bearer ${adminToken}`);
+      expect(result.body.code).toBe(0);
+      const row = result.body.data.list.find(item => Number(item.id) === Number(taskId));
+      expect(row).toMatchObject({ style_number: styleNumber });
+      expect(row.files).toEqual(expect.arrayContaining([
+        expect.objectContaining({ file_category: 'reference', file_type: 'image' }),
+        expect.objectContaining({ file_category: 'work', file_type: 'image' })
+      ]));
+    } finally {
+      await request(app)
+        .post('/api/task/delete')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ taskId });
+    }
+  });
+
   it('支持按状态筛选 finished', async () => {
     const res = await request(app)
       .get('/api/task/all?status=finished&pageSize=50')
