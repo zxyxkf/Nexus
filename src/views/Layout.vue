@@ -254,7 +254,19 @@
   <el-dialog v-model="profileVisible" title="个人信息" width="400px" :close-on-click-modal="false" top="15vh">
     <div class="profile-content">
       <div class="profile-avatar-section">
-        <UserAvatar :size="64" :background-color="avatarColor" class="profile-avatar" />
+        <button
+          type="button"
+          class="profile-avatar-edit"
+          data-testid="profile-avatar-edit"
+          aria-label="修改头像"
+          @click="avatarCropDialogRef?.selectFile()"
+        >
+          <UserAvatar :size="64" :background-color="avatarColor" class="profile-avatar" />
+          <span class="profile-avatar-overlay">
+            <el-icon><Camera /></el-icon>
+            <span>修改头像</span>
+          </span>
+        </button>
         <div class="profile-name-section">
           <div class="profile-name">{{ userStore.realName || userStore.username }}</div>
           <el-tag :type="roleTagType" size="small" effect="dark">{{ roleLabel }}</el-tag>
@@ -267,6 +279,8 @@
       </el-descriptions>
     </div>
   </el-dialog>
+
+  <AvatarCropDialog ref="avatarCropDialogRef" @saved="handleAvatarSaved" />
 
   <!-- 主题切换幕布 -->
   <div class="theme-curtain" :class="curtainPhase" :style="{ background: curtainColor }"></div>
@@ -282,13 +296,14 @@ import { useUserStore } from '@/store'
 import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, onConnectionChange, getOnlineStatus, getTaskDetailApi, getMyStatsApi, getPaymentManagerReviewCountApi } from '@/api'
 import { ROLE_LABEL, ROLE_TAG_TYPE } from '@/utils/format'
 import { useConfig } from '@/composables/useConfig'
-import { HomeFilled, Bell, Moon, Sunny, User, Connection, WarningFilled } from '@element-plus/icons-vue'
+import { HomeFilled, Bell, Moon, Sunny, User, Connection, WarningFilled, Camera } from '@element-plus/icons-vue'
 import InfiniteGridBg from '@/components/InfiniteGridBg.vue'
 import SidebarMenu from '@/components/SidebarMenu.vue'
 import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
 import GlobalTaskSearch from '@/components/GlobalTaskSearch.vue'
 import QuickActions from '@/components/QuickActions.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
+import AvatarCropDialog from '@/components/user/AvatarCropDialog.vue'
 import { initNotificationToast, destroyNotificationToast } from '@/composables/useNotificationToast'
 import { openTask } from '@/utils/task-navigation'
 import { canUseManagerReview } from '@/utils/permissions'
@@ -601,6 +616,11 @@ const pwdDialogVisible = ref(false)
 const pwdLoading = ref(false)
 const pwdFormRef = ref(null)
 const profileVisible = ref(false)
+const avatarCropDialogRef = ref(null)
+
+function handleAvatarSaved() {
+  ElMessage.success('头像已更新')
+}
 
 const pwdForm = ref({
   oldPassword: '',
@@ -1137,6 +1157,37 @@ async function changePassword() {
 /* 个人信息对话框 */
 .profile-content { padding: 8px 0; }
 .profile-avatar-section { display: flex; align-items: center; gap: 16px; margin-bottom: 20px; padding-bottom: 16px; border-bottom: 1px solid var(--dd-border-light); }
+.profile-avatar-edit {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  flex: 0 0 64px;
+  padding: 0;
+  overflow: hidden;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  cursor: pointer;
+}
+.profile-avatar-edit:focus-visible { outline: 3px solid rgba(67, 97, 238, 0.3); outline-offset: 2px; }
+.profile-avatar-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  border-radius: 50%;
+  background: rgba(15, 23, 42, 0.68);
+  color: #fff;
+  font-size: 10px;
+  line-height: 1.2;
+  opacity: 0;
+  transition: opacity var(--dd-transition-fast);
+}
+.profile-avatar-edit:hover .profile-avatar-overlay,
+.profile-avatar-edit:focus-visible .profile-avatar-overlay { opacity: 1; }
 .profile-name-section { flex: 1; }
 .profile-name { font-size: 18px; font-weight: 700; color: var(--dd-text-primary); margin-bottom: 6px; }
 .profile-details { margin-top: 4px; }
