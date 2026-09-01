@@ -1,4 +1,5 @@
 const MANAGER_REVIEW_BACKFILL_MARKER = 'migration.payment_manager_review_backfill.v1';
+const WORKFLOW_DATA_MIGRATION_MARKER = 'migration.payment_tracking_workflow_data.v1';
 
 async function columnExists(execute, mode, table, column) {
   if (mode === 'mysql') {
@@ -82,15 +83,27 @@ async function migrateStageRows(execute, mode) {
      SELECT record_id, 'testing', stage_status, is_reopened, entered_at, completed_at
      FROM payment_selection_stage WHERE stage_code = 'preparation'`
   );
-  await execute(
-    `UPDATE payment_selection_stage
-     SET stage_status = 'ended'
-     WHERE stage_code = 'testing'
-       AND record_id IN (
-         SELECT record_id FROM payment_selection_stage
-         WHERE stage_code = 'preparation' AND stage_status = 'ended'
-       )`
-  );
+  if (mode === 'mysql') {
+    await execute(
+      `UPDATE payment_selection_stage target
+       JOIN payment_selection_stage source
+         ON source.record_id = target.record_id
+        AND source.stage_code = 'preparation'
+        AND source.stage_status = 'ended'
+       SET target.stage_status = 'ended'
+       WHERE target.stage_code = 'testing'`
+    );
+  } else {
+    await execute(
+      `UPDATE payment_selection_stage
+       SET stage_status = 'ended'
+       WHERE stage_code = 'testing'
+         AND record_id IN (
+           SELECT record_id FROM payment_selection_stage
+           WHERE stage_code = 'preparation' AND stage_status = 'ended'
+         )`
+    );
+  }
   await execute("UPDATE payment_selection_record SET current_stage = 'testing' WHERE current_stage = 'preparation'");
   await execute("UPDATE payment_selection_record SET end_stage = 'testing' WHERE end_stage = 'preparation'");
   await execute("DELETE FROM payment_selection_stage WHERE stage_code = 'preparation'");
@@ -113,24 +126,45 @@ async function migrateBreakoutToSummary(execute, mode) {
      SELECT record_id, 'summary', stage_status, is_reopened, entered_at, completed_at
      FROM payment_selection_stage WHERE stage_code = 'breakout'`
   );
-  await execute(
-    `UPDATE payment_selection_stage
-     SET stage_status = 'ended'
-     WHERE stage_code = 'summary'
-       AND record_id IN (
-         SELECT record_id FROM payment_selection_stage
-         WHERE stage_code = 'breakout' AND stage_status = 'ended'
-       )`
-  );
-  await execute(
-    `UPDATE payment_selection_stage
-     SET stage_status = 'active', completed_at = NULL
-     WHERE stage_code = 'summary' AND stage_status != 'ended'
-       AND record_id IN (
-         SELECT record_id FROM payment_selection_stage
-         WHERE stage_code = 'breakout' AND stage_status = 'active'
-       )`
-  );
+  if (mode === 'mysql') {
+    await execute(
+      `UPDATE payment_selection_stage target
+       JOIN payment_selection_stage source
+         ON source.record_id = target.record_id
+        AND source.stage_code = 'breakout'
+        AND source.stage_status = 'ended'
+       SET target.stage_status = 'ended'
+       WHERE target.stage_code = 'summary'`
+    );
+    await execute(
+      `UPDATE payment_selection_stage target
+       JOIN payment_selection_stage source
+         ON source.record_id = target.record_id
+        AND source.stage_code = 'breakout'
+        AND source.stage_status = 'active'
+       SET target.stage_status = 'active', target.completed_at = NULL
+       WHERE target.stage_code = 'summary' AND target.stage_status != 'ended'`
+    );
+  } else {
+    await execute(
+      `UPDATE payment_selection_stage
+       SET stage_status = 'ended'
+       WHERE stage_code = 'summary'
+         AND record_id IN (
+           SELECT record_id FROM payment_selection_stage
+           WHERE stage_code = 'breakout' AND stage_status = 'ended'
+         )`
+    );
+    await execute(
+      `UPDATE payment_selection_stage
+       SET stage_status = 'active', completed_at = NULL
+       WHERE stage_code = 'summary' AND stage_status != 'ended'
+         AND record_id IN (
+           SELECT record_id FROM payment_selection_stage
+           WHERE stage_code = 'breakout' AND stage_status = 'active'
+         )`
+    );
+  }
   await execute(
     `${insert} INTO payment_selection_stage (record_id, stage_code, stage_status)
      SELECT id, 'summary',
@@ -176,7 +210,16 @@ async function migrateMonitoringStatus(execute) {
   await execute(
     `UPDATE payment_selection_monitoring
      SET link_status = CASE WHEN abandoned = 1 THEN 'protect_roi' ELSE 'keep_breaking' END
-     WHERE link_status IS NULL OR link_status = ''`
+     WHERE (link_status IS NULL OR link_status = '')
+       AND (
+         abandoned = 1
+         OR EXISTS (
+           SELECT 1 FROM payment_selection_stage stage
+           WHERE stage.record_id = payment_selection_monitoring.record_id
+             AND stage.stage_code = 'monitoring'
+             AND stage.stage_status = 'completed'
+         )
+       )`
   );
 }
 
@@ -184,7 +227,7 @@ async function clearRetiredValues(execute, mode) {
   await execute('UPDATE payment_selection_record SET design_main_image = 0, sku_le_200 = NULL');
   await execute(
     `UPDATE payment_selection_testing SET
-       promotion_method = '', car_promotion_method = '', car_clicks = NULL,
+       car_promotion_method = '', car_clicks = NULL,
        car_ctr = NULL, car_qualifies = NULL, site_promotion_method = '',
        overall_visitors = NULL, search_visitors = NULL, buyers = NULL,
        average_ctr = NULL`
@@ -212,6 +255,25 @@ async function clearRetiredValues(execute, mode) {
     await execute(`CREATE UNIQUE INDEX IF NOT EXISTS uk_payment_adjustment_client
       ON payment_selection_adjustment(record_id, client_key)`);
   }
+}
+
+async function migrateWorkflowDataOnce(execute, mode) {
+  const [markerRows] = await execute(
+    'SELECT config_value FROM sys_config WHERE config_key = ?',
+    [WORKFLOW_DATA_MIGRATION_MARKER]
+  );
+  if (markerRows.length) return;
+
+  await migrateMonitoringStatus(execute);
+  await clearRetiredValues(execute, mode);
+
+  const insert = mode === 'mysql' ? 'INSERT IGNORE' : 'INSERT OR IGNORE';
+  await execute(
+    `${insert} INTO sys_config
+       (config_key, config_value, config_group, config_desc, editable)
+     VALUES (?, '1', 'migration', 'Payment tracking workflow data migrated', 0)`,
+    [WORKFLOW_DATA_MIGRATION_MARKER]
+  );
 }
 
 async function backfillManagerReviewRequests(execute, mode) {
@@ -254,9 +316,12 @@ async function migratePaymentTracking({ execute, mode }) {
   await migrateStageRows(execute, mode);
   await migrateBreakoutToSummary(execute, mode);
   await backfillSelectionDates(execute);
-  await migrateMonitoringStatus(execute);
-  await clearRetiredValues(execute, mode);
+  await migrateWorkflowDataOnce(execute, mode);
   await backfillManagerReviewRequests(execute, mode);
 }
 
-module.exports = { MANAGER_REVIEW_BACKFILL_MARKER, migratePaymentTracking };
+module.exports = {
+  MANAGER_REVIEW_BACKFILL_MARKER,
+  WORKFLOW_DATA_MIGRATION_MARKER,
+  migratePaymentTracking
+};

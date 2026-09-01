@@ -1194,10 +1194,30 @@ it('keeps one editable stage-owned link status and allows explicit clearing befo
   expect(forbidden.body.code).toBe(403);
 });
 
+it('uses MySQL-safe joins when migrating rows within the stage table', async () => {
+  const { migratePaymentTracking } = require('../../config/payment-tracking-migration');
+  const statements = [];
+  const fakeExecute = async (sql) => {
+    statements.push(String(sql));
+    if (String(sql).includes('information_schema.columns')) return [[{ present: 1 }]];
+    if (String(sql).includes('SELECT config_value FROM sys_config')) return [[{ config_value: '1' }]];
+    return [[], []];
+  };
+
+  await migratePaymentTracking({ execute: fakeExecute, mode: 'mysql' });
+
+  const stageUpdates = statements.filter(sql => sql.includes('UPDATE payment_selection_stage'));
+  expect(stageUpdates.filter(sql => sql.includes('JOIN payment_selection_stage'))).toHaveLength(3);
+  expect(stageUpdates.some(sql => /IN\s*\(\s*SELECT record_id FROM payment_selection_stage/s.test(sql))).toBe(false);
+});
+
 it('migrates retired stages and clears obsolete payment data idempotently', async () => {
   const { execute, getMode } = require('../../config/database');
   const { migratePaymentTracking } = require('../../config/payment-tracking-migration');
+  const workflowMarker = 'migration.payment_tracking_workflow_data.v1';
   const baseSeq = Number(String(Date.now()).slice(-8));
+
+  await execute('DELETE FROM sys_config WHERE config_key = ?', [workflowMarker]);
 
   const [stoppedResult] = await execute(
     `INSERT INTO payment_selection_record
@@ -1220,12 +1240,12 @@ it('migrates retired stages and clears obsolete payment data idempotently', asyn
     [stoppedId]
   );
   await execute(
-    `INSERT INTO payment_selection_testing
-       (record_id, car_promotion_method, car_clicks, car_ctr, car_qualifies,
+     `INSERT INTO payment_selection_testing
+       (record_id, promotion_method, car_promotion_method, car_clicks, car_ctr, car_qualifies,
         site_promotion_method, overall_visitors, search_visitors, buyers, average_ctr)
-     VALUES (?, '旧直通车', 99, 3.21, 1, '旧全站', 1000, 500, 12, 2.22)`,
-    [stoppedId]
-  );
+      VALUES (?, '管理员推广方式', '旧直通车', 99, 3.21, 1, '旧全站', 1000, 500, 12, 2.22)`,
+     [stoppedId]
+   );
 
   const [advancedResult] = await execute(
     `INSERT INTO payment_selection_record
@@ -1251,6 +1271,24 @@ it('migrates retired stages and clears obsolete payment data idempotently', asyn
        (record_id, sort_order, reason, fee_ratio_7d, payers_7d, total_budget, detail_text, feedback_text)
      VALUES (?, 0, '旧调整', 18.8, 20, 500, '旧操作概述', '旧备注')`,
     [advancedId]
+  );
+
+  const [partialMonitoringResult] = await execute(
+    `INSERT INTO payment_selection_record
+       (store, store_seq, planner_id, planner_name, source_task_no, style_number, current_stage)
+     VALUES ('迁移店铺', ?, ?, '迁移人员', ?, 'PARTIAL-MONITORING', 'monitoring')`,
+    [baseSeq + 4, storeAUserId, `PARTIAL-MONITORING-${suffix}`]
+  );
+  const partialMonitoringId = partialMonitoringResult.insertId;
+  await execute(
+    `INSERT INTO payment_selection_stage (record_id, stage_code, stage_status)
+     VALUES (?, 'selection', 'completed'), (?, 'testing', 'completed'), (?, 'monitoring', 'active')`,
+    [partialMonitoringId, partialMonitoringId, partialMonitoringId]
+  );
+  await execute(
+    `INSERT INTO payment_selection_monitoring (record_id, link_optimized, link_status)
+     VALUES (?, 1, '')`,
+    [partialMonitoringId]
   );
 
   const [activeBreakoutResult] = await execute(
@@ -1318,10 +1356,16 @@ it('migrates retired stages and clears obsolete payment data idempotently', asyn
   expect(testingRows[0]).toMatchObject({
     paid_enabled: 1,
     paid_at: '2026-08-20 09:30:00',
-    promotion_method: '',
+    promotion_method: '管理员推广方式',
     car_clicks: null,
     site_promotion_method: ''
   });
+
+  const [partialMonitoringRows] = await execute(
+    'SELECT link_optimized, link_status FROM payment_selection_monitoring WHERE record_id = ?',
+    [partialMonitoringId]
+  );
+  expect(partialMonitoringRows[0]).toMatchObject({ link_optimized: 1, link_status: '' });
 
   const [advancedStages] = await execute(
     'SELECT stage_code FROM payment_selection_stage WHERE record_id = ? ORDER BY id',
