@@ -15,3 +15,16 @@ export const getTaskDesignerListApi = (params) => request.get('/api/user/task-de
 export const getPermissionCatalogApi = () => request.get('/api/user/permissions/catalog')
 export const getUserPermissionsApi = (userId) => request.get(`/api/user/permissions/${userId}`)
 export const saveUserPermissionsApi = (data) => request.post('/api/user/permissions/save', data)
+
+export const getMyAvatarApi = () => request.get('/api/user/avatar', {
+  responseType: 'blob',
+  headers: { Accept: 'image/webp' }
+})
+
+export function uploadMyAvatarApi(file) {
+  const formData = new FormData()
+  formData.append('avatar', file, 'avatar.webp')
+  return request.post('/api/user/avatar', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' }
+  })
+}

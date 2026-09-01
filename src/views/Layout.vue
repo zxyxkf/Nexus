@@ -189,22 +189,18 @@
           <!-- 用户下拉 -->
           <el-dropdown trigger="click" @command="handleCommand">
             <span class="user-dropdown">
-              <el-avatar
+              <UserAvatar
                 :size="34"
                 class="user-avatar"
-                :style="{ backgroundColor: avatarColor }"
-              >
-                {{ userStore.realName?.charAt(0) || userStore.username?.charAt(0) }}
-              </el-avatar>
+                :background-color="avatarColor"
+              />
               <span class="user-name">{{ userStore.realName || userStore.username }}</span>
               <el-icon class="user-arrow"><ArrowDown /></el-icon>
             </span>
             <template #dropdown>
               <el-dropdown-menu>
                 <div class="dropdown-user-header">
-                  <el-avatar :size="40" :style="{ backgroundColor: avatarColor }" class="dropdown-avatar">
-                    {{ userStore.realName?.charAt(0) || userStore.username?.charAt(0) }}
-                  </el-avatar>
+                  <UserAvatar :size="40" :background-color="avatarColor" class="dropdown-avatar" />
                   <div class="dropdown-user-info">
                     <div class="dropdown-user-name">{{ userStore.realName || userStore.username }}</div>
                     <div class="dropdown-user-role">{{ roleLabel }}</div>
@@ -258,9 +254,7 @@
   <el-dialog v-model="profileVisible" title="个人信息" width="400px" :close-on-click-modal="false" top="15vh">
     <div class="profile-content">
       <div class="profile-avatar-section">
-        <el-avatar :size="64" :style="{ backgroundColor: avatarColor }" class="profile-avatar">
-          {{ userStore.realName?.charAt(0) || userStore.username?.charAt(0) }}
-        </el-avatar>
+        <UserAvatar :size="64" :background-color="avatarColor" class="profile-avatar" />
         <div class="profile-name-section">
           <div class="profile-name">{{ userStore.realName || userStore.username }}</div>
           <el-tag :type="roleTagType" size="small" effect="dark">{{ roleLabel }}</el-tag>
@@ -294,6 +288,7 @@ import SidebarMenu from '@/components/SidebarMenu.vue'
 import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
 import GlobalTaskSearch from '@/components/GlobalTaskSearch.vue'
 import QuickActions from '@/components/QuickActions.vue'
+import UserAvatar from '@/components/user/UserAvatar.vue'
 import { initNotificationToast, destroyNotificationToast } from '@/composables/useNotificationToast'
 import { openTask } from '@/utils/task-navigation'
 import { canUseManagerReview } from '@/utils/permissions'
@@ -482,6 +477,7 @@ function updateClock() {
 
 onMounted(() => {
   useConfig().ensureLoaded()
+  userStore.loadAvatar()
   updateClock()
   timeTimer = setInterval(updateClock, 1000)
   loadTodoCount()

@@ -1,6 +1,6 @@
 import { defineStore } from 'pinia'
 import { getToken, getRefreshToken, setRefreshToken, getUser, clearAuth, setAuth, onAuthChange } from '@/utils/auth'
-import { loginApi, getUserListApi } from '@/api'
+import { loginApi, getUserListApi, getMyAvatarApi } from '@/api'
 import request from '@/api/http'
 import { withCache, invalidate } from './cache'
 import { hasPermission as checkPermission } from '@/utils/permissions'
@@ -9,7 +9,10 @@ export const useUserStore = defineStore('user', {
   state: () => ({
     token: getToken() || '',
     userInfo: getUser() || null,
-    permissions: getUser()?.permissions || []
+    permissions: getUser()?.permissions || [],
+    avatarUrl: '',
+    avatarLoaded: false,
+    avatarLoading: false
   }),
 
   getters: {
@@ -36,6 +39,8 @@ export const useUserStore = defineStore('user', {
 
   actions: {
     applyAuth(token, user) {
+      const previousUserId = this.userInfo?.id
+      if (previousUserId && previousUserId !== user?.id) this.clearAvatar()
       this.token = token || ''
       this.userInfo = user || null
       this.permissions = user?.permissions || []
@@ -59,6 +64,7 @@ export const useUserStore = defineStore('user', {
       this._unbindAuthStorage = onAuthChange(() => {
         const token = getToken()
         const user = getUser()
+        if (this.userInfo?.id && this.userInfo.id !== user?.id) this.clearAvatar()
         this.token = token || ''
         this.userInfo = user || null
         this.permissions = user?.permissions || []
@@ -83,6 +89,7 @@ export const useUserStore = defineStore('user', {
         try { await request.post('/api/auth/logout', { refreshToken: rt }) } catch (_) {}
       }
       // 再清本机
+      this.clearAvatar()
       this.token = ''
       this.userInfo = null
       this.permissions = []
@@ -98,6 +105,31 @@ export const useUserStore = defineStore('user', {
 
     invalidateUserList() {
       invalidate(this, 'userList')
+    },
+
+    clearAvatar() {
+      if (this.avatarUrl) URL.revokeObjectURL(this.avatarUrl)
+      this.avatarUrl = ''
+      this.avatarLoaded = false
+      this.avatarLoading = false
+    },
+
+    async loadAvatar(force = false) {
+      if (this.avatarLoading || (this.avatarLoaded && !force)) return
+      this.avatarLoading = true
+      try {
+        const blob = await getMyAvatarApi()
+        const nextUrl = blob instanceof Blob && blob.size > 0
+          ? URL.createObjectURL(blob)
+          : ''
+        if (this.avatarUrl) URL.revokeObjectURL(this.avatarUrl)
+        this.avatarUrl = nextUrl
+        this.avatarLoaded = true
+      } catch (_) {
+        if (!this.avatarLoaded) this.avatarLoaded = true
+      } finally {
+        this.avatarLoading = false
+      }
     }
   }
 })
