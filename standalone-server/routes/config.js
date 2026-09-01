@@ -10,6 +10,8 @@ const { requireAuth, requireAnyPermission } = require('../middleware/auth');
 const { initStorageConfig } = require('../utils/share');
 const avatarService = require('../services/avatar.service');
 
+const AVATAR_CONFIG_KEY = 'upload.user_avatar_dir';
+
 router.use(requireAuth);
 
 /**
@@ -31,7 +33,12 @@ router.get('/list', async (req, res, next) => {
     sql += ' ORDER BY config_group ASC, id ASC';
 
     const [rows] = await pool.execute(sql, params);
-    res.json({ code: 0, msg: '查询成功', data: rows });
+    const data = req.user.role === 'admin'
+      ? rows
+      : rows.map(row => row.config_key === AVATAR_CONFIG_KEY
+        ? { ...row, config_value: '' }
+        : row);
+    res.json({ code: 0, msg: '查询成功', data });
   } catch (err) {
     next(err);
   }
@@ -64,20 +71,17 @@ router.put('/update', requireAnyPermission(['admin.config'], 'admin'), async (re
       return res.json({ code: 400, msg: '该配置不可编辑' });
     }
 
-    let nextValue = configValue;
-    if (configs[0].config_key === 'upload.user_avatar_dir') {
+    if (configs[0].config_key === AVATAR_CONFIG_KEY) {
       if (req.user.role !== 'admin') {
         return res.json({ code: 403, msg: '仅超级管理员可配置头像存储目录' });
       }
-      nextValue = await avatarService.relocateAvatarStorage(
-        configs[0].config_value,
-        configValue
-      );
+      await avatarService.updateAvatarStorageConfig(id, configValue);
+      return res.json({ code: 0, msg: '更新成功' });
     }
 
     await pool.execute(
       `UPDATE sys_config SET config_value = ? WHERE id = ?`,
-      [nextValue, id]
+      [configValue, id]
     );
 
     // 如果修改的是上传目录相关配置，刷新内存缓存
@@ -100,6 +104,9 @@ router.get('/get-value', async (req, res, next) => {
 
     if (!key) {
       return res.json({ code: 400, msg: '配置键不能为空' });
+    }
+    if (key === AVATAR_CONFIG_KEY && req.user.role !== 'admin') {
+      return res.json({ code: 403, msg: '仅超级管理员可查看头像存储目录' });
     }
 
     const pool = getPool();
@@ -130,7 +137,7 @@ router.post('/delete', requireAnyPermission(['admin.config'], 'admin'), async (r
       'SELECT config_key FROM sys_config WHERE id = ?',
       [id]
     );
-    if (configs[0]?.config_key === 'upload.user_avatar_dir') {
+    if (configs[0]?.config_key === AVATAR_CONFIG_KEY) {
       return res.json({ code: 400, msg: '用户头像存储目录为内置配置，不能删除' });
     }
     await pool.execute('DELETE FROM sys_config WHERE id = ?', [id]);

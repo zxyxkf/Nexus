@@ -4,10 +4,16 @@ const sharp = require('sharp');
 const { v4: uuidv4 } = require('uuid');
 const AppError = require('../utils/AppError');
 const { getPool, executeTransaction } = require('../config/database');
-const { getUserAvatarDir } = require('../utils/share');
+const { getUserAvatarDir, initStorageConfig } = require('../utils/share');
+const { withLock } = require('../utils/mutex');
 
 const AVATAR_SIZE = 512;
 const MAX_SOURCE_DIMENSION = 12000;
+const AVATAR_STORAGE_LOCK = 'avatar-storage';
+
+function withAvatarStorageLock(fn) {
+  return withLock(AVATAR_STORAGE_LOCK, fn);
+}
 
 function resolveAvatarPath(rootValue, relativePath) {
   const root = path.resolve(rootValue);
@@ -67,47 +73,52 @@ async function getAvatar(userId) {
   const relativePath = rows[0]?.avatar_path || '';
   if (!relativePath) return null;
   const filePath = resolveAvatarPath(getUserAvatarDir(), relativePath);
-  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) return null;
+  if (!fs.existsSync(filePath) || !fs.statSync(filePath).isFile()) {
+    console.warn('[Avatar] 已配置的头像文件不存在:', filePath);
+    return null;
+  }
   return { filePath, mimeType: 'image/webp' };
 }
 
 async function replaceAvatar(userId, file) {
   if (!file?.buffer?.length) throw new AppError(400, '请选择头像图片');
   const output = await normalizeAvatar(file.buffer);
-  const root = path.resolve(getUserAvatarDir());
-  fs.mkdirSync(root, { recursive: true });
+  return withAvatarStorageLock(async () => {
+    const root = path.resolve(getUserAvatarDir());
+    fs.mkdirSync(root, { recursive: true });
 
-  const filename = `user-${Number(userId)}-${uuidv4().replace(/-/g, '')}.webp`;
-  const finalPath = resolveAvatarPath(root, filename);
-  const temporaryPath = `${finalPath}.tmp`;
-  let previousPath = '';
+    const filename = `user-${Number(userId)}-${uuidv4().replace(/-/g, '')}.webp`;
+    const finalPath = resolveAvatarPath(root, filename);
+    const temporaryPath = `${finalPath}.tmp`;
+    let previousPath = '';
 
-  try {
-    fs.writeFileSync(temporaryPath, output);
-    fs.renameSync(temporaryPath, finalPath);
+    try {
+      fs.writeFileSync(temporaryPath, output);
+      fs.renameSync(temporaryPath, finalPath);
 
-    await executeTransaction(async conn => {
-      const [rows] = await conn.execute(
-        'SELECT avatar_path FROM sys_user WHERE id = ?',
-        [userId]
-      );
-      if (!rows.length) throw new AppError(404, '用户不存在');
-      previousPath = rows[0].avatar_path || '';
-      await conn.execute(
-        'UPDATE sys_user SET avatar_path = ? WHERE id = ?',
-        [filename, userId]
-      );
-    });
-  } catch (error) {
-    removeFile(temporaryPath);
-    removeFile(finalPath);
-    throw error;
-  }
+      await executeTransaction(async conn => {
+        const [rows] = await conn.execute(
+          'SELECT avatar_path FROM sys_user WHERE id = ?',
+          [userId]
+        );
+        if (!rows.length) throw new AppError(404, '用户不存在');
+        previousPath = rows[0].avatar_path || '';
+        await conn.execute(
+          'UPDATE sys_user SET avatar_path = ? WHERE id = ?',
+          [filename, userId]
+        );
+      });
+    } catch (error) {
+      removeFile(temporaryPath);
+      removeFile(finalPath);
+      throw error;
+    }
 
-  if (previousPath && previousPath !== filename) {
-    removeFile(resolveAvatarPath(root, previousPath));
-  }
-  return { hasAvatar: true };
+    if (previousPath && previousPath !== filename) {
+      removeFile(resolveAvatarPath(root, previousPath));
+    }
+    return { hasAvatar: true };
+  });
 }
 
 function validateAvatarRoot(value) {
@@ -128,10 +139,10 @@ function validateAvatarRoot(value) {
   return resolved;
 }
 
-async function relocateAvatarStorage(oldRootValue, newRootValue) {
+async function copyAvatarStorage(oldRootValue, newRootValue) {
   const oldRoot = path.resolve(String(oldRootValue || getUserAvatarDir()));
   const newRoot = validateAvatarRoot(newRootValue);
-  if (oldRoot === newRoot) return newRoot;
+  if (oldRoot === newRoot) return { newRoot, copiedFiles: [] };
 
   const [rows] = await getPool().execute(
     "SELECT avatar_path FROM sys_user WHERE avatar_path IS NOT NULL AND avatar_path <> ''"
@@ -154,12 +165,63 @@ async function relocateAvatarStorage(oldRootValue, newRootValue) {
     if (error instanceof AppError) throw error;
     throw new AppError(400, `头像目录迁移失败：${error.message}`);
   }
-  return newRoot;
+  return { newRoot, copiedFiles };
+}
+
+async function relocateAvatarStorage(oldRootValue, newRootValue) {
+  return withAvatarStorageLock(async () => {
+    const result = await copyAvatarStorage(oldRootValue, newRootValue);
+    return result.newRoot;
+  });
+}
+
+async function updateAvatarStorageConfig(configId, newRootValue) {
+  return withAvatarStorageLock(async () => {
+    const pool = getPool();
+    const [configs] = await pool.execute(
+      "SELECT config_value FROM sys_config WHERE id = ? AND config_key = 'upload.user_avatar_dir'",
+      [configId]
+    );
+    if (!configs.length) throw new AppError(400, '头像存储目录配置不存在');
+
+    const previousValue = configs[0].config_value;
+    const relocation = await copyAvatarStorage(previousValue, newRootValue);
+    let configUpdated = false;
+    let canCleanCopiedFiles = true;
+
+    try {
+      await pool.execute(
+        'UPDATE sys_config SET config_value = ? WHERE id = ?',
+        [relocation.newRoot, configId]
+      );
+      configUpdated = true;
+      await initStorageConfig(pool);
+      return relocation.newRoot;
+    } catch (error) {
+      if (configUpdated) {
+        try {
+          await pool.execute(
+            'UPDATE sys_config SET config_value = ? WHERE id = ?',
+            [previousValue, configId]
+          );
+          await initStorageConfig(pool);
+        } catch (rollbackError) {
+          canCleanCopiedFiles = false;
+          console.error('[Avatar] 头像目录配置回滚失败:', rollbackError.message);
+        }
+      }
+      if (canCleanCopiedFiles) {
+        for (const filePath of relocation.copiedFiles.reverse()) removeFile(filePath);
+      }
+      throw error;
+    }
+  });
 }
 
 module.exports = {
   getAvatar,
   replaceAvatar,
   validateAvatarRoot,
-  relocateAvatarStorage
+  relocateAvatarStorage,
+  updateAvatarStorageConfig
 };

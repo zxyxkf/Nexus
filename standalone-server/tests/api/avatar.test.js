@@ -66,6 +66,7 @@ describe('current user avatar API', () => {
     await request(app)
       .get('/api/user/avatar')
       .set('Authorization', `Bearer ${token}`)
+      .expect('Cache-Control', /no-store/)
       .expect(204);
   });
 
@@ -139,11 +140,21 @@ describe('current user avatar API', () => {
   it('falls back to no-avatar when the referenced file is missing', async () => {
     const before = await getAdminAvatarPath();
     fs.unlinkSync(storedFile(before));
+    const warning = jest.spyOn(console, 'warn').mockImplementation(() => {});
 
-    await request(app)
-      .get('/api/user/avatar')
-      .set('Authorization', `Bearer ${token}`)
-      .expect(204);
+    try {
+      await request(app)
+        .get('/api/user/avatar')
+        .set('Authorization', `Bearer ${token}`)
+        .expect('Cache-Control', /no-store/)
+        .expect(204);
+      expect(warning).toHaveBeenCalledWith(
+        '[Avatar] 已配置的头像文件不存在:',
+        expect.stringContaining(before)
+      );
+    } finally {
+      warning.mockRestore();
+    }
 
     const restore = await uploadAvatar();
     expect(restore.body.code).toBe(0);
@@ -190,6 +201,33 @@ describe('avatar storage configuration', () => {
       .expect(200);
   });
 
+  it('cleans copied avatars when the directory config update fails', async () => {
+    const before = await getAdminAvatarPath();
+    const oldRoot = avatarDir;
+    const failedRoot = path.join(getTmpDir(), 'avatars-failed-update');
+    await execute(`CREATE TRIGGER fail_avatar_config_update
+      BEFORE UPDATE OF config_value ON sys_config
+      WHEN OLD.config_key = 'upload.user_avatar_dir'
+      BEGIN
+        SELECT RAISE(FAIL, 'forced avatar config update failure');
+      END`);
+
+    try {
+      await request(app)
+        .put('/api/config/update')
+        .set('Authorization', `Bearer ${token}`)
+        .send({ id: avatarConfigId, configValue: failedRoot })
+        .expect(500);
+    } finally {
+      await execute('DROP TRIGGER IF EXISTS fail_avatar_config_update');
+    }
+
+    const [configs] = await execute('SELECT config_value FROM sys_config WHERE id = ?', [avatarConfigId]);
+    expect(path.resolve(configs[0].config_value)).toBe(path.resolve(oldRoot));
+    expect(fs.existsSync(path.join(oldRoot, before))).toBe(true);
+    expect(fs.existsSync(path.join(failedRoot, before))).toBe(false);
+  });
+
   it('allows only a super administrator to update the avatar root', async () => {
     const username = `avatar_config_${Date.now()}`;
     await request(app)
@@ -216,10 +254,23 @@ describe('avatar storage configuration', () => {
       const login = await request(app)
         .post('/api/auth/login')
         .send({ username, password: 'test123456' });
+      const userToken = login.body.data.token;
+
+      const list = await request(app)
+        .get('/api/config/list?group=upload')
+        .set('Authorization', `Bearer ${userToken}`);
+      const avatarConfig = list.body.data.find(item => item.config_key === 'upload.user_avatar_dir');
+      expect(avatarConfig.config_value).toBe('');
+
+      const value = await request(app)
+        .get('/api/config/get-value?key=upload.user_avatar_dir')
+        .set('Authorization', `Bearer ${userToken}`);
+      expect(value.body.code).toBe(403);
+      expect(JSON.stringify(value.body)).not.toContain(path.resolve(avatarDir));
 
       const denied = await request(app)
         .put('/api/config/update')
-        .set('Authorization', `Bearer ${login.body.data.token}`)
+        .set('Authorization', `Bearer ${userToken}`)
         .send({ id: avatarConfigId, configValue: path.join(getTmpDir(), 'denied-root') });
       expect(denied.body.code).toBe(403);
 

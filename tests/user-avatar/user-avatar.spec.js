@@ -113,6 +113,80 @@ test('profile avatar opens a circular crop and refreshes every avatar after uplo
   await expect(page.locator('.dropdown-user-header [data-testid="user-avatar"] img')).toBeVisible()
 })
 
+test('a forced refresh wins over an older avatar request that finishes later', async ({ page }) => {
+  let avatarGetCount = 0
+  let releaseInitial
+  let finishInitial
+  const initialRelease = new Promise(resolve => { releaseInitial = resolve })
+  const initialFinished = new Promise(resolve => { finishInitial = resolve })
+
+  await mockLayoutApi(page, async route => {
+    if (route.request().method() === 'POST') {
+      return route.fulfill({ json: { code: 0, msg: '头像已更新', data: { hasAvatar: true } } })
+    }
+    avatarGetCount += 1
+    if (avatarGetCount === 1) {
+      await initialRelease
+      await route.fulfill({ status: 204, body: '' })
+      finishInitial()
+      return
+    }
+    return route.fulfill({ status: 200, contentType: 'image/png', body: pngBuffer })
+  })
+
+  await openAsTestUser(page)
+  await expect.poll(() => avatarGetCount).toBe(1)
+  await openProfile(page)
+
+  const fileChooserPromise = page.waitForEvent('filechooser')
+  await page.getByTestId('profile-avatar-edit').click()
+  const fileChooser = await fileChooserPromise
+  await fileChooser.setFiles({ name: 'portrait.png', mimeType: 'image/png', buffer: pngBuffer })
+  await expect(page.getByRole('dialog', { name: '裁剪头像' })).toBeVisible()
+  await page.getByRole('button', { name: '保存头像' }).click()
+
+  await expect.poll(() => avatarGetCount).toBe(2)
+  const profileImage = page.getByTestId('profile-avatar-edit').locator('img')
+  await expect(profileImage).toBeVisible()
+
+  releaseInitial()
+  await initialFinished
+  await expect(profileImage).toBeVisible()
+})
+
+test('an avatar response from the previous account cannot overwrite the current user', async ({ page }) => {
+  let releaseAvatar
+  let finishAvatar
+  const avatarRelease = new Promise(resolve => { releaseAvatar = resolve })
+  const avatarFinished = new Promise(resolve => { finishAvatar = resolve })
+
+  await mockLayoutApi(page, async route => {
+    await avatarRelease
+    await route.fulfill({ status: 200, contentType: 'image/png', body: pngBuffer })
+    finishAvatar()
+  })
+  await openAsTestUser(page)
+
+  await page.evaluate(() => {
+    localStorage.setItem('d_design_token', 'next-user-token')
+    localStorage.setItem('d_design_user', JSON.stringify({
+      id: 2,
+      username: 'next-user',
+      realName: '新用户',
+      role: 'designer',
+      permissions: []
+    }))
+    window.dispatchEvent(new CustomEvent('nexus-auth-change'))
+  })
+
+  const headerAvatar = page.locator('.user-dropdown [data-testid="user-avatar"]')
+  await expect(headerAvatar).toContainText('新')
+  releaseAvatar()
+  await avatarFinished
+  await expect(headerAvatar).toContainText('新')
+  await expect(headerAvatar.locator('img')).toHaveCount(0)
+})
+
 test('canceling the crop keeps the current avatar and sends no upload', async ({ page }) => {
   let avatarPostCount = 0
   await mockLayoutApi(page, async route => {

@@ -44,9 +44,9 @@ function receiveAvatar(req, res, next) {
 router.get('/avatar', async (req, res, next) => {
   try {
     const avatar = await avatarService.getAvatar(req.user.id);
+    res.setHeader('Cache-Control', 'private, no-store');
     if (!avatar) return res.status(204).end();
     res.setHeader('Content-Type', avatar.mimeType);
-    res.setHeader('Cache-Control', 'private, no-store');
     const stream = fs.createReadStream(avatar.filePath);
     stream.on('error', next);
     return stream.pipe(res);

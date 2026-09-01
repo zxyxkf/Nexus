@@ -12,7 +12,8 @@ export const useUserStore = defineStore('user', {
     permissions: getUser()?.permissions || [],
     avatarUrl: '',
     avatarLoaded: false,
-    avatarLoading: false
+    avatarLoading: false,
+    avatarRequestVersion: 0
   }),
 
   getters: {
@@ -108,27 +109,53 @@ export const useUserStore = defineStore('user', {
     },
 
     clearAvatar() {
+      this.avatarRequestVersion += 1
       if (this.avatarUrl) URL.revokeObjectURL(this.avatarUrl)
       this.avatarUrl = ''
       this.avatarLoaded = false
       this.avatarLoading = false
+      this._avatarLoadPromise = null
     },
 
     async loadAvatar(force = false) {
-      if (this.avatarLoading || (this.avatarLoaded && !force)) return
+      if (this.avatarLoading && !force) return this._avatarLoadPromise
+      if (this.avatarLoaded && !force) return
+
+      const userId = this.userInfo?.id
+      if (!userId) return
+      const requestVersion = this.avatarRequestVersion + 1
+      this.avatarRequestVersion = requestVersion
       this.avatarLoading = true
+
+      const loadPromise = (async () => {
+        let nextUrl = ''
+        try {
+          const blob = await getMyAvatarApi()
+          nextUrl = blob instanceof Blob && blob.size > 0
+            ? URL.createObjectURL(blob)
+            : ''
+
+          if (requestVersion !== this.avatarRequestVersion || this.userInfo?.id !== userId) {
+            if (nextUrl) URL.revokeObjectURL(nextUrl)
+            return
+          }
+
+          if (this.avatarUrl) URL.revokeObjectURL(this.avatarUrl)
+          this.avatarUrl = nextUrl
+          this.avatarLoaded = true
+        } catch (_) {
+          if (requestVersion === this.avatarRequestVersion && this.userInfo?.id === userId) {
+            this.avatarLoaded = true
+          }
+        }
+      })()
+
+      this._avatarLoadPromise = loadPromise
       try {
-        const blob = await getMyAvatarApi()
-        const nextUrl = blob instanceof Blob && blob.size > 0
-          ? URL.createObjectURL(blob)
-          : ''
-        if (this.avatarUrl) URL.revokeObjectURL(this.avatarUrl)
-        this.avatarUrl = nextUrl
-        this.avatarLoaded = true
-      } catch (_) {
-        if (!this.avatarLoaded) this.avatarLoaded = true
+        return await loadPromise
       } finally {
-        this.avatarLoading = false
+        if (requestVersion === this.avatarRequestVersion) this.avatarLoading = false
+        if (this._avatarLoadPromise === loadPromise) this._avatarLoadPromise = null
       }
     }
   }
