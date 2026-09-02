@@ -60,6 +60,20 @@
         </div>
       </section>
 
+      <section v-if="isCsTask && styleImageFiles.length" class="task-detail-media-section task-style-media-section">
+        <h3>款式图 ({{ styleImageFiles.length }})</h3>
+        <div class="task-detail-image-grid">
+          <TaskDetailImage
+            v-for="(file, index) in styleImageFiles"
+            :key="file.id"
+            :file="file"
+            :preview-list="stylePreviewList"
+            :initial-index="index"
+            @download="downloadDetailFile(file)"
+          />
+        </div>
+      </section>
+
       <div v-if="hasMedia" class="task-detail-media-grid">
         <section v-if="refFiles.length" class="task-detail-media-section">
           <h3 v-if="refImageFiles.length">{{ refImageLabel }} ({{ refImageFiles.length }})</h3>
@@ -153,8 +167,10 @@ const {
 const currentContext = computed(() => props.detailContext || 'source-task')
 const allFiles = computed(() => props.task?.files || [])
 const refFiles = computed(() => allFiles.value.filter(file => file.file_category === 'reference'))
+const styleFiles = computed(() => allFiles.value.filter(file => file.file_category === 'style'))
 const workFiles = computed(() => allFiles.value.filter(file => (
   file.file_category !== 'reference' &&
+  file.file_category !== 'style' &&
   (['design-assignee', 'hall'].includes(currentContext.value) || file.file_category !== 'reject')
 )))
 const refImageFiles = computed(() => refFiles.value.filter(file => file.file_type === 'image'))
@@ -165,6 +181,8 @@ const workImageFiles = computed(() => currentContext.value === 'hall'
 const workAttachments = computed(() => currentContext.value === 'hall'
   ? workFiles.value
   : workFiles.value.filter(file => file.file_type !== 'image'))
+const styleImageFiles = computed(() => styleFiles.value.filter(file => file.file_type === 'image'))
+const stylePreviewList = computed(() => styleImageFiles.value.map(file => file._previewSrc || getFileUrl(file)))
 const sourcePreviewList = computed(() => [...refImageFiles.value, ...workImageFiles.value]
   .map(file => file._previewSrc || getFileUrl(file)))
 const refPreviewList = computed(() => currentContext.value === 'source-task'
@@ -173,7 +191,7 @@ const refPreviewList = computed(() => currentContext.value === 'source-task'
 const workPreviewList = computed(() => currentContext.value === 'source-task'
   ? sourcePreviewList.value
   : workImageFiles.value.map(file => file._previewSrc || getFileUrl(file)))
-const hasMedia = computed(() => refFiles.value.length > 0 || workFiles.value.length > 0)
+const hasMedia = computed(() => refFiles.value.length > 0 || workFiles.value.length > 0 || (isCsTask.value && styleImageFiles.value.length > 0))
 const isOperatorTask = computed(() => props.taskGroup === 'operator')
 const isCsTask = computed(() => props.taskGroup === 'cs')
 const showStatusTimeline = computed(() => !['hall', 'score-review'].includes(currentContext.value))
@@ -318,7 +336,6 @@ const detailFields = computed(() => {
     } else if (props.taskGroup === 'cs') {
       add('旺旺ID', task.wangwang_id || task.ref_path || '无')
       add('款号', task.style_number || '无')
-      add('指定颜色', task.specified_color || '无')
     } else {
       add('款号', task.style_number || '无')
       add('指定颜色', task.specified_color || '无')
@@ -333,7 +350,6 @@ const detailFields = computed(() => {
     add('款号', task.style_number || '无')
     if (props.taskGroup === 'cs') {
       add('旺旺ID', task.wangwang_id || task.ref_path || '无')
-      add('指定颜色', task.specified_color || '无')
       addScoreReview()
     } else {
       add('指定颜色', task.specified_color || '无')
@@ -352,7 +368,6 @@ const detailFields = computed(() => {
     addPeople('-', '接单人', '我')
     add('旺旺ID', task.wangwang_id || task.ref_path || '无')
     add('款号', task.style_number || '无')
-    add('指定颜色', task.specified_color || '无')
     addScoreReview()
     if (task.status === 'rejected') addTaskRejectReason()
     if (task.score_review_reason) {
@@ -393,7 +408,6 @@ const detailFields = computed(() => {
     } else if (props.taskGroup === 'cs') {
       add('旺旺ID', task.wangwang_id || task.ref_path || '无')
       add('款号', task.style_number || '无')
-      add('指定颜色', task.specified_color || '无')
       addScoreReview()
     }
     if (props.taskGroup === 'operator') {
@@ -410,7 +424,6 @@ const detailFields = computed(() => {
     if (props.taskGroup === 'cs') {
       add('旺旺ID', task.wangwang_id || task.ref_path || '无')
       add('款号', task.style_number || '无')
-      add('指定颜色', task.specified_color || '无')
       addScoreReview()
     } else {
       add('分值', task.score || '-')

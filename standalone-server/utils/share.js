@@ -25,6 +25,7 @@ const DEFAULT_CONFIG = {
   operator_images_dir: process.env.OPERATOR_IMAGE_DIR || path.join(HOST_UPLOAD_ROOT, 'operator', 'images'),
   operator_attachments_dir: process.env.OPERATOR_ATTACHMENT_DIR || path.join(HOST_UPLOAD_ROOT, 'operator', 'attachments'),
   payment_tracking_images_dir: process.env.PAYMENT_TRACKING_IMAGE_DIR || path.join(HOST_UPLOAD_ROOT, 'payment-tracking', 'images'),
+  material_library_dir: process.env.MATERIAL_LIBRARY_DIR || path.join(HOST_UPLOAD_ROOT, 'material-library'),
   user_avatar_dir: process.env.USER_AVATAR_DIR || path.join(HOST_UPLOAD_ROOT, 'user', 'avatars'),
 };
 
@@ -60,6 +61,7 @@ async function initStorageConfig(pool) {
     'upload.operator_images_dir',
     'upload.operator_attachments_dir',
     'upload.payment_tracking_images_dir',
+    'upload.material_library_dir',
     'upload.user_avatar_dir',
   ];
   const propMap = {
@@ -70,6 +72,7 @@ async function initStorageConfig(pool) {
     'upload.operator_images_dir': 'operator_images_dir',
     'upload.operator_attachments_dir': 'operator_attachments_dir',
     'upload.payment_tracking_images_dir': 'payment_tracking_images_dir',
+    'upload.material_library_dir': 'material_library_dir',
     'upload.user_avatar_dir': 'user_avatar_dir',
   };
 
@@ -142,6 +145,12 @@ function getUserAvatarDir() {
   return dir;
 }
 
+function getMaterialLibraryDir() {
+  const dir = storageConfig.material_library_dir || DEFAULT_CONFIG.material_library_dir;
+  ensureDir(dir);
+  return dir;
+}
+
 // ========== 路径解析 ==========
 
 /**
@@ -176,6 +185,10 @@ function resolvePath(filePath) {
     const rest = parts.slice(2).join('/');
     const baseDir = getStorageDir(group, type);
     return path.join(baseDir, rest);
+  }
+
+  if (parts[0] === 'material') {
+    return path.join(getMaterialLibraryDir(), ...parts.slice(1));
   }
 
   // Legacy 格式: images/... 或 attachments/...
@@ -248,6 +261,7 @@ module.exports = {
   getStorageDir,
   getPaymentTrackingImageDir,
   getUserAvatarDir,
+  getMaterialLibraryDir,
   resolvePath,
   saveImage,
   saveAttachment,

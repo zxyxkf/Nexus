@@ -121,8 +121,16 @@
         <el-table-column label="款号" width="140" align="center" show-overflow-tooltip>
           <template #default="{ row }">{{ row.style_number || '-' }}</template>
         </el-table-column>
-        <el-table-column label="指定颜色" width="140" align="center" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.specified_color || '-' }}</template>
+        <el-table-column :label="isCsAgent ? '款式图' : '指定颜色'" width="140" align="center" show-overflow-tooltip>
+          <template #default="{ row }">
+            <template v-if="isCsAgent">
+              <div v-if="getStyleImages(row.files).length" class="style-thumb-cell" draggable="true" @dragstart="setupFileDrag($event, getStyleImages(row.files)[0])">
+                <el-image :src="getFileUrl(getStyleImages(row.files)[0])" :preview-src-list="getStyleImages(row.files).map(getFileUrl)" preview-teleported fit="cover" />
+                <span>{{ getStyleImages(row.files).length }}张</span>
+              </div><span v-else>-</span>
+            </template>
+            <span v-else>{{ row.specified_color || '-' }}</span>
+          </template>
         </el-table-column>
         <el-table-column prop="designer_name" :label="designerLabel" width="105" align="center" />
         <el-table-column label="参考图" width="160" align="center">
@@ -405,7 +413,10 @@ function isPaymentOpened(value) {
   return value === true || value === 1 || value === '1'
 }
 function getWorkImages(files) {
-  return getWorkFiles(files).filter(file => file.file_type === 'image')
+  return getWorkFiles(files).filter(file => file.file_category !== 'style' && file.file_type === 'image')
+}
+function getStyleImages(files) {
+  return (files || []).filter(file => file.file_category === 'style' && file.file_type === 'image')
 }
 const paymentOpenableSelected = computed(() => selectedRows.value.filter(row => (
   row.allowedActions?.openPayment
@@ -836,6 +847,8 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || editVisi
 }
 .file-badge:hover { color: var(--dd-primary); }
 .file-badge span { font-size: 10px; }
+.style-thumb-cell { display:inline-flex; align-items:center; gap:5px; color:var(--dd-text-secondary); font-size:11px; }
+.style-thumb-cell .el-image { width:42px; height:42px; border-radius:5px; border:1px solid var(--dd-border-light); cursor:pointer; }
 
 .file-grid { display: flex; flex-wrap: wrap; gap: 12px; }
 .file-item { text-align: center; }

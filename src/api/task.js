@@ -12,6 +12,7 @@ function taskMutation(promise) {
 }
 
 export const createTaskApi = (data) => taskMutation(request.post('/api/task/create', data))
+export const snapshotMaterialImagesApi = (data) => taskMutation(request.post('/api/task/material-snapshot', data))
 export const getMyPublishedApi = (params) => request.get('/api/task/my-published', { params })
 export const getMyAcceptedApi = (params) => request.get('/api/task/my-accepted', { params })
 export const getTaskHallApi = (params) => request.get('/api/task/hall', { params })

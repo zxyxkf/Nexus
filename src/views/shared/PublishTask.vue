@@ -1,5 +1,6 @@
 <template>
-  <div class="page-container-narrow">
+  <div :class="isCsAgent ? 'page-container cs-publish-page' : 'page-container-narrow'">
+    <div :class="isCsAgent ? 'cs-publish-grid' : ''">
     <el-card shadow="never" class="page-card">
       <template #header>
         <div class="card-header">
@@ -18,11 +19,12 @@
           <el-input :model-value="form.score" disabled placeholder="选择工作项目后自动填充" />
         </el-form-item>
 
-        <!-- 共享字段：款号 + 指定颜色 -->
+        <!-- 共享字段：款号 + 指定颜色；客服任务使用素材库款式选择器 -->
         <el-form-item label="款号">
-          <el-input v-model="form.styleNumber" placeholder="款号（可选）" />
+          <StylePicker v-if="isCsAgent" v-model="materialStyleId" v-model:color="form.specifiedColor" v-model:selected-image-ids="selectedMaterialImageIds" @change="onMaterialStyleChange" />
+          <el-input v-else v-model="form.styleNumber" placeholder="款号（可选）" />
         </el-form-item>
-        <el-form-item label="指定颜色">
+        <el-form-item v-if="!isCsAgent" label="指定颜色">
           <el-input v-model="form.specifiedColor" placeholder="指定颜色（可选）" />
         </el-form-item>
 
@@ -52,7 +54,7 @@
           <p class="form-hint">详细的需求描述有助于美工更准确地完成任务</p>
         </el-form-item>
 
-        <el-form-item label="参考图">
+        <el-form-item v-if="!isCsAgent" label="参考图">
           <el-upload
             ref="uploadRef"
             v-model:file-list="refImages"
@@ -81,6 +83,40 @@
             </template>
           </el-upload>
           <p class="form-hint">拖拽文件到框内或点击上传，支持所有文件格式，单个最大{{ maxFileSizeMB }}MB，最多{{ maxRefImageCount }}个</p>
+        </el-form-item>
+
+        <el-form-item v-if="isCsAgent" label="图片">
+          <div class="cs-image-fields">
+            <div class="cs-reference-field">
+              <div class="cs-sub-label">参考图</div>
+              <el-upload
+                ref="uploadRef"
+                v-model:file-list="refImages"
+                list-type="picture-card"
+                multiple
+                drag
+                :limit="maxRefImageCount"
+                :auto-upload="false"
+                @change="onRefFileChange"
+                @paste="handleRefPaste"
+              >
+                <template #default><el-icon :size="28"><Plus /></el-icon></template>
+                <template #file="{ file }">
+                  <img v-if="isPreviewImage(file)" class="el-upload-list__item-thumbnail" :src="file.url" />
+                  <div v-else class="el-upload-list__item-thumbnail upload-non-image"><el-icon :size="28"><Document /></el-icon><span class="upload-non-image-name">{{ file.name }}</span></div>
+                  <span class="el-upload-list__item-actions"><span class="el-upload-list__item-delete" @click.stop="handleRemoveFile(file)"><el-icon><Delete /></el-icon></span></span>
+                </template>
+              </el-upload>
+              <p class="form-hint">拖拽文件到框内或点击上传，最多{{ maxRefImageCount }}个</p>
+            </div>
+            <div class="cs-style-field">
+              <div class="cs-sub-label">款式图<span v-if="selectedMaterialImages.length" class="cs-image-count">{{ selectedMaterialImages.length }}张</span></div>
+              <div v-if="selectedMaterialImages.length" class="cs-selected-image-grid">
+                <img v-for="image in selectedMaterialImages" :key="image.id" :src="materialImageUrl(image)" :alt="image.display_name || image.original_name" loading="lazy" />
+              </div>
+              <div v-else class="cs-empty-image">请在右侧款式素材预览中选择图片</div>
+            </div>
+          </div>
         </el-form-item>
 
         <!-- operator 独有字段 -->
@@ -117,6 +153,31 @@
         </el-form-item>
       </el-form>
     </el-card>
+    <el-card v-if="isCsAgent" shadow="never" class="page-card cs-style-preview-card">
+      <template #header>
+        <div class="card-header">
+          <span class="card-title">款式素材预览</span>
+          <span v-if="materialImages.length" class="cs-image-count">{{ selectedMaterialImageIds.length }}/{{ filteredMaterialImages.length }} 已选择</span>
+        </div>
+      </template>
+      <div v-if="materialStyleId" class="cs-style-preview-body">
+        <div class="cs-style-preview-toolbar">
+          <span>{{ selectedMaterialStyleName || form.styleNumber }}</span>
+          <el-select v-if="materialColors.length" v-model="form.specifiedColor" clearable placeholder="指定颜色" size="small" style="width:130px">
+            <el-option v-for="item in materialColors" :key="item" :label="item" :value="item" />
+          </el-select>
+        </div>
+        <div v-if="filteredMaterialImages.length" class="cs-material-grid">
+          <button v-for="image in filteredMaterialImages" :key="image.id" type="button" class="cs-material-image" :class="{ selected: selectedMaterialImageIds.includes(image.id) }" @click="toggleMaterialImage(image)">
+            <img :src="materialImageUrl(image)" :alt="image.display_name || image.original_name" loading="lazy" />
+            <span v-if="selectedMaterialImageIds.includes(image.id)" class="cs-material-check">✓</span>
+          </button>
+        </div>
+        <div v-else class="cs-empty-image">当前款式暂无素材图片</div>
+      </div>
+      <div v-else class="cs-empty-image cs-style-preview-empty">先在左侧选择款式，右侧会显示该款式的素材图片</div>
+    </el-card>
+    </div>
   </div>
 </template>
 
@@ -126,13 +187,15 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Delete, Document } from '@element-plus/icons-vue'
 import PersonSelect from '@/components/PersonSelect.vue'
-import { createTaskApi, uploadFilesApi, getScoreItemsApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi } from '@/api'
+import { createTaskApi, snapshotMaterialImagesApi, uploadFilesApi, getScoreItemsApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi } from '@/api'
 import { useConfig } from '@/composables/useConfig'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
+import StylePicker from '@/components/material-library/StylePicker.vue'
+import { getFileUrl } from '@/api/upload'
 
 const route = useRoute()
-const taskGroup = computed(() => route.meta.taskGroup || (route.meta.role === 'cs_agent' ? 'cs' : 'design'))
-const isCsAgent = computed(() => taskGroup.value === 'cs')
+const taskGroup = computed(() => route.meta.taskGroup || (route.meta.role === 'cs_agent' || route.path.startsWith('/cs/') ? 'cs' : 'design'))
+const isCsAgent = computed(() => taskGroup.value === 'cs' || route.path.startsWith('/cs/'))
 const isOperatorTask = computed(() => taskGroup.value === 'operator')
 const designerLabel = computed(() => isCsAgent.value ? '指定基础美工' : isOperatorTask.value ? '指定运营助理' : '指定美工')
 const designerPlaceholder = computed(() => isCsAgent.value ? '不选择则发布到基础任务大厅' : isOperatorTask.value ? '不选择则发布到运营任务大厅' : '不选择则发布到任务大厅')
@@ -149,6 +212,13 @@ const hasUnsavedData = ref(false)
 const suppressDirty = ref(false)
 const refImages = ref([])
 const refRawFiles = ref([])
+const materialStyleId = ref('')
+const selectedMaterialImageIds = ref([])
+const materialImages = ref([])
+const materialColors = ref([])
+const selectedMaterialStyleName = ref('')
+const filteredMaterialImages = computed(() => form.specifiedColor ? materialImages.value.filter(image => image.color === form.specifiedColor) : materialImages.value)
+const selectedMaterialImages = computed(() => materialImages.value.filter(image => selectedMaterialImageIds.value.includes(image.id)))
 
 const form = reactive({
   title: '',
@@ -162,6 +232,22 @@ const form = reactive({
   specifiedColor: '',
   designerId: null
 })
+
+function materialImageUrl(image) { return getFileUrl(image.previewUrl) }
+
+function toggleMaterialImage(image) {
+  selectedMaterialImageIds.value = selectedMaterialImageIds.value.includes(image.id)
+    ? selectedMaterialImageIds.value.filter(id => id !== image.id)
+    : [...selectedMaterialImageIds.value, image.id]
+}
+
+function onMaterialStyleChange(style, images = [], colors = []) {
+  materialStyleId.value = style?.id || ''
+  form.styleNumber = style?.name || ''
+  selectedMaterialStyleName.value = style?.name || ''
+  materialImages.value = images
+  materialColors.value = colors
+}
 
 const IMG_EXTS = ['.jpg','.jpeg','.png','.gif','.webp','.bmp','.svg','.tiff','.tif','.ico','.avif','.heic']
 
@@ -351,7 +437,7 @@ async function handlePublish() {
           taskGroup: taskGroup.value
         }
 
-    const res = await createTaskApi(payload)
+      const res = await createTaskApi(payload)
 
     if (res.code === 0) {
       const taskId = res.data?.id
@@ -368,6 +454,10 @@ async function handlePublish() {
           console.error('[Publish] 参考图上传失败:', e)
           ElMessage.error('参考图上传失败: ' + (e.response?.data?.msg || e.message || '网络异常'))
         }
+      }
+      if (taskId && isCsAgent.value && materialStyleId.value && selectedMaterialImageIds.value.length) {
+        const snapshotRes = await snapshotMaterialImagesApi({ taskId, materialStyleId: materialStyleId.value, materialImageIds: selectedMaterialImageIds.value })
+        if (snapshotRes.code !== 0) ElMessage.error(snapshotRes.msg || '款式素材保存失败')
       }
       ElMessage.success(res.msg || '任务发布成功')
       hasUnsavedData.value = false
@@ -388,6 +478,11 @@ function resetForm() {
   form.wangwangId = ''
   form.styleNumber = ''
   form.specifiedColor = ''
+  materialStyleId.value = ''
+  selectedMaterialImageIds.value = []
+  materialImages.value = []
+  materialColors.value = []
+  selectedMaterialStyleName.value = ''
   form.designerId = null
   hasUnsavedData.value = false
   refImages.value = []
@@ -402,6 +497,26 @@ function resetForm() {
 
 <style scoped>
 .form-hint { font-size: 12px; color: var(--dd-text-muted); margin: 4px 0 0; }
+.cs-publish-page { max-width: 1500px; margin: 0 auto; }
+.cs-publish-grid { display: grid; grid-template-columns: minmax(520px, 0.95fr) minmax(420px, 1.05fr); gap: 16px; align-items: start; }
+.cs-publish-form-card :deep(.el-form) { max-width: none !important; }
+.cs-style-preview-card { min-height: 420px; position: sticky; top: 16px; }
+.cs-style-preview-card :deep(.el-card__body) { padding: 16px; }
+.cs-style-preview-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 14px; font-weight: 600; color: var(--dd-text-primary); }
+.cs-material-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; max-height: calc(100vh - 210px); overflow-y: auto; padding-right: 3px; }
+.cs-material-image { position: relative; aspect-ratio: 1; padding: 0; overflow: hidden; border: 2px solid transparent; border-radius: 6px; cursor: pointer; background: var(--el-fill-color-light); }
+.cs-material-image.selected { border-color: var(--el-color-primary); }
+.cs-material-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cs-material-check { position: absolute; right: 4px; top: 4px; width: 20px; height: 20px; border-radius: 50%; background: var(--el-color-primary); color: #fff; text-align: center; line-height: 20px; font-size: 12px; }
+.cs-image-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; width: 100%; }
+.cs-sub-label { margin-bottom: 8px; font-size: 13px; color: var(--dd-text-secondary); font-weight: 600; }
+.cs-reference-field :deep(.el-upload), .cs-reference-field :deep(.el-upload-list) { max-width: 100%; }
+.cs-style-field { min-width: 0; }
+.cs-selected-image-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; max-height: 180px; overflow-y: auto; }
+.cs-selected-image-grid img { width: 100%; aspect-ratio: 1; object-fit: cover; border-radius: 4px; border: 1px solid var(--el-border-color-lighter); }
+.cs-image-count { color: var(--el-color-primary); font-size: 12px; font-weight: 500; }
+.cs-empty-image { min-height: 92px; display: flex; align-items: center; justify-content: center; padding: 14px; border: 1px dashed var(--el-border-color); border-radius: 6px; color: var(--dd-text-muted); font-size: 12px; text-align: center; }
+.cs-style-preview-empty { min-height: 320px; }
 .upload-non-image {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 4px; background: #f5f7fa; color: #909399; padding: 8px;
@@ -411,5 +526,14 @@ function resetForm() {
   overflow: hidden; text-overflow: ellipsis; display: -webkit-box;
   -webkit-line-clamp: 2; -webkit-box-orient: vertical; line-height: 1.2;
   max-width: 100%;
+}
+@media (max-width: 1050px) {
+  .cs-publish-grid { grid-template-columns: 1fr; }
+  .cs-style-preview-card { position: static; }
+  .cs-material-grid { max-height: 520px; }
+}
+@media (max-width: 640px) {
+  .cs-image-fields { grid-template-columns: 1fr; }
+  .cs-material-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
 </style>

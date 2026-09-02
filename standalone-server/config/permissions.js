@@ -1,4 +1,5 @@
 const PERMISSIONS = [
+  { code: 'material.library', name: '素材库', type: 'page', group: '素材库' },
   { code: 'operator.publish.design', name: '发布美工任务', type: 'page', group: '运营美工' },
   { code: 'operator.tasks.design', name: '我的任务', type: 'page', group: '运营美工' },
   { code: 'operator.review.design', name: '作品审核', type: 'page', group: '运营美工' },

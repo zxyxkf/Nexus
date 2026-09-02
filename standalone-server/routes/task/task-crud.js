@@ -14,6 +14,13 @@ router.post('/create', requireAnyPermission(['task.create.design', 'task.create.
   } catch (err) { next(err); }
 });
 
+router.post('/material-snapshot', requireAnyPermission(['task.create.cs'], 'cs_agent', 'admin'), async (req, res, next) => {
+  try {
+    const result = await taskService.snapshotMaterialImages(req.body.taskId, req.body.materialStyleId, req.body.materialImageIds, req.user);
+    res.json({ code: 0, msg: '款式素材已保存', data: result });
+  } catch (err) { next(err); }
+});
+
 // 任务详情
 router.get('/detail', async (req, res, next) => {
   try {

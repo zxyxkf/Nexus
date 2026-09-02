@@ -7,6 +7,7 @@ const fs = require('fs');
 const { executeTransaction, execute } = require('../config/database');
 const AppError = require('../utils/AppError');
 const taskDao = require('../dao/task.dao');
+const materialDao = require('../dao/material-library.dao');
 const { saveImage, saveAttachment, resolvePath } = require('../utils/share');
 const { withLock } = require('../utils/mutex');
 const { IMAGE_EXTS, fixFilenameEncoding } = require('../utils/upload');
@@ -162,6 +163,53 @@ async function createTask(body, user) {
   }
   throw new AppError(500, '任务编号生成冲突，请重试');
   });
+}
+
+/** 将客服发布时选择的素材图复制为任务独立副本。素材库后续变更不会影响历史任务。 */
+async function snapshotMaterialImages(taskId, materialStyleId, materialImageIds, user) {
+  if (!taskId || !materialStyleId || !Array.isArray(materialImageIds) || materialImageIds.length === 0) {
+    return { copied: 0 };
+  }
+  if (user?.role !== 'cs_agent' && user?.role !== 'admin') throw new AppError(403, '仅客服可关联款式素材');
+
+  const task = await taskDao.getTaskDetail(taskId);
+  if (!task || task.task_group !== 'cs') throw new AppError(400, '仅客服任务支持款式素材');
+  if (Number(task.publisher_id) !== Number(user.id) && user.role !== 'admin') throw new AppError(403, '无权操作此任务');
+
+  const style = await materialDao.getStyle(Number(materialStyleId));
+  if (!style) throw new AppError(404, '款式不存在');
+  const ids = [...new Set(materialImageIds.map(Number).filter(Number.isInteger))];
+  if (!ids.length) return { copied: 0 };
+  const images = await materialDao.getImagesByIds(ids);
+  if (images.length !== ids.length || images.some(image => Number(image.style_id) !== Number(style.id))) {
+    throw new AppError(400, '所选素材图片与款式不匹配');
+  }
+
+  const copiedPaths = [];
+  try {
+    await executeTransaction(async conn => {
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      for (const image of images) {
+        const sourcePath = resolvePath(image.file_path);
+        if (!sourcePath || !fs.existsSync(sourcePath)) throw new AppError(404, `素材图片不存在：${image.display_name || image.original_name}`);
+        const ext = path.extname(image.original_name || image.display_name || sourcePath).toLowerCase() || '.jpg';
+        const storedName = `style-${image.id}-${Date.now()}-${Math.random().toString(16).slice(2)}${ext}`;
+        const targetPath = saveImage('cs', dateStr, storedName, fs.readFileSync(sourcePath));
+        copiedPaths.push(targetPath);
+        await taskDao.insertFileRecord(conn, {
+          taskId, fileName: image.display_name || image.original_name, filePath: targetPath,
+          fileSize: image.file_size || 0, fileType: 'image', mimeType: image.mime_type || '',
+          uploaderId: user.id, fileCategory: 'style'
+        });
+      }
+    });
+  } catch (err) {
+    for (const filePath of copiedPaths) { try { const abs = resolvePath(filePath); if (abs && fs.existsSync(abs)) fs.unlinkSync(abs); } catch (_) {} }
+    throw err;
+  }
+  socketEmit(`user:${task.publisher_id}`);
+  socketEmit('group:cs');
+  return { copied: images.length };
 }
 
 async function getTaskDetail(taskId, user) {
@@ -1445,7 +1493,7 @@ async function getAdminDetailStats(user = null) {
 }
 
 module.exports = {
-  createTask, getTaskDetail, deleteTask, updateTask, reopenFinishedCsTask, updateCsTaskNo, batchDelete, batchReassign,
+  createTask, snapshotMaterialImages, getTaskDetail, deleteTask, updateTask, reopenFinishedCsTask, updateCsTaskNo, batchDelete, batchReassign,
   getMyPublished, getMyAccepted, getTaskHall, getAllTasks, getAllTasksForUser, searchTasks,
   acceptTask, uploadFiles, transferTask, finishTask, reviewTask, batchReview,
   withdrawTask, undoSubmit,

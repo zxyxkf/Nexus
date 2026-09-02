@@ -9,6 +9,7 @@ const fs = require('fs');
 const dbEngine = require('./db-engine');
 const PAYMENT_TRACKING_TABLES = require('./payment-tracking-schema');
 const { migratePaymentTracking } = require('./payment-tracking-migration');
+const { getMaterialLibrarySchema } = require('./material-library-schema');
 
 // ===== 初始化 SQL 表（兼容 SQLite 和 MySQL） =====
 
@@ -583,6 +584,11 @@ async function initDatabase() {
 
     // 建表
     const tableSqls = CREATE_TABLES_SQL[mode] || CREATE_TABLES_SQL.sqlite;
+    for (const sql of getMaterialLibrarySchema(mode)) {
+      try { await dbEngine.execute(sql); } catch (err) {
+        console.warn('[DB] material library schema warning:', err.message);
+      }
+    }
     for (const sql of tableSqls) {
       try { await dbEngine.execute(sql); } catch (err) {
         console.warn('[DB] 建表警告:', err.message);
@@ -865,6 +871,7 @@ function generateConfigSeed(mode) {
     ? '/app/host-uploads/user/avatars'
     : path.join(uploadRoot, 'user', 'avatars').replace(/\\/g, '/');
   const configs = [
+    ['upload.material_library_dir', mode === 'mysql' ? '/app/host-uploads/material-library' : path.join(uploadRoot, 'material-library').replace(/\\/g, '/'), 'upload', '素材库图片存储目录', 1],
     ['upload.max_file_size_mb', '50', 'upload', '上传文件大小上限（MB）', 1],
     ['upload.max_file_count', '10', 'upload', '单次上传最多文件数', 1],
     ['upload.design_images_dir', '/app/host-uploads/design/images', 'upload', '运营+美工图片存储目录', 1],

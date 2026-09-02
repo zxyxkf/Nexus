@@ -10,6 +10,7 @@ export const MENU_SECTIONS = [
   { key: 'designer', label: '美工设计师' },
   { key: 'basic_designer', label: '基础美工' },
   { key: 'payment_tracking', label: '打款跟踪' },
+  { key: 'material_library', label: '素材库' },
   { key: 'data', label: '数据' },
   { key: 'score', label: '分值管理' },
   { key: 'overview', label: '概览' },
@@ -49,6 +50,8 @@ export const MENU_REGISTRY = [
   { group: 'payment_tracking', path: '/payment-tracking/manager-reviews', icon: 'Select', label: '店长审核', identity: 'manager-review' },
   { group: 'payment_tracking', path: '/payment-tracking/records', icon: 'Document', label: '打款记录', permission: 'payment.records.view' },
 
+  { group: 'material_library', path: '/material-library/products', icon: 'Picture', label: '素材库', permission: 'material.library' },
+
   { group: 'data', path: '/operator/stats', icon: 'DataLine', label: '个人统计', permission: 'stats.personal', roles: ['operator'] },
   { group: 'data', path: '/cs/stats', icon: 'DataLine', label: '个人统计', permission: 'stats.personal', roles: ['cs_agent'] },
   { group: 'data', path: '/designer/stats', icon: 'DataLine', label: '个人统计', permission: 'stats.personal', roles: ['designer'] },
@@ -84,7 +87,7 @@ const BUSINESS_SECTION_BY_ROLE = {
   operator_assistant: ['operator_assistant', 'operator_design', 'cs_basic', 'designer', 'basic_designer', 'payment_tracking', 'data', 'score', 'common']
 }
 
-const ADMIN_SECTION_ORDER = ['overview', 'all_tasks', 'payment_tracking', 'score', 'system', 'common']
+const ADMIN_SECTION_ORDER = ['overview', 'all_tasks', 'payment_tracking', 'material_library', 'score', 'system', 'common']
 const GLOBAL_SECTION_ORDER = MENU_SECTIONS.map(section => section.key)
 const ADMIN_ONLY_PERMISSIONS = new Set(['admin.users'])
 const STRICT_ROLE_PERMISSIONS = new Set(['stats.personal'])

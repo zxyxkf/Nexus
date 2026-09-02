@@ -218,6 +218,24 @@ const routes = [
         component: () => import('@/views/payment-tracking/StageDetail.vue'),
         meta: { title: '选品阶段详情', permissions: ['payment.selection.view', 'payment.records.view'] }
       },
+      {
+        path: 'material-library/products',
+        name: 'MaterialProducts',
+        component: () => import('@/views/material-library/Products.vue'),
+        meta: { title: '素材库', permission: 'material.library' }
+      },
+      {
+        path: 'material-library/products/:productId/styles',
+        name: 'MaterialStyles',
+        component: () => import('@/views/material-library/Styles.vue'),
+        meta: { title: '款式库', permission: 'material.library' }
+      },
+      {
+        path: 'material-library/styles/:styleId/images',
+        name: 'MaterialImages',
+        component: () => import('@/views/material-library/Images.vue'),
+        meta: { title: '款式素材', permission: 'material.library' }
+      },
       // 管理员端
       {
         path: 'dashboard',
