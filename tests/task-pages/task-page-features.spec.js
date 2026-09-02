@@ -47,7 +47,8 @@ const files = [
   { id: 101, file_name: 'reference.png', file_type: 'image', file_category: 'reference', file_size: 1200 },
   { id: 102, file_name: 'brief.pdf', file_type: 'file', file_category: 'reference', file_size: 2048 },
   { id: 103, file_name: 'work.png', file_type: 'image', file_category: 'work', file_size: 4096 },
-  { id: 104, file_name: 'work.zip', file_type: 'file', file_category: 'work', file_size: 8192 }
+  { id: 104, file_name: 'work.zip', file_type: 'file', file_category: 'work', file_size: 8192 },
+  { id: 105, file_name: 'rejected-version.zip', file_type: 'file', file_category: 'reject', file_size: 16384 }
 ]
 
 const taskRows = [
@@ -89,6 +90,7 @@ const taskRows = [
     actual_quantity: 1,
     status: 'doing',
     task_group: 'cs',
+    allowedActions: { review: true, openPayment: false },
     publisher_id: 6,
     publisher_name: '客服A',
     designer_id: 3,
@@ -101,6 +103,26 @@ const taskRows = [
     score_status: 'pending',
     create_time: '2026-06-02 11:00:00',
     submit_time: '2026-06-02 12:00:00',
+    transfer_records: [
+      {
+        id: 501,
+        from_designer_name: '基础美工甲',
+        to_designer_name: '基础美工A',
+        transfer_reason: '工作调整',
+        operator_name: '客服A',
+        create_time: '2026-06-02 11:30:00'
+      }
+    ],
+    reject_records: [
+      {
+        id: 601,
+        reject_index: 1,
+        reject_reason: '细节需要调整',
+        reviewer_name: '客服A',
+        create_time: '2026-06-02 11:40:00',
+        files: []
+      }
+    ],
     files
   },
   {
@@ -155,6 +177,7 @@ const taskRows = [
     actual_quantity: 1,
     status: 'doing',
     task_group: 'design',
+    allowedActions: { review: true, openPayment: true },
     publisher_id: 5,
     publisher_name: '运营A',
     designer_id: 2,
@@ -198,6 +221,7 @@ const taskRows = [
     actual_quantity: 1,
     status: 'doing',
     task_group: 'operator',
+    allowedActions: { review: true, openPayment: false },
     publisher_id: 5,
     publisher_name: '运营A',
     designer_id: 4,
@@ -523,19 +547,50 @@ test('detail overlays preserve task detail and file affordances', async ({ page 
   await expect(overlay.locator('.task-detail-header')).toBeVisible()
   await expect(overlay.locator('.task-detail-body')).toHaveCSS('overflow-y', 'auto')
   await expect(overlay.getByRole('button', { name: '上传作品', exact: true })).toBeVisible()
-  await expect(overlay.getByText('任务信息')).toBeVisible()
+  await expect(overlay.locator('.task-detail-information-panel')).toBeVisible()
+  await expect(overlay.locator('.task-detail-description-row')).toBeVisible()
   await expect(overlay.getByRole('heading', { name: /参考图/ })).toBeVisible()
   await expect(overlay.getByRole('heading', { name: /作品图片/ })).toBeVisible()
 })
 
 const taskDetailCases = [
-  { name: 'designer', path: '/designer/tasks', user: users.designer, taskNo: 'T-ACCEPTED', action: '上传作品' },
-  { name: 'basic designer', path: '/basic/tasks', user: users.basic, taskNo: 'T-DOING' },
-  { name: 'operator assistant', path: '/operator-assistant/tasks', user: users.assistant, taskNo: 'T-REJECTED', action: '重新上传' },
-  { name: 'operator published', path: '/operator/op-tasks', user: users.operator, taskNo: 'T-OP-DRAFT', action: '编辑' },
-  { name: 'shared published', path: '/operator/tasks', user: users.operator, taskNo: 'T-ACCEPTED', action: '撤回' },
-  { name: 'task hall', path: '/operator-assistant/hall', user: users.assistant, taskNo: 'T-WAIT', action: '接单' },
-  { name: 'admin all tasks', path: '/admin/tasks/operator', user: users.admin, taskNo: 'T-REJECTED' }
+  {
+    name: 'designer', path: '/designer/tasks', user: users.designer, taskNo: 'T-ACCEPTED', action: '上传作品',
+    labels: ['工作项目', '款号', '指定颜色', '参考路径', '截止时间', '上传路径'],
+    forbiddenLabels: ['分值', '任务数量', '申请分数', '完成次数'],
+    showsRejectCategoryFile: true
+  },
+  {
+    name: 'basic designer', path: '/basic/tasks', user: users.basic, taskNo: 'T-DOING',
+    labels: ['旺旺ID', '款号', '指定颜色', '申请分数', '分数审核状态', '分数审核通过分数'],
+    forbiddenLabels: ['工作项目', '分值', '任务数量', '完成次数', '上传路径']
+  },
+  {
+    name: 'operator assistant', path: '/operator-assistant/tasks', user: users.assistant, taskNo: 'T-REJECTED', action: '重新上传',
+    labels: ['店铺', '任务数量', '工作项目', '分值', '任务文件地址', '完成次数'],
+    forbiddenLabels: ['款号', '指定颜色', '申请分数', '上传路径']
+  },
+  {
+    name: 'operator published', path: '/operator/op-tasks', user: users.operator, taskNo: 'T-OP-DRAFT', action: '编辑',
+    labels: ['店铺', '任务数量', '工作项目', '分值', '任务文件地址', '完成次数', '上传路径'],
+    forbiddenLabels: ['款号', '指定颜色', '申请分数']
+  },
+  {
+    name: 'shared published', path: '/operator/tasks', user: users.operator, taskNo: 'T-ACCEPTED', action: '撤回',
+    labels: ['工作项目', '分值', '款号', '指定颜色', '参考路径', '截止时间', '上传路径'],
+    forbiddenLabels: ['任务数量', '完成次数', '申请分数']
+  },
+  {
+    name: 'task hall', path: '/operator-assistant/hall', user: users.assistant, taskNo: 'T-WAIT', action: '接单',
+    labels: ['工作项目', '分值', '店铺', '任务数量', '任务文件地址', '任务标题'],
+    forbiddenLabels: ['完成次数', '上传路径', '款号', '申请分数'],
+    showsRejectCategoryFile: true
+  },
+  {
+    name: 'admin all tasks', path: '/admin/tasks/operator', user: users.admin, taskNo: 'T-REJECTED',
+    labels: ['工作项目', '分值', '任务数量', '任务文件地址', '完成次数', '上传路径'],
+    forbiddenLabels: ['店铺', '款号', '指定颜色', '申请分数']
+  }
 ]
 
 for (const detailCase of taskDetailCases) {
@@ -548,16 +603,86 @@ for (const detailCase of taskDetailCases) {
     const overlay = page.locator('.task-detail-overlay')
     await expect(overlay).toBeVisible()
     await expect(overlay.locator('.task-detail-body')).toHaveCSS('overflow-y', 'auto')
+    await expect(overlay.locator('.task-detail-information-panel')).toBeVisible()
+    await expect(overlay.locator('.task-detail-descriptions')).toBeVisible()
+    await expect(overlay.locator('.inline-detail-section')).toHaveCount(0)
+    const labelTexts = await overlay.locator('.task-detail-descriptions .el-descriptions__label').allTextContents()
+    const descriptionLabels = detailCase.labels.filter((_, index) => {
+      if (detailCase.name === 'designer') return ![3, 4, 5].includes(index)
+      if (detailCase.name === 'shared published') return ![4, 5, 6].includes(index)
+      return true
+    })
+    for (const label of descriptionLabels) expect(labelTexts).toContain(label)
+    for (const label of detailCase.forbiddenLabels) expect(labelTexts).not.toContain(label)
+    if (detailCase.name === 'designer') {
+      expect(labelTexts).not.toContain(detailCase.labels[4])
+      await expect(overlay.locator('.task-detail-path-row')).toHaveCount(2)
+    }
+    if (detailCase.name === 'shared published') {
+      expect(labelTexts).not.toContain(detailCase.labels[5])
+      await expect(overlay.locator('.task-detail-path-row')).toHaveCount(2)
+    }
+    await expect(overlay.getByText('rejected-version.zip', { exact: true }))
+      .toHaveCount(detailCase.showsRejectCategoryFile ? 1 : 0)
     if (detailCase.action) {
       await expect(overlay.getByRole('button', { name: detailCase.action, exact: true })).toBeVisible()
     }
     if (detailCase.name === 'basic designer') {
       await expect(overlay.getByRole('button', { name: '开启打款', exact: true })).toHaveCount(0)
     }
+    if (detailCase.name === 'operator assistant') {
+      await expect(overlay.locator('.task-detail-image').getByRole('button', { name: '下载', exact: true })).toHaveCount(0)
+      await expect(overlay.locator('.task-detail-attachment').getByRole('button', { name: '下载', exact: true })).toHaveCount(2)
+    }
+    if (detailCase.name === 'task hall') {
+      await expect(overlay.locator('.task-detail-summary')).not.toContainText('款号')
+      await expect(overlay.locator('.task-status-panel')).toHaveCount(0)
+      await expect(overlay.locator('.transfer-panel')).toHaveCount(0)
+      await expect(overlay.locator('.reject-history')).toHaveCount(0)
+      await expect(overlay.locator('.task-detail-image')).toHaveCount(1)
+      await expect(overlay.locator('.task-detail-attachment')).toHaveCount(4)
+    }
     await overlay.getByRole('button', { name: '关闭', exact: true }).click()
     await expect(overlay).toHaveCount(0)
   })
 }
+
+test('design review detail matches the unified source-task information layout', async ({ page }, testInfo) => {
+  await loginAs(page, { ...users.operator, permissions: ['*'] })
+  await page.goto('/#/operator/review')
+  const designRow = page.locator('.el-table__body tr').filter({ hasText: 'T-DESIGN-DOING' })
+  await designRow.getByRole('button', { name: '查看作品', exact: true }).click()
+
+  const overlay = page.locator('.task-detail-overlay')
+  await expect(overlay.locator('.task-detail-title-row')).toBeVisible()
+  await expect(overlay.locator('.task-detail-summary')).toContainText('设计师A')
+  await expect(overlay.locator('.task-detail-summary')).toContainText('上传提交时间 2026-06-04 12:00:00')
+  await expect(overlay.locator('.task-detail-summary')).not.toContainText('T-DESIGN-DOING')
+  await expect(overlay.locator('.task-detail-summary')).not.toContainText('SN-006')
+  await expect(overlay.locator('.task-detail-information-panel')).toBeVisible()
+  await expect(overlay.locator('.task-detail-descriptions')).toBeVisible()
+  await expect(overlay.locator('.task-detail-description-row')).toBeVisible()
+  await expect(overlay.locator('.task-detail-media-grid')).toHaveCSS('display', 'grid')
+  await expect(overlay.locator('.task-detail-media-section')).toHaveCount(2)
+  await expect(overlay.locator('.inline-detail-section')).toHaveCount(0)
+  await page.screenshot({ path: testInfo.outputPath('unified-design-review-detail.png'), fullPage: true })
+})
+
+test('task detail fields stay isolated by task group', async ({ page }, testInfo) => {
+  await loginAs(page, { ...users.operator, permissions: ['*'] })
+  await page.goto('/#/operator/review')
+  const designRow = page.locator('.el-table__body tr').filter({ hasText: 'T-DESIGN-DOING' })
+  await designRow.getByRole('button', { name: '查看作品', exact: true }).click()
+
+  const overlay = page.locator('.task-detail-overlay')
+  const labelTexts = await overlay.locator('.task-detail-descriptions .el-descriptions__label').allTextContents()
+  for (const label of ['工作项目', '分值', '款号', '指定颜色']) expect(labelTexts).toContain(label)
+  expect(labelTexts).not.toContain('截止时间')
+  await expect(overlay.locator('.task-detail-path-row')).toHaveCount(2)
+  await expect(overlay.getByText('/design/doing', { exact: true })).toBeVisible()
+  await expect(overlay.getByText('/design/doing-work', { exact: true })).toBeVisible()
+  await overlay.getByRole('button', { name: '关闭', exact: true }).click()
+})
 
 test('review detail actions stay isolated by page and role', async ({ page }) => {
   await loginAs(page, { ...users.operator, permissions: ['*'] })
@@ -565,6 +690,9 @@ test('review detail actions stay isolated by page and role', async ({ page }) =>
   const designRow = page.locator('.el-table__body tr').filter({ hasText: 'T-DESIGN-DOING' })
   await designRow.getByRole('button', { name: '查看作品', exact: true }).click()
   let overlay = page.locator('.task-detail-overlay')
+  await expect(overlay.locator('.task-detail-information-panel')).toBeVisible()
+  await expect(overlay.getByText('申请分值', { exact: true })).toHaveCount(0)
+  await expect(overlay.getByText('分值审核状态', { exact: true })).toHaveCount(0)
   await expect(overlay.getByRole('button', { name: '通过', exact: true })).toBeVisible()
   await expect(overlay.getByRole('button', { name: '驳回', exact: true })).toBeVisible()
   await expect(overlay.getByRole('button', { name: '开启打款', exact: true })).toBeVisible()
@@ -575,6 +703,7 @@ test('review detail actions stay isolated by page and role', async ({ page }) =>
   await page.getByRole('button', { name: '查看作品', exact: true }).first().click()
   overlay = page.locator('.task-detail-overlay')
   await expect(overlay).toBeVisible()
+  await expect(overlay.locator('.task-detail-information-panel')).toBeVisible()
   await expect(overlay.getByRole('button', { name: '开启打款', exact: true })).toHaveCount(0)
   await overlay.getByRole('button', { name: '关闭', exact: true }).click()
 
@@ -592,8 +721,13 @@ test('review detail actions stay isolated by page and role', async ({ page }) =>
     await reviewScope.getByRole('button', { name: reviewCase.entry, exact: true }).first().click()
     overlay = page.locator('.task-detail-overlay')
     await expect(overlay).toBeVisible()
+    await expect(overlay.locator('.task-detail-information-panel')).toBeVisible()
+    await expect(overlay.locator('.inline-detail-section')).toHaveCount(0)
     if (reviewCase.action) {
       await expect(overlay.getByRole('button', { name: reviewCase.action, exact: true })).toBeVisible()
+    }
+    if (reviewCase.path === '/basic/score-review') {
+      await expect(overlay.getByText('申请分值', { exact: true })).toBeVisible()
     }
     await expect(overlay.getByRole('button', { name: '开启打款', exact: true })).toHaveCount(0)
     await overlay.getByRole('button', { name: '关闭', exact: true }).click()
@@ -1171,7 +1305,7 @@ async function mockApis(page) {
     if (path === '/api/task/detail') {
       const taskId = Number(url.searchParams.get('taskId'))
       const task = [...taskRows, ...scoreRows].find(row => row.id === taskId) || taskRows[0]
-      return json(route, { code: 0, data: { ...task, files, reject_records: [] } })
+      return json(route, { code: 0, data: { ...task, files, reject_records: task.reject_records || [] } })
     }
     if (path.startsWith('/api/task/preview/')) {
       return route.fulfill({

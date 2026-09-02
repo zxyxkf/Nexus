@@ -111,142 +111,17 @@
       </div>
 
       <!-- 任务详情 —— 内联覆盖层 -->
-      <TaskDetailOverlay
+      <TaskDetail
         :visible="detailVisible"
-        :title="currentTask?.title || currentTask?.score_item_name || currentTask?.task_no || '任务详情'"
-        body-class="inline-detail-body"
+        :task="currentTask"
+        :task-group="taskGroup"
+        detail-context="hall"
         @close="detailVisible = false"
       >
-        <template #summary>
-          <div class="detail-header-left">
-              <span v-if="isBasicDesigner" class="detail-number">#{{ currentTask.task_no }}</span>
-              <span style="font-size:14px;font-weight:600;">{{ currentTask.publisher_name }}</span>
-              <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
-          </div>
-        </template>
         <template #actions>
           <el-button type="primary" size="small" @click="acceptInDetail" :loading="acceptingId === currentTask?.id">接单</el-button>
         </template>
-
-            <div class="inline-detail-people">
-              <div class="inline-detail-stat-card">
-                <label>发布人</label>
-                <span>{{ currentTask.publisher_name || '-' }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>接单人</label>
-                <span>未接单</span>
-              </div>
-            </div>
-
-            <div class="inline-detail-section">
-              <div class="inline-detail-section-title">任务信息</div>
-              <div class="inline-detail-stat-card">
-                <label>工作项目</label>
-                <span>{{ currentTask.score_item_name || '-' }}</span>
-              </div>
-              <div class="inline-detail-stat-card">
-                <label>分值</label>
-                <span>{{ currentTask.score || '-' }}</span>
-              </div>
-              <template v-if="isOperatorAssistant">
-                <div class="inline-detail-stat-card">
-                  <label>店铺</label>
-                  <span>{{ currentTask.shop_name || '-' }}</span>
-                </div>
-                <div class="inline-detail-stat-card">
-                  <label>任务数量</label>
-                  <span>{{ currentTask.quantity || 1 }}</span>
-                </div>
-                <div class="inline-detail-stat-card full-width">
-                  <label>任务文件地址</label>
-                  <span>{{ currentTask.task_file_path || '-' }}</span>
-                </div>
-              </template>
-              <template v-if="isBasicDesigner">
-                <div class="inline-detail-stat-card">
-                  <label>旺旺ID</label>
-                  <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
-                </div>
-                <div class="inline-detail-stat-card">
-                  <label>款号</label>
-                  <span>{{ currentTask.style_number || '无' }}</span>
-                </div>
-                <div class="inline-detail-stat-card">
-                  <label>指定颜色</label>
-                  <span>{{ currentTask.specified_color || '无' }}</span>
-                </div>
-              </template>
-              <template v-else-if="!isOperatorAssistant">
-                <div class="inline-detail-stat-card">
-                  <label>款号</label>
-                  <span>{{ currentTask.style_number || '无' }}</span>
-                </div>
-                <div class="inline-detail-stat-card">
-                  <label>指定颜色</label>
-                  <span>{{ currentTask.specified_color || '无' }}</span>
-                </div>
-                <div class="inline-detail-stat-card">
-                  <label>参考路径</label>
-                  <span class="multiline-value">{{ currentTask.ref_path || '无' }}</span>
-                </div>
-                <div class="inline-detail-stat-card">
-                  <label>截止时间</label>
-                  <span>{{ currentTask.deadline || '无' }}</span>
-                </div>
-              </template>
-
-              <div class="inline-detail-stat-card full-width">
-                <label>任务标题</label>
-                <span>{{ currentTask.title }}</span>
-              </div>
-              <div class="inline-detail-stat-card full-width">
-                <label>任务描述</label>
-                <div class="value" style="white-space:pre-wrap;">{{ currentTask.description || '暂无描述' }}</div>
-              </div>
-            </div>
-
-            <template v-if="currentTask.files && currentTask.files.length">
-              <div v-if="detailRefImages.length" class="inline-detail-files">
-                <h4>参考图 ({{ detailRefImages.length }})</h4>
-                <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                  <div v-for="(file, index) in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
-                    <el-image
-                      :src="file._previewSrc || getFileUrl(file)"
-                      fit="contain"
-                      :preview-src-list="detailRefPreviewList"
-                      :initial-index="index"
-                      preview-teleported
-                      style="width:120px;height:120px;border-radius:8px;border:1px solid #e4e7ed;"
-                    />
-                    <el-button type="primary" link size="small" @click="downloadFile(file)" style="position:absolute;bottom:4px;right:4px;background:rgba(255,255,255,0.9);border-radius:4px;">下载</el-button>
-                  </div>
-                </div>
-              </div>
-              <div v-if="detailRefAttachments.length" class="inline-detail-files">
-                <h4>参考附件 ({{ detailRefAttachments.length }})</h4>
-                <div v-for="file in detailRefAttachments" :key="file.id" class="file-card" draggable="true" @dragstart="setupFileDrag($event, file)">
-                  <el-icon :size="28" color="#909399"><Document /></el-icon>
-                  <div class="file-card-info">
-                    <span class="file-card-name">{{ file.file_name }}</span>
-                    <span class="file-card-size">{{ formatSize(file.file_size) }}</span>
-                  </div>
-                  <el-button type="primary" link size="small" @click="downloadFile(file)">下载</el-button>
-                </div>
-              </div>
-              <div v-if="detailAttachFiles.length" class="inline-detail-files">
-                <h4>附件 ({{ detailAttachFiles.length }})</h4>
-                <div v-for="file in detailAttachFiles" :key="file.id" class="file-card" draggable="true" @dragstart="setupFileDrag($event, file)">
-                  <el-icon :size="28" color="#909399"><Document /></el-icon>
-                  <div class="file-card-info">
-                    <span class="file-card-name">{{ file.file_name }}</span>
-                    <span class="file-card-size">{{ formatSize(file.file_size) }}</span>
-                  </div>
-                  <el-button type="primary" link size="small" @click="downloadFile(file)">下载</el-button>
-                </div>
-              </div>
-            </template>
-      </TaskDetailOverlay>
+      </TaskDetail>
     </el-card>
   </div>
 </template>
@@ -256,9 +131,9 @@ import { ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
-import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
+import TaskDetail from '@/components/TaskDetail.vue'
 import { getTaskHallApi, acceptTaskApi, getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
-import { formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
+import { formatDate, formatFileSize } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedTableSort } from '@/composables/usePersistedTableSort'

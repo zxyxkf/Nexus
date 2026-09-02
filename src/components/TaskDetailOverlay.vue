@@ -10,7 +10,10 @@
         >
           <header class="task-detail-header">
             <div class="task-detail-heading">
-              <h2 class="task-detail-title" :title="title">{{ title }}</h2>
+              <div class="task-detail-title-row">
+                <h2 class="task-detail-title" :title="title">{{ title }}</h2>
+                <slot name="title-extra" />
+              </div>
               <div v-if="$slots.summary" class="task-detail-summary">
                 <slot name="summary" />
               </div>
@@ -91,7 +94,7 @@ watch(() => props.visible, async (visible) => {
   min-width: 0;
   min-height: 0;
   overflow: hidden;
-  background: var(--dd-bg-card, #fff);
+  background: #fff;
   border: 1px solid var(--dd-border, #dcdfe6);
   border-radius: 6px;
   box-shadow: 0 12px 32px rgb(0 0 0 / 16%);
@@ -106,10 +109,11 @@ watch(() => props.visible, async (visible) => {
   min-height: 62px;
   padding: 10px 20px;
   border-bottom: 1px solid var(--dd-border, #dcdfe6);
-  background: var(--dd-bg-card, #fff);
+  background: #fff;
 }
 
 .task-detail-heading,
+.task-detail-title-row,
 .task-detail-summary,
 .task-detail-actions {
   display: flex;
@@ -117,8 +121,15 @@ watch(() => props.visible, async (visible) => {
 }
 
 .task-detail-heading {
+  flex-direction: column;
+  align-items: flex-start;
   min-width: 0;
-  gap: 14px;
+  gap: 7px;
+}
+
+.task-detail-title-row {
+  gap: 10px;
+  min-width: 0;
 }
 
 .task-detail-title {
@@ -192,7 +203,7 @@ watch(() => props.visible, async (visible) => {
   overflow-y: auto;
   overscroll-behavior: contain;
   padding: 18px 20px 24px;
-  background: var(--dd-bg-page, #f5f7fa);
+  background: #f5f7fa;
 }
 
 .task-detail-fade-enter-active,

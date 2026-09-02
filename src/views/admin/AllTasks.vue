@@ -125,156 +125,14 @@
       </div>
 
     <!-- 任务详情 —— 内联覆盖层 -->
-    <TaskDetailOverlay
+    <TaskDetail
       :visible="detailVisible"
-      :title="currentTask?.title || currentTask?.task_no || '任务详情'"
-      body-class="inline-detail-body"
+      :task="currentTask"
+      :task-group="taskGroup"
+      detail-context="admin"
       @close="detailVisible = false"
     >
-      <template #summary>
-        <div class="detail-header-left">
-            <span v-if="taskGroup === 'cs'" class="detail-number">#{{ currentTask.task_no }}</span>
-            <el-tag :type="statusType(currentTask.status)" size="small">{{ statusLabel(currentTask.status) }}</el-tag>
-            <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
-        </div>
-      </template>
-
-          <TaskStatusTimeline :task="currentTask" :task-group="taskGroup" />
-          <TaskTransferTimeline v-if="taskGroup === 'cs'" :records="currentTask.transfer_records || []" />
-          <div class="inline-detail-people">
-            <div class="inline-detail-stat-card">
-              <label>{{ publisherLabel }}</label>
-              <span>{{ currentTask.publisher_name }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
-              <label>{{ designerLabel }}</label>
-              <span>{{ currentTask.designer_name || '未接单' }}</span>
-            </div>
-          </div>
-          <div class="inline-detail-section">
-            <div class="inline-detail-section-title">任务信息</div>
-            <div class="inline-detail-stat-card">
-              <label>工作项目</label>
-              <span>{{ currentTask.title || '-' }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
-              <label>分值</label>
-              <span>{{ currentTask.score || '-' }}</span>
-            </div>
-            <div v-if="taskGroup === 'operator'" class="inline-detail-stat-card">
-              <label>任务数量</label>
-              <span>{{ currentTask.quantity || 1 }}</span>
-            </div>
-            <div v-if="taskGroup === 'operator'" class="inline-detail-stat-card full-width">
-              <label>任务文件地址</label>
-              <span>{{ currentTask.task_file_path || '-' }}</span>
-            </div>
-            <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
-              <label>旺旺ID</label>
-              <span>{{ currentTask.wangwang_id || currentTask.ref_path || '无' }}</span>
-            </div>
-            <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
-              <label>款号</label>
-              <span>{{ currentTask.style_number || '无' }}</span>
-            </div>
-            <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
-              <label>指定颜色</label>
-              <span>{{ currentTask.specified_color || '无' }}</span>
-            </div>
-            <div class="inline-detail-stat-card full-width">
-              <label>任务描述</label>
-              <div class="value" style="white-space:pre-wrap;">{{ currentTask.description || '暂无' }}</div>
-            </div>
-          </div>
-
-          <div class="inline-detail-section">
-            <div class="inline-detail-section-title">提交与审核</div>
-            <div v-if="taskGroup === 'operator'" class="inline-detail-stat-card">
-              <label>完成次数</label>
-              <span>{{ currentTask.actual_quantity || 0 }}</span>
-            </div>
-            <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
-              <label>申请分数</label>
-              <span>{{ formatScoreValue(currentTask.applied_score) }}</span>
-            </div>
-            <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
-              <label>分数审核状态</label>
-              <el-tag :type="scoreReviewTagType(currentTask.score_review_status)" size="small">
-                {{ formatScoreReviewStatus(currentTask.score_review_status, currentTask) }}
-              </el-tag>
-            </div>
-            <div v-if="taskGroup === 'cs'" class="inline-detail-stat-card">
-              <label>分数审核通过分数</label>
-              <span>{{ formatScoreReviewApprovedScore(currentTask) }}</span>
-            </div>
-            <div v-if="taskGroup === 'design' || taskGroup === 'operator'" class="inline-detail-stat-card full-width">
-              <label>上传路径</label>
-              <span>{{ currentTask.work_path || '无' }}</span>
-            </div>
-            <div v-if="currentTask.status==='rejected'" class="inline-detail-stat-card full-width">
-              <label>驳回原因</label>
-              <div class="value" style="color:#e63946;">{{ currentTask.reject_reason }}</div>
-            </div>
-            <div v-if="taskGroup === 'cs' && currentTask.score_review_reason" class="inline-detail-stat-card full-width">
-              <label>分数审核驳回原因</label>
-              <div class="value" style="color:#e63946;white-space:pre-wrap;">{{ currentTask.score_review_reason }}</div>
-            </div>
-          </div>
-
-          <template v-if="currentTask.files && currentTask.files.length > 0">
-            <div v-if="refImageFiles.length > 0" class="inline-detail-files">
-              <h4>参考图 ({{ refImageFiles.length }})</h4>
-              <div v-for="(file, index) in refImageFiles" :key="file.id" style="position:relative;display:inline-block;" draggable="true" @dragstart="setupFileDrag($event, file)">
-                <el-image
-                  :src="file._previewSrc || getFileUrl(file)"
-                  fit="contain"
-                  :preview-src-list="refImagePreviewList"
-                  :initial-index="index"
-                  preview-teleported
-                  style="width:150px;height:150px;border-radius:8px;margin-right:8px;margin-bottom:8px;border:1px solid #e4e7ed;"
-                />
-                <el-button class="file-download-btn" type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
-              </div>
-            </div>
-            <div v-if="refAttachmentFiles.length > 0" class="inline-detail-files">
-              <h4>参考附件 ({{ refAttachmentFiles.length }})</h4>
-              <div v-for="file in refAttachmentFiles" :key="file.id" class="file-card" draggable="true" @dragstart="setupFileDrag($event, file)">
-                <el-icon :size="28" color="#909399"><Document /></el-icon>
-                <div class="file-card-info">
-                  <span class="file-card-name">{{ file.file_name }}</span>
-                  <span class="file-card-size">{{ formatSize(file.file_size) }}</span>
-                </div>
-                <el-button type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
-              </div>
-            </div>
-            <div v-if="workImageFiles.length > 0" class="inline-detail-files">
-              <h4>{{ taskGroup === 'operator' ? '完成凭证图片' : '作品图片' }} ({{ workImageFiles.length }})</h4>
-              <div v-for="(file, index) in workImageFiles" :key="file.id" style="position:relative;display:inline-block;" draggable="true" @dragstart="setupFileDrag($event, file)">
-                <el-image
-                  :src="file._previewSrc || getFileUrl(file)"
-                  fit="contain"
-                  :preview-src-list="workImagePreviewList"
-                  :initial-index="index"
-                  preview-teleported
-                  style="width:150px;height:150px;border-radius:8px;margin-right:8px;margin-bottom:8px;border:1px solid #e4e7ed;"
-                />
-                <el-button class="file-download-btn" type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
-              </div>
-            </div>
-            <div v-if="workAttachmentFiles.length > 0" class="inline-detail-files">
-              <h4>{{ taskGroup === 'operator' ? '完成凭证附件' : '作品附件' }} ({{ workAttachmentFiles.length }})</h4>
-              <div v-for="file in workAttachmentFiles" :key="file.id" class="file-card" draggable="true" @dragstart="setupFileDrag($event, file)">
-                <el-icon :size="28" color="#909399"><Document /></el-icon>
-                <div class="file-card-info">
-                  <span class="file-card-name">{{ file.file_name }}</span>
-                  <span class="file-card-size">{{ formatSize(file.file_size) }}</span>
-                </div>
-                <el-button type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
-              </div>
-            </div>
-          </template>
-          <RejectHistory v-if="taskGroup === 'cs'" :records="currentTask.reject_records || []" />
-    </TaskDetailOverlay>
+    </TaskDetail>
     </el-card>
   </div>
 </template>
@@ -285,12 +143,9 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Document } from '@element-plus/icons-vue'
 import { getAllTasksApi, getTaskPublisherListApi, getTaskDesignerListApi, getFileUrl, saveFileToDisk, deleteTaskApi, batchDeleteApi, batchDownloadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskHeaderTime, scoreReviewTagType } from '@/utils/format'
-import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
-import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
-import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, scoreReviewTagType } from '@/utils/format'
+import TaskDetail from '@/components/TaskDetail.vue'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'
-import RejectHistory from '@/components/RejectHistory.vue'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'
 import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'

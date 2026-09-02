@@ -12,6 +12,7 @@
       :visible="detailVisible"
       :task="currentTask"
       task-group="design"
+      detail-context="source-task"
       @close="closeDetail"
     />
   </span>

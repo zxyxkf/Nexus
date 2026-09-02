@@ -132,116 +132,18 @@
       </div>
 
     <!-- 任务审核详情 —— 内联覆盖层 -->
-    <TaskDetailOverlay
+    <TaskDetail
       :visible="detailVisible"
-      :title="currentTask?.title || currentTask?.task_no || '任务详情'"
-      body-class="inline-detail-body"
+      :task="currentTask"
+      task-group="operator"
+      detail-context="operator-review"
       @close="detailVisible = false"
     >
-      <template #summary>
-        <div class="detail-header-left">
-            <span style="font-size:14px;font-weight:600;">{{ currentTask.designer_name }}</span>
-            <span class="detail-header-time">{{ formatTaskHeaderTime(currentTask) }}</span>
-        </div>
-      </template>
       <template #actions>
         <el-button v-if="currentTask.status === 'doing'" type="success" size="small" @click="doReview('pass')" :loading="reviewLoading">通过</el-button>
         <el-button v-if="currentTask.status === 'doing'" type="danger" size="small" @click="doReview('reject')" :loading="reviewLoading">驳回</el-button>
       </template>
-
-          <TaskStatusTimeline :task="currentTask" task-group="operator" />
-          <div class="inline-detail-people">
-            <div class="inline-detail-stat-card">
-              <label>发布人</label>
-              <span>{{ currentTask.publisher_name || '-' }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
-              <label>接单人</label>
-              <span>{{ currentTask.designer_name || '未接单' }}</span>
-            </div>
-          </div>
-
-          <div class="inline-detail-section">
-            <div class="inline-detail-section-title">任务信息</div>
-            <div class="inline-detail-stat-card">
-              <label>店铺</label>
-              <span>{{ currentTask.shop_name || '-' }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
-              <label>任务数量</label>
-              <span>{{ currentTask.quantity || 1 }}</span>
-            </div>
-            <div class="inline-detail-stat-card">
-              <label>工作项目</label>
-              <span>{{ currentTask.title }}</span>
-            </div>
-            <div class="inline-detail-stat-card full-width">
-              <label>任务文件地址</label>
-              <span>{{ currentTask.task_file_path || '-' }}</span>
-            </div>
-            <div class="inline-detail-stat-card full-width">
-              <label>任务描述</label>
-              <div class="value" style="white-space:pre-wrap;">{{ currentTask.description || '暂无' }}</div>
-            </div>
-          </div>
-
-          <div class="inline-detail-section">
-            <div class="inline-detail-section-title">提交与审核</div>
-            <div class="inline-detail-stat-card">
-              <label>完成次数</label>
-              <span>{{ currentTask.actual_quantity || 0 }}</span>
-            </div>
-            <div class="inline-detail-stat-card full-width">
-              <label>上传路径</label>
-              <span>{{ currentTask.work_path || '无' }}</span>
-            </div>
-          </div>
-
-          <template v-if="detailRefImages.length">
-            <div class="inline-detail-files">
-              <h4>参考图 ({{ detailRefImages.length }})</h4>
-              <div style="display:flex;flex-wrap:wrap;gap:8px;">
-                <div v-for="(file, index) in detailRefImages" :key="file.id" style="position:relative;" draggable="true" @dragstart="setupFileDrag($event, file)">
-                  <el-image :src="file._previewSrc || getFileUrl(file)" fit="contain" :preview-src-list="detailRefPreviewList" :initial-index="index" preview-teleported style="width:150px;height:150px;border-radius:8px;border:1px solid #e4e7ed;" />
-                  <el-button class="file-download-btn" type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
-                </div>
-              </div>
-            </div>
-          </template>
-
-          <div v-if="detailRefAttachments.length" class="inline-detail-files">
-            <h4>参考附件 ({{ detailRefAttachments.length }})</h4>
-            <div v-for="file in detailRefAttachments" :key="file.id" class="review-ref-attach" draggable="true" @dragstart="setupFileDrag($event, file)">
-              <el-icon :size="28" color="#909399"><Document /></el-icon>
-              <div style="flex:1;min-width:0;">
-                <span style="font-size:13px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">{{ file.file_name }}</span>
-                <span style="font-size:11px;color:#909399;">{{ formatSize(file.file_size) }}</span>
-              </div>
-              <el-button type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
-            </div>
-          </div>
-
-          <div v-if="reviewWorkFiles.length" class="inline-detail-files">
-            <h4>完成凭证</h4>
-            <div class="review-file-grid">
-              <div v-for="file in reviewWorkFiles" :key="file.id" class="review-file-item" draggable="true" @dragstart="setupFileDrag($event, file)">
-                <template v-if="file.file_type === 'image'">
-                  <el-image :src="file._previewSrc || getFileUrl(file)" fit="cover" :preview-src-list="imagePreviewList" :initial-index="getImagePreviewIndex(reviewWorkFiles, file)" style="width:180px;height:160px;border-radius:8px;border:1px solid #e4e7ed;cursor:pointer;">
-                    <template #error>
-                      <div class="img-error"><el-icon :size="24"><PictureFilled /></el-icon><span>加载失败</span></div>
-                    </template>
-                  </el-image>
-                  <el-button type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
-                </template>
-                <div v-else class="review-file-nonimage">
-                  <el-icon :size="32"><Document /></el-icon>
-                  <span class="review-file-name">{{ file.file_name }}</span>
-                  <el-button type="primary" link size="small" @click="saveFileToDisk(file)">下载</el-button>
-                </div>
-              </div>
-            </div>
-          </div>
-    </TaskDetailOverlay>
+    </TaskDetail>
     </el-card>
   </div>
 </template>
@@ -255,9 +157,8 @@ import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
-import { formatDate, formatFileSize, formatTaskHeaderTime } from '@/utils/format'
-import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
-import TaskDetailOverlay from '@/components/TaskDetailOverlay.vue'
+import { formatDate, formatFileSize } from '@/utils/format'
+import TaskDetail from '@/components/TaskDetail.vue'
 
 const loading = ref(false)
 const list = ref([])
