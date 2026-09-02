@@ -506,6 +506,22 @@ it('opens payment tracking from task images and reports batch skip reasons', asy
   ]));
   expect(restrictedList.body.data.list.some(task => Number(task.id) === Number(restrictedCrossStoreTask))).toBe(false);
 
+  const restrictedSelfOnlyList = await request(app)
+    .get('/api/task/my-published?taskGroup=design&status=doing&selfOnly=true&pageSize=100')
+    .set('Authorization', `Bearer ${paymentOnlyToken}`);
+  expect(restrictedSelfOnlyList.body.code).toBe(0);
+  expect(restrictedSelfOnlyList.body.data.list.some(
+    task => Number(task.id) === Number(restrictedSameStoreTask)
+  )).toBe(false);
+
+  const allStoreSelfOnlyList = await request(app)
+    .get('/api/task/my-published?taskGroup=design&status=doing&selfOnly=true&pageSize=100')
+    .set('Authorization', `Bearer ${allStorePaymentToken}`);
+  expect(allStoreSelfOnlyList.body.code).toBe(0);
+  expect(allStoreSelfOnlyList.body.data.list.some(
+    task => Number(task.id) === Number(restrictedCrossStoreTask)
+  )).toBe(true);
+
   const allStoreList = await request(app)
     .get('/api/task/my-published?taskGroup=design&status=doing&pageSize=100')
     .set('Authorization', `Bearer ${allStorePaymentToken}`);

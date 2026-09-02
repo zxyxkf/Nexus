@@ -386,16 +386,20 @@ async function getMyPublished(query, user) {
   const page = parseInt(query.page) || 1;
   const pageSize = parseInt(query.pageSize) || 15;
   const group = query.taskGroup || (user.role === 'cs_agent' ? 'cs' : 'design');
-  const paymentOpenView = group === 'design' && hasPermission(user, 'payment.open');
+  const selfOnly = query.selfOnly === '1' || query.selfOnly === 'true';
+  const allPaymentTasks = canViewAllPaymentTasks(user);
+  const paymentOpenView = group === 'design'
+    && hasPermission(user, 'payment.open')
+    && (!selfOnly || allPaymentTasks);
 
   const result = await taskDao.queryMyPublished({
     userId: user.id, role: user.role,
     store: user.store || '',
     permissions: user.permissions || [],
     filterGroup: group,
-    selfOnly: query.selfOnly === '1' || query.selfOnly === 'true',
+    selfOnly,
     paymentOpenView,
-    canViewAllPaymentTasks: canViewAllPaymentTasks(user),
+    canViewAllPaymentTasks: allPaymentTasks,
     status: query.status, styleNumber: query.styleNumber,
     keyword: query.keyword, taskNo: query.taskNo, designerId: query.designerId,
     publisherId: query.publisherId,
