@@ -84,7 +84,17 @@
         </div>
       </template>
 
-      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" @sort-change="handleSortChange" :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无任务数据" highlight-current-row>
+      <div v-if="canOpenPayment" style="margin-bottom:12px;">
+        <el-button
+          type="warning"
+          :disabled="paymentOpenableSelected.length === 0"
+          :loading="batchPaymentOpening"
+          @click="handleBatchOpenPayment"
+        >批量开启打款 ({{ paymentOpenableSelected.length }})</el-button>
+      </div>
+
+      <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" @sort-change="handleSortChange" @selection-change="onSelectChange" :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无任务数据" highlight-current-row>
+        <el-table-column v-if="canOpenPayment" type="selection" width="45" />
         <el-table-column prop="task_no" label="任务编号" width="95" align="center" sortable="custom" />
         <el-table-column prop="publisher_name" label="发布人" width="100" align="center" show-overflow-tooltip />
         <el-table-column prop="title" label="工作项目" min-width="100" align="center" show-overflow-tooltip />
@@ -177,9 +187,18 @@
         <el-table-column prop="create_time" label="发布时间" width="170" align="center" sortable="custom" show-overflow-tooltip>
           <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
         </el-table-column>
-        <el-table-column label="操作" width="260" align="center" fixed="right">
+        <el-table-column label="操作" :width="canOpenPayment ? 330 : 260" align="center" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
+            <el-button
+              v-if="canOpenPayment && row.allowedActions?.openPayment"
+              type="warning"
+              link
+              size="small"
+              :disabled="!getWorkImages(row.files).length || isPaymentOpened(row.payment_tracking_opened)"
+              :loading="paymentOpeningIds.has(row.id)"
+              @click="handleOpenPayment(row)"
+            >开启打款</el-button>
             <el-button v-if="(row.status === 'wait' || row.status === 'accepted')" type="warning" link size="small" @click="handleWithdraw(row)">撤回</el-button>
             <el-button v-if="row.status === 'draft'" type="success" link size="small" @click="openEditDialog(row)">编辑</el-button>
             <el-button v-if="isCsAgent && row.status === 'finished'" type="danger" link size="small" @click="openReopenDialog(row)">重开</el-button>
@@ -210,6 +229,14 @@
         @close="detailVisible = false"
       >
         <template #actions>
+          <el-button
+            v-if="canOpenPayment && currentTask.allowedActions?.openPayment"
+            type="warning"
+            size="small"
+            :disabled="!getWorkImages(currentTask.files).length || isPaymentOpened(currentTask.payment_tracking_opened)"
+            :loading="paymentOpeningIds.has(currentTask.id)"
+            @click="handleOpenPayment(currentTask)"
+          >开启打款</el-button>
           <el-button v-if="(currentTask.status === 'wait' || currentTask.status === 'accepted')" type="warning" size="small" @click="handleWithdraw(currentTask)">撤回</el-button>
           <el-button v-if="currentTask.status === 'draft'" type="success" size="small" @click="openEditDialog(currentTask)">编辑</el-button>
           <el-button v-if="isCsAgent && currentTask.status === 'finished'" type="danger" size="small" @click="openReopenDialog(currentTask)">重开</el-button>
@@ -293,7 +320,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Search, Plus } from '@element-plus/icons-vue'
-import { getMyPublishedApi, urgeTaskApi, getFileUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, reopenFinishedCsTaskApi, updateCsTaskNoApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getMyPublishedApi, urgeTaskApi, getFileUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, reopenFinishedCsTaskApi, updateCsTaskNoApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
 import { getScoreItemsApi } from '@/api'
 import { getBasicDesignerListApi, getDesignerListApi, getOperatorAssistantListApi, getPublisherListApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, scoreReviewTagType } from '@/utils/format'
@@ -312,6 +339,7 @@ const taskGroup = computed(() => route.meta.taskGroup || (route.meta.role === 'c
 const isCsAgent = computed(() => taskGroup.value === 'cs')
 const isOperatorTask = computed(() => taskGroup.value === 'operator')
 const canUpdateCsTaskNo = computed(() => isCsAgent.value && hasPermission('cs.task_no.update'))
+const canOpenPayment = computed(() => taskGroup.value === 'design' && hasPermission('payment.open'))
 const designerLabel = computed(() => isCsAgent.value ? '基础美工' : isOperatorTask.value ? '运营助理' : '美工')
 
 const searchKeyword = computed({
@@ -329,6 +357,9 @@ const pageSize = ref(15)
 const sortKey = ref('')
 const sortOrder = ref('')
 const tableRef = ref(null)
+const selectedRows = ref([])
+const paymentOpeningIds = ref(new Set())
+const batchPaymentOpening = ref(false)
 const { defaultSort } = usePersistedTableSort(
   () => `pub_my_tasks_${route.path}`,
   { prop: sortKey, order: sortOrder },
@@ -370,6 +401,21 @@ const progressSteps = { wait: '20%', accepted: '40%', doing: '60%', finished: '1
 function progressWidth(s) { return progressSteps[s] || '0%' }
 
 const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList, getImagePreviewIndex } = useFileHelpers()
+function isPaymentOpened(value) {
+  return value === true || value === 1 || value === '1'
+}
+function getWorkImages(files) {
+  return getWorkFiles(files).filter(file => file.file_type === 'image')
+}
+const paymentOpenableSelected = computed(() => selectedRows.value.filter(row => (
+  row.allowedActions?.openPayment
+  && ['doing', 'finished'].includes(row.status)
+  && getWorkImages(row.files).length
+  && !isPaymentOpened(row.payment_tracking_opened)
+)))
+function onSelectChange(rows) {
+  selectedRows.value = rows
+}
 const detailRefImages = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type === 'image')
@@ -392,6 +438,65 @@ function normalizeLoadOptions(options) {
 function handleFilterChange() {
   page.value = 1
   loadData()
+}
+
+async function handleOpenPayment(row) {
+  if (!row.allowedActions?.openPayment || !getWorkImages(row.files).length || isPaymentOpened(row.payment_tracking_opened)) return
+  paymentOpeningIds.value = new Set([...paymentOpeningIds.value, row.id])
+  try {
+    const res = await openPaymentFromTaskApi(row.id)
+    if (res.code === 0) {
+      ElMessage.success(
+        res.data?.restored
+          ? '已恢复打款记录'
+          : res.data?.alreadyOpened
+            ? '该任务已开启打款'
+            : '打款已开启'
+      )
+      await loadData()
+    } else {
+      ElMessage.error(res.msg || '开启打款失败')
+    }
+  } catch (error) {
+    console.error('[MyTasks] 开启打款失败:', error)
+  } finally {
+    const nextIds = new Set(paymentOpeningIds.value)
+    nextIds.delete(row.id)
+    paymentOpeningIds.value = nextIds
+  }
+}
+
+async function handleBatchOpenPayment() {
+  if (!paymentOpenableSelected.value.length) return
+  batchPaymentOpening.value = true
+  try {
+    const res = await openPaymentBatchApi(paymentOpenableSelected.value.map(row => row.id))
+    if (res.code !== 0) {
+      ElMessage.error(res.msg || '批量开启打款失败')
+      return
+    }
+    const result = res.data || {}
+    const skippedDetails = (result.skipped || [])
+      .map(item => `${item.taskNo || `任务${item.taskId}`}：${item.reason}`)
+      .join('\n')
+    const summary = `成功${Number(result.successCount || 0)}条，跳过${Number(result.skippedCount || 0)}条`
+    await ElMessageBox.alert(
+      skippedDetails ? `${summary}\n\n${skippedDetails}` : summary,
+      '批量开启结果',
+      {
+        confirmButtonText: '知道了',
+        showClose: false,
+        customClass: 'payment-batch-result'
+      }
+    )
+    selectedRows.value = []
+    tableRef.value?.clearSelection?.()
+    await loadData()
+  } catch (error) {
+    console.error('[MyTasks] 批量开启打款失败:', error)
+  } finally {
+    batchPaymentOpening.value = false
+  }
 }
 
 async function loadData(options = {}) {
@@ -435,6 +540,7 @@ watch(taskGroup, async () => {
   page.value = 1
   list.value = []
   total.value = 0
+  selectedRows.value = []
   detailVisible.value = false
   editVisible.value = false
   currentTask.value = null
@@ -746,4 +852,5 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || editVisi
 .task-progress-fill { height: 100%; background: linear-gradient(90deg, var(--dd-primary), var(--dd-success)); border-radius: 2px; transition: width 0.5s ease; }
 .multiline-value { white-space: pre-wrap; word-break: break-word; }
 .file-download-btn { position: absolute; right: 4px; bottom: 4px; background: rgba(255, 255, 255, 0.9); border-radius: 4px; }
+:global(.payment-batch-result .el-message-box__message) { white-space: pre-line; }
 </style>

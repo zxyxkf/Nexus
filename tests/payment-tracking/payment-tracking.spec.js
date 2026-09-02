@@ -390,6 +390,18 @@ const reviewTasks = [
     payment_tracking_opened: '1',
     allowedActions: { review: true, openPayment: true },
     files: [{ id: 2004, file_name: 'opened.png', file_type: 'image', file_category: 'work' }]
+  },
+  {
+    id: 204,
+    task_no: 'D202608270004',
+    title: '审核通过后补开打款',
+    status: 'finished',
+    task_group: 'design',
+    designer_name: '美工四',
+    create_time: '2026-08-27 06:00:00',
+    payment_tracking_opened: '0',
+    allowedActions: { review: false, openPayment: true },
+    files: [{ id: 2007, file_name: 'finished.png', file_type: 'image', file_category: 'work' }]
   }
 ]
 
@@ -564,8 +576,15 @@ async function installMocks(page, options = {}) {
       return
     }
     if (url.pathname === '/api/task/my-published') {
+      const requestedStatuses = String(url.searchParams.get('status') || '')
+        .split(',')
+        .map(value => value.trim())
+        .filter(Boolean)
+      const visibleTasks = requestedStatuses.length
+        ? reviewTasks.filter(task => requestedStatuses.includes(task.status))
+        : reviewTasks
       await route.fulfill({
-        json: { code: 0, data: { list: reviewTasks, total: reviewTasks.length, page: 1, pageSize: 15 } }
+        json: { code: 0, data: { list: visibleTasks, total: visibleTasks.length, page: 1, pageSize: 15 } }
       })
       return
     }
@@ -596,6 +615,10 @@ async function installMocks(page, options = {}) {
     }
     if (url.pathname === '/api/payment-tracking/open/task/201') {
       await route.fulfill({ json: { code: 0, msg: '打款已开启', data: { id: 301, sourceTaskId: 201 } } })
+      return
+    }
+    if (url.pathname === '/api/payment-tracking/open/task/204') {
+      await route.fulfill({ json: { code: 0, msg: '打款已开启', data: { id: 304, sourceTaskId: 204 } } })
       return
     }
     if (url.pathname === '/api/payment-tracking/records') {
@@ -1390,6 +1413,44 @@ test('作品审核开启打款按图片和开启状态控制并汇总批量结�
   await expect(page.getByText('D202608270002：没有作品图片')).toBeVisible()
   await expect(page.getByText('D202608270003：已开启打款')).toBeVisible()
   await page.screenshot({ path: testInfo.outputPath('review-payment-opening.png'), fullPage: true })
+})
+
+test('我的任务为待审核和已完成任务提供单条及批量开启打款', async ({ page }) => {
+  await page.goto('/#/operator/tasks')
+
+  await expect(page.getByRole('button', { name: /批量开启打款/ })).toBeVisible()
+  const finishedRow = page.locator('.el-table__body tr').filter({ hasText: 'D202608270004' })
+  const finishedOpen = finishedRow.getByRole('button', { name: '开启打款', exact: true })
+  await expect(finishedOpen).toBeEnabled()
+
+  await finishedRow.getByRole('button', { name: '详情', exact: true }).click()
+  const overlay = page.locator('.task-detail-overlay')
+  await expect(overlay.getByRole('button', { name: '开启打款', exact: true })).toBeEnabled()
+  await overlay.getByRole('button', { name: '关闭', exact: true }).click()
+
+  const requestPromise = page.waitForRequest(request => (
+    request.method() === 'POST'
+    && new URL(request.url()).pathname === '/api/payment-tracking/open/task/204'
+  ))
+  await finishedOpen.click()
+  await requestPromise
+
+  await page.locator('.el-table__header-wrapper .el-checkbox').click()
+  await expect(page.getByRole('button', { name: /批量开启打款/ })).toBeEnabled()
+})
+
+test('我的任务开启打款入口按权限隔离', async ({ page }) => {
+  await installMocks(page, { permissions: ['operator.tasks.design'] })
+  await page.goto('/#/operator/tasks')
+  await expect(page.getByRole('button', { name: /批量开启打款/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '开启打款', exact: true })).toHaveCount(0)
+})
+
+test('客服基础美工我的任务不显示开启打款入口', async ({ page }) => {
+  await installMocks(page, { permissions: ['cs.tasks.basic', 'payment.open'] })
+  await page.goto('/#/cs/tasks')
+  await expect(page.getByRole('button', { name: /批量开启打款/ })).toHaveCount(0)
+  await expect(page.getByRole('button', { name: '开启打款', exact: true })).toHaveCount(0)
 })
 
 test('作品审核无开启打款权限时隐藏入口', async ({ page }) => {
