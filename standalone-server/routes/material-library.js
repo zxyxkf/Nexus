@@ -6,6 +6,7 @@ const multer = require('multer');
 const router = express.Router();
 
 const { requireAuth, requirePermission, optionalAuth } = require('../middleware/auth');
+const AppError = require('../utils/AppError');
 const service = require('../services/material-library.service');
 const { fixFilenameEncoding } = require('../utils/upload');
 const { getMaxFileSizeMB, getMaxFileCount } = require('../utils/share');
@@ -13,18 +14,40 @@ const { getImage } = require('../dao/material-library.dao');
 
 const tempDir = path.join(os.tmpdir(), 'nexus-material-library');
 fs.mkdirSync(tempDir, { recursive: true });
-const upload = multer({
-  storage: multer.diskStorage({
-    destination: (_req, _file, cb) => cb(null, tempDir),
-    filename: (_req, file, cb) => cb(null, `${Date.now()}-${Math.random().toString(16).slice(2)}${path.extname(file.originalname).toLowerCase()}`)
-  }),
-  fileFilter: (_req, file, cb) => {
-    const ext = path.extname(file.originalname).toLowerCase();
-    const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.tiff', '.tif', '.ico', '.avif', '.heic'];
-    cb(null, allowed.includes(ext));
-  },
-  limits: { fileSize: getMaxFileSizeMB() * 1024 * 1024, files: getMaxFileCount() }
+const uploadStorage = multer.diskStorage({
+  destination: (_req, _file, cb) => cb(null, tempDir),
+  filename: (_req, file, cb) => cb(null, `${Date.now()}-${Math.random().toString(16).slice(2)}${path.extname(file.originalname).toLowerCase()}`)
 });
+
+function imageFileFilter(_req, file, cb) {
+  const ext = path.extname(file.originalname).toLowerCase();
+  const allowed = ['.jpg', '.jpeg', '.png', '.gif', '.webp', '.bmp', '.svg', '.tiff', '.tif', '.ico', '.avif', '.heic'];
+  cb(null, allowed.includes(ext));
+}
+
+function receiveImages(req, res, next) {
+  const maxFileCount = getMaxFileCount();
+  const maxFileSizeMB = getMaxFileSizeMB();
+  const middleware = multer({
+    storage: uploadStorage,
+    fileFilter: imageFileFilter,
+    limits: {
+      fileSize: maxFileSizeMB * 1024 * 1024,
+      files: maxFileCount
+    }
+  }).array('files', maxFileCount);
+
+  middleware(req, res, error => {
+    if (!(error instanceof multer.MulterError)) return next(error);
+    if (error.code === 'LIMIT_FILE_COUNT') {
+      return next(new AppError(400, `单次最多上传 ${maxFileCount} 个文件`));
+    }
+    if (error.code === 'LIMIT_FILE_SIZE') {
+      return next(new AppError(400, `单个文件不能超过 ${maxFileSizeMB} MB`));
+    }
+    return next(new AppError(400, '图片上传参数不正确'));
+  });
+}
 
 router.get('/images/:imageId/preview', optionalAuth, async (req, res, next) => {
   try {
@@ -123,7 +146,7 @@ router.get('/styles/:styleId/images', async (req, res, next) => {
   } catch (err) { next(err); }
 });
 
-router.post('/styles/:styleId/images', requirePermission('material.library', 'admin'), upload.array('files'), async (req, res, next) => {
+router.post('/styles/:styleId/images', requirePermission('material.library', 'admin'), receiveImages, async (req, res, next) => {
   try {
     const id = idParam(req, 'styleId');
     if (!id) return res.status(400).json({ code: 400, msg: '款式 ID 无效' });
