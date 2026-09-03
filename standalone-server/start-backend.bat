@@ -12,5 +12,14 @@ echo ===============================================
 echo   Nexus Server
 echo ===============================================
 
+REM This script is for local development only. Production uses start-server.bat.
+set "NODE_ENV=development"
+set "HOST=127.0.0.1"
+set "USE_MYSQL=0"
+set "DB_ENGINE=sqlite"
+set "DATA_DIR=%~dp0..\.local-dev-data"
+set "UPLOAD_DIR=%~dp0..\.local-dev-upload"
+set "LOG_DIR=%~dp0..\.local-dev-logs"
+
 node server.js
 pause
