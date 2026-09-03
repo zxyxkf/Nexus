@@ -13,6 +13,21 @@ function taskMutation(promise) {
 
 export const createTaskApi = (data) => taskMutation(request.post('/api/task/create', data))
 export const snapshotMaterialImagesApi = (data) => taskMutation(request.post('/api/task/material-snapshot', data))
+export const saveStyleSnapshotsApi = ({ taskId, materialStyleId, images = [] }) => {
+  const formData = new FormData()
+  const manifest = images.map(({ image, position, edited }) => {
+    const editedField = edited?.file ? `edited-${image.id}` : ''
+    if (editedField) formData.append(editedField, edited.file, edited.file.name)
+    return { materialImageId: image.id, position, editedField }
+  })
+  formData.append('taskId', taskId)
+  formData.append('materialStyleId', materialStyleId)
+  formData.append('manifest', JSON.stringify(manifest))
+  return taskMutation(request.post('/api/task/style-snapshots', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000
+  }))
+}
 export const getMyPublishedApi = (params) => request.get('/api/task/my-published', { params })
 export const getMyAcceptedApi = (params) => request.get('/api/task/my-accepted', { params })
 export const getTaskHallApi = (params) => request.get('/api/task/hall', { params })

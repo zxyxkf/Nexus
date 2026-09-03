@@ -77,7 +77,7 @@ async function attachFilesToTasks(taskIds) {
   const pool = getPool();
   const placeholders = taskIds.map(() => '?').join(',');
   const [files] = await pool.execute(
-    `SELECT * FROM task_file WHERE task_id IN (${placeholders}) ORDER BY create_time ASC`,
+    `SELECT * FROM task_file WHERE task_id IN (${placeholders}) ORDER BY create_time ASC, id ASC`,
     taskIds
   );
   for (const f of files) {
@@ -141,7 +141,7 @@ async function getTaskDetail(taskId) {
 async function getTaskFiles(taskId) {
   const pool = getPool();
   const [files] = await pool.execute(
-    `SELECT * FROM task_file WHERE task_id = ? ORDER BY create_time ASC`, [taskId]
+    `SELECT * FROM task_file WHERE task_id = ? ORDER BY create_time ASC, id ASC`, [taskId]
   );
   return files.map(f => ({
     ...f,

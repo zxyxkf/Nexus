@@ -206,7 +206,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Delete, Document } from '@element-plus/icons-vue'
 import PersonSelect from '@/components/PersonSelect.vue'
-import { createTaskApi, snapshotMaterialImagesApi, uploadFilesApi, getScoreItemsApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi } from '@/api'
+import { createTaskApi, saveStyleSnapshotsApi, uploadFilesApi, getScoreItemsApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi } from '@/api'
 import { useConfig } from '@/composables/useConfig'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import StylePicker from '@/components/material-library/StylePicker.vue'
@@ -530,7 +530,15 @@ async function handlePublish() {
         }
       }
       if (taskId && isCsAgent.value && materialStyleId.value && selectedMaterialImageIds.value.length) {
-        const snapshotRes = await snapshotMaterialImagesApi({ taskId, materialStyleId: materialStyleId.value, materialImageIds: selectedMaterialImageIds.value })
+        const snapshotRes = await saveStyleSnapshotsApi({
+          taskId,
+          materialStyleId: materialStyleId.value,
+          images: selectedMaterialImages.value.map((image, position) => ({
+            image,
+            position,
+            edited: editedMaterialImages.get(image.id)
+          }))
+        })
         if (snapshotRes.code !== 0) ElMessage.error(snapshotRes.msg || '款式素材保存失败')
       }
       ElMessage.success(res.msg || '任务发布成功')
