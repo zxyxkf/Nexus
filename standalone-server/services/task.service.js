@@ -24,6 +24,7 @@ const {
   canManageAllPaymentData,
   canViewAllPaymentData
 } = require('./payment-tracking/access');
+const csHandoffService = require('./cs-handoff.service');
 
 // ==================== 辅助 ====================
 
@@ -89,6 +90,9 @@ async function createTask(body, user) {
   if (!title) throw new AppError(400, '任务标题不能为空');
 
   const taskGroup = body.taskGroup || (user.role === 'cs_agent' ? 'cs' : 'design');
+  if (taskGroup === 'cs') {
+    await csHandoffService.assertCsActionAvailable(user, '发布任务');
+  }
   const targetRole = getTargetRole(taskGroup);
 
   return withLock(`task-no:${taskGroup}`, async () => {
@@ -221,7 +225,10 @@ async function getTaskDetail(taskId, user) {
   // 权限校验
   const canViewAllTaskDetail = hasPermission(user, 'task.view.all')
     || canViewByAllTasksPermission(task, user)
-    || canOpenPaymentTask(task, user);
+    || canOpenPaymentTask(task, user)
+    || (task.task_group === 'cs'
+      && task.handoff_status === 'pooled'
+      && hasPermission(user, 'cs.handoff.tasks'));
   if (user.role !== 'admin' && !canViewAllTaskDetail) {
     if (user.role === 'operator' || user.role === 'cs_agent') {
       if (Number(task.publisher_id) !== Number(user.id)) {
@@ -563,6 +570,7 @@ function visibleSidebarBadges(user, ownStats = {}, reviewStats = {}) {
   if (hasPermission(user, 'operator.review.design')) badges['/operator/review'] = Number(reviewStats.design_review_count || 0);
   if (hasPermission(user, 'operator.review.assistant')) badges['/operator/op-review'] = Number(reviewStats.operator_review_count || 0);
   if (hasPermission(user, 'cs.review.basic')) badges['/cs/review'] = Number(reviewStats.cs_review_count || 0);
+  if (hasPermission(user, 'cs.handoff.tasks')) badges['/cs/handoff-tasks'] = Number(reviewStats.cs_handoff_count || 0);
   if (hasPermission(user, 'score.review.basic')) badges['/basic/score-review'] = Number(reviewStats.score_review_count || 0);
 
   return badges;
@@ -609,6 +617,7 @@ async function acceptTask(taskId, user) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
 
   return withLock(`accept:${taskId}`, async () => {
+    let pooledPublisherId = null;
     await executeTransaction(async (conn) => {
       const task = await taskDao.getTaskForUpdate(conn, taskId);
       if (!task) throw new AppError(400, '任务不存在');
@@ -618,12 +627,16 @@ async function acceptTask(taskId, user) {
         designer_id: user.id,
         accept_time: new Date()
       });
+      if (await csHandoffService.poolAcceptedTaskIfPublisherOffline(conn, task)) {
+        pooledPublisherId = task.publisher_id;
+      }
     });
 
     const brief = await taskDao.getTaskBrief(taskId);
     if (brief) {
       await notifyTaskEvent('task_accept', { ...brief, designer_id: user.id }, user);
       socketEmit(`user:${brief.publisher_id}`);
+      if (pooledPublisherId) socketEmit(`user:${pooledPublisherId}`);
       socketEmit(`group:${brief.task_group || 'design'}`);
     }
 
@@ -880,6 +893,7 @@ async function finishTask(taskId, actualQuantity, user) {
 async function reviewTask(taskId, action, rejectReason, user) {
   if (!taskId || !action) throw new AppError(400, '参数不完整');
   if (!['pass', 'reject'].includes(action)) throw new AppError(400, '审核操作无效');
+  await csHandoffService.assertCsActionAvailable(user, '审核任务');
   const normalizedRejectReason = String(rejectReason || '').trim();
   if (action === 'reject' && user.role === 'cs_agent' && !normalizedRejectReason) {
     throw new AppError(400, '请填写驳回原因');
@@ -941,6 +955,7 @@ async function batchReview(taskIds, user) {
   if (!taskIds || !Array.isArray(taskIds) || taskIds.length === 0) {
     throw new AppError(400, '请选择任务');
   }
+  await csHandoffService.assertCsActionAvailable(user, '批量审核任务');
 
   const count = await executeTransaction(async (conn) => {
     const placeholders = taskIds.map(() => '?').join(',');

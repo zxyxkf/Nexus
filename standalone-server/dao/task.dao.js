@@ -204,7 +204,8 @@ async function getTaskForUpdate(conn, taskId) {
   const [rows] = await conn.execute(
     `SELECT id, title, task_no, status, publisher_id, publisher_name,
             designer_id, designer_name, task_group,
-            score, applied_score, score_review_status, score_review_score
+            score, applied_score, score_review_status, score_review_score,
+            handoff_status, handoff_time
      FROM task_info WHERE id = ? FOR UPDATE`,
     [taskId]
   );
@@ -425,6 +426,10 @@ async function queryMyPublished({ userId, role, store, permissions = [], filterG
     where += ' AND 1=0';
   }
 
+  if (group === 'cs') {
+    where += " AND COALESCE(t.handoff_status, '') <> 'pooled'";
+  }
+
   where = appendStatusFilter(where, params, status);
   if (styleNumber) { where += ' AND t.style_number LIKE ?'; params.push(`%${styleNumber}%`); }
   if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`); }
@@ -440,6 +445,32 @@ async function queryMyPublished({ userId, role, store, permissions = [], filterG
     dataSql: `SELECT ${TASK_SELECT} FROM task_info t ${TASK_JOIN} ${where} ${buildTaskOrderBy(sortField, sortOrder, 't.create_time DESC')} LIMIT ? OFFSET ?`,
     dataParams: [...params, pageSize, offset],
     page, pageSize
+  });
+  result.list = await attachFilesToTasksForList(result.list);
+  return result;
+}
+
+async function queryPooledCsTasks({ keyword, status, page, pageSize }) {
+  const offset = (page - 1) * pageSize;
+  let where = "WHERE t.task_group = 'cs' AND t.handoff_status = 'pooled'";
+  const params = [];
+
+  where = appendStatusFilter(where, params, status);
+  if (keyword) {
+    const value = `%${keyword}%`;
+    where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ? OR t.title LIKE ? OR t.task_no LIKE ? OR t.designer_name LIKE ?)';
+    params.push(value, value, value, value, value);
+  }
+
+  const result = await paginate({
+    countSql: `SELECT COUNT(*) as total FROM task_info t ${where}`,
+    countParams: params,
+    dataSql: `SELECT ${TASK_SELECT} FROM task_info t ${TASK_JOIN} ${where}
+              ORDER BY t.handoff_time DESC, t.update_time DESC, t.id DESC
+              LIMIT ? OFFSET ?`,
+    dataParams: [...params, pageSize, offset],
+    page,
+    pageSize
   });
   result.list = await attachFilesToTasksForList(result.list);
   return result;
@@ -851,7 +882,8 @@ async function getSidebarBadgeStats(userId, allReview = false) {
        SUM(CASE WHEN COALESCE(task_group, 'design') IN ('design', '') AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as design_review_count,
        SUM(CASE WHEN task_group = 'operator' AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as operator_review_count,
        SUM(CASE WHEN task_group = 'cs' AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as cs_review_count,
-       SUM(CASE WHEN task_group = 'cs' AND score_review_status = 'pending' AND status IN ('doing', 'finished') THEN 1 ELSE 0 END) as score_review_count
+       SUM(CASE WHEN task_group = 'cs' AND score_review_status = 'pending' AND status IN ('doing', 'finished') THEN 1 ELSE 0 END) as score_review_count,
+       SUM(CASE WHEN task_group = 'cs' AND handoff_status = 'pooled' THEN 1 ELSE 0 END) as cs_handoff_count
      FROM task_info`,
     params
   );
@@ -904,6 +936,7 @@ module.exports = {
   getTaskBrief,
   // 查询
   queryMyPublished,
+  queryPooledCsTasks,
   queryMyAccepted,
   queryTaskHall,
   queryAllTasks,

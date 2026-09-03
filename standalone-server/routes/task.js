@@ -168,6 +168,7 @@ router.get('/batch-download', requireAuth, async (req, res, next) => {
 // ==================== 业务路由（以下均需登录） ====================
 
 router.use(requireAuth);
+router.use(require('./task/task-handoff'));
 router.use(require('./task/task-crud'));
 router.use(require('./task/task-query'));
 router.use(require('./task/task-action'));
