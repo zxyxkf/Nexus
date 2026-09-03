@@ -2,7 +2,10 @@ const DEFAULT_SERVER = 'http://192.168.101.78:18632'
 const LOCAL_SERVER = 'http://127.0.0.1:18632'
 
 export function shouldForceLocalApi() {
-  return import.meta.env.DEV && import.meta.env.VITE_FORCE_LOCAL_API === '1'
+  // The Vite development app must stay isolated from production. API calls
+  // use the local proxy/backend in dev; production builds retain the
+  // configured server URL behavior.
+  return import.meta.env.DEV
 }
 
 export function getDefaultServerBase() {
