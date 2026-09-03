@@ -12,7 +12,8 @@ export function useFileHelpers() {
   function isCurrentWorkFile(file) {
     return file &&
       file.file_category !== 'reference' &&
-      file.file_category !== 'reject'
+      file.file_category !== 'reject' &&
+      file.file_category !== 'style'
   }
 
   function getRefImages(files) {
