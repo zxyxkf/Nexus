@@ -408,6 +408,7 @@ test('customer service can toggle shift status and open the shared handoff page'
   await loginAs(page, users.cs)
   await page.goto('/#/cs/publish')
 
+  await expect(page.getByRole('button', { name: '批量提交', exact: true })).toHaveCount(0)
   const handoffMenuItem = page.locator('.layout-aside').getByText('暂存任务', { exact: true })
   await expect(handoffMenuItem).toBeVisible()
   const shiftButton = page.getByRole('button', { name: '已上线' })
@@ -420,12 +421,8 @@ test('customer service can toggle shift status and open the shared handoff page'
   await expect(page.getByText('继承', { exact: true })).toBeVisible()
 })
 
-test('batch work submit is basic-designer only and groups files by task', async ({ page }) => {
-  await loginInPage(page, users.cs)
-  await page.goto('/#/cs/publish')
-  await expect(page.getByRole('button', { name: '批量提交', exact: true })).toHaveCount(0)
-
-  await loginInPage(page, users.basic)
+test('batch work submit groups files by task for a basic designer', async ({ page }) => {
+  await loginAs(page, users.basic)
   await page.goto('/#/basic/tasks')
   const trigger = page.getByRole('button', { name: '批量提交', exact: true })
   await expect(trigger).toBeVisible()
@@ -1116,25 +1113,6 @@ async function loginAs(page, user) {
     localStorage.setItem('design_server_url', '')
     sessionStorage.setItem('d_design_login_time', 'feature-test')
   }, { token: TOKEN, userInfo: user })
-}
-
-async function loginInPage(page, user) {
-  await setAuthInPage(page, user)
-}
-
-async function setAuthInPage(page, user) {
-  await page.context().clearCookies()
-  await page.goto('/#/login')
-  await page.evaluate(({ token, userInfo }) => {
-    localStorage.clear()
-    sessionStorage.clear()
-    localStorage.setItem('d_design_token', token)
-    localStorage.setItem('d_design_user', JSON.stringify(userInfo))
-    localStorage.setItem('design_server_url', '')
-    sessionStorage.setItem('d_design_login_time', 'feature-test')
-    window.dispatchEvent(new CustomEvent('nexus-auth-change'))
-  }, { token: TOKEN, userInfo: user })
-  await page.reload()
 }
 
 async function waitForTaskTable(page) {
