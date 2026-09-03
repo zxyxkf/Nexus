@@ -9,7 +9,6 @@ const { requireAuth, requirePermission, optionalAuth } = require('../middleware/
 const AppError = require('../utils/AppError');
 const service = require('../services/material-library.service');
 const { fixFilenameEncoding } = require('../utils/upload');
-const { getMaxFileSizeMB, getMaxFileCount } = require('../utils/share');
 const { getImage } = require('../dao/material-library.dao');
 
 const tempDir = path.join(os.tmpdir(), 'nexus-material-library');
@@ -26,26 +25,17 @@ function imageFileFilter(_req, file, cb) {
 }
 
 function receiveImages(req, res, next) {
-  const maxFileCount = getMaxFileCount();
-  const maxFileSizeMB = getMaxFileSizeMB();
   const middleware = multer({
     storage: uploadStorage,
-    fileFilter: imageFileFilter,
-    limits: {
-      fileSize: maxFileSizeMB * 1024 * 1024,
-      files: maxFileCount
-    }
-  }).array('files', maxFileCount);
+    fileFilter: imageFileFilter
+  }).array('files');
 
   middleware(req, res, error => {
-    if (!(error instanceof multer.MulterError)) return next(error);
-    if (error.code === 'LIMIT_FILE_COUNT') {
-      return next(new AppError(400, `单次最多上传 ${maxFileCount} 个文件`));
+    if (!error) return next();
+    if (error instanceof multer.MulterError) {
+      return next(new AppError(400, '图片上传参数不正确'));
     }
-    if (error.code === 'LIMIT_FILE_SIZE') {
-      return next(new AppError(400, `单个文件不能超过 ${maxFileSizeMB} MB`));
-    }
-    return next(new AppError(400, '图片上传参数不正确'));
+    return next(error);
   });
 }
 

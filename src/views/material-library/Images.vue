@@ -6,7 +6,25 @@ import { computed, onMounted, ref } from 'vue'; import { useRoute, useRouter } f
 const route = useRoute(); const router = useRouter(); const style = ref(null); const images = ref([]); const colors = ref([]); const color = ref(''); const loading = ref(false); const dragged = ref(null); const filteredImages = computed(() => color.value ? images.value.filter(i => i.color === color.value) : images.value)
 function imageUrl(image) { return getFileUrl(image.previewUrl) }
 async function load() { loading.value = true; try { const res = await getMaterialImagesApi(route.params.styleId); if (res.code === 0) { style.value = res.data.style; images.value = (res.data.images || []).map(image => ({ ...image, previewUrl: getFileUrl(image.previewUrl) })); colors.value = res.data.colors || [] } } finally { loading.value = false } }
-async function upload(files) { const res = await uploadMaterialImagesApi(route.params.styleId, files); if (res.code === 0) { ElMessage.success('上传成功'); load() } else ElMessage.error(res.msg) }
+const MATERIAL_UPLOAD_BATCH_SIZE = 20
+async function upload(files) {
+  const list = Array.from(files || [])
+  if (!list.length) return
+  let uploaded = 0
+  try {
+    for (let index = 0; index < list.length; index += MATERIAL_UPLOAD_BATCH_SIZE) {
+      const batch = list.slice(index, index + MATERIAL_UPLOAD_BATCH_SIZE)
+      const res = await uploadMaterialImagesApi(route.params.styleId, batch)
+      if (res.code !== 0) throw new Error(res.msg || '上传失败')
+      uploaded += Array.isArray(res.data) ? res.data.length : batch.length
+    }
+    ElMessage.success(`上传成功${uploaded}张图片`)
+    await load()
+  } catch (error) {
+    const message = error?.response?.data?.msg || error?.message || '上传失败'
+    ElMessage.error(message)
+  }
+}
 async function rename(image) { const { value } = await ElMessageBox.prompt('请输入图片显示名称', '重命名图片', { inputValue: image.display_name }); const res = await renameMaterialImageApi(image.id, { displayName: value }); if (res.code === 0) load(); else ElMessage.error(res.msg) }
 async function editColor(image) { const { value } = await ElMessageBox.prompt('请输入颜色；留空表示取消颜色', '修正图片颜色', { inputValue: image.color || '' }); const res = await updateMaterialImageColorApi(image.id, value); if (res.code === 0) load(); else ElMessage.error(res.msg) }
 async function remove(image) { await ElMessageBox.confirm(`确定删除“${image.display_name}”吗？`, '确认删除', { type: 'warning' }); const res = await deleteMaterialImageApi(image.id); if (res.code === 0) { ElMessage.success('已删除'); load() } else ElMessage.error(res.msg) }

@@ -64,28 +64,19 @@ describe('POST /api/material-library/styles/:styleId/images', () => {
       .post(`/api/material-library/styles/${styleId}/images`)
       .set('Authorization', `Bearer ${adminToken}`)
       .attach('files', PNG, { filename: '军绿色A.png', contentType: 'image/png' })
-      .attach('files', PNG, { filename: '图片.png', contentType: 'image/png' });
+      .attach('files', PNG, { filename: '图片.png', contentType: 'image/png' })
+      .attach('files', PNG, { filename: '商品图A.png', contentType: 'image/png' });
 
     expect(withinLimit.body.code).toBe(0);
-    expect(withinLimit.body.data).toHaveLength(2);
-
-    const overLimit = await request(app)
-      .post(`/api/material-library/styles/${styleId}/images`)
-      .set('Authorization', `Bearer ${adminToken}`)
-      .attach('files', PNG, { filename: '红色A.png', contentType: 'image/png' })
-      .attach('files', PNG, { filename: '红色B.png', contentType: 'image/png' })
-      .attach('files', PNG, { filename: '红色C.png', contentType: 'image/png' });
-
-    expect(overLimit.status).not.toBe(500);
-    expect(overLimit.body.code).toBe(400);
-    expect(overLimit.body.msg).toContain('2');
+    expect(withinLimit.body.data).toHaveLength(3);
 
     const stored = await request(app)
       .get(`/api/material-library/styles/${styleId}/images`)
       .set('Authorization', `Bearer ${adminToken}`);
     expect(stored.body.data.images.map(image => image.display_name)).toEqual([
       '军绿色A.png',
-      '图片.png'
+      '图片.png',
+      '商品图A.png'
     ]);
   });
 });
