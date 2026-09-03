@@ -29,6 +29,7 @@
     "element-plus": "^2.7.0",
     "exceljs": "^4.4.0",
     "express": "^4.19.2",
+    "fabric": "6.7.1",
     "jsonwebtoken": "^9.0.2",
     "multer": "^1.4.5-lts.1",
     "mysql2": "^3.9.0",

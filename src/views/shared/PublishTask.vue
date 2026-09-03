@@ -122,7 +122,8 @@
                   @mouseenter="preloadMaterialImage(image)"
                   @dragstart="dragMaterialImage($event, image)"
                 >
-                  <img :src="materialImageUrl(image)" :alt="image.display_name || image.original_name" loading="lazy" />
+                  <img :src="displayMaterialImageUrl(image)" :alt="image.display_name || image.original_name" loading="lazy" />
+                  <span v-if="editedMaterialImages.has(image.id)" class="cs-edited-badge">已编辑</span>
                 </div>
               </div>
               <div v-else class="cs-empty-image">请在右侧款式素材预览中选择图片</div>
@@ -180,8 +181,9 @@
         </div>
         <div v-if="filteredMaterialImages.length" class="cs-material-grid">
           <button v-for="image in filteredMaterialImages" :key="image.id" type="button" class="cs-material-image" :class="{ selected: selectedMaterialImageIds.includes(image.id) }" @click="toggleMaterialImage(image)">
-            <img :src="materialImageUrl(image)" :alt="image.display_name || image.original_name" loading="lazy" />
+            <img :src="displayMaterialImageUrl(image)" :alt="image.display_name || image.original_name" loading="lazy" />
             <span v-if="selectedMaterialImageIds.includes(image.id)" class="cs-material-check">✓</span>
+            <span v-if="editedMaterialImages.has(image.id)" class="cs-edited-badge">已编辑</span>
           </button>
         </div>
         <div v-else class="cs-empty-image">当前款式暂无素材图片</div>
@@ -190,17 +192,12 @@
     </el-card>
     </div>
   </div>
-  <el-dialog v-model="materialViewerVisible" title="款式图预览" width="min(900px, 90vw)" append-to-body destroy-on-close @closed="materialViewerImage = null">
-    <img
-      v-if="materialViewerImage"
-      class="cs-material-viewer-image"
-      :src="materialImageUrl(materialViewerImage)"
-      :alt="materialViewerImage.display_name || materialViewerImage.original_name"
-      draggable="true"
-      @mousedown.left="preloadMaterialImage(materialViewerImage)"
-      @dragstart="dragMaterialImage($event, materialViewerImage)"
-    />
-  </el-dialog>
+  <StyleImageEditor
+    v-model="materialViewerVisible"
+    :image="editorImage"
+    :saved-scene="currentEditedMaterialImage?.scene"
+    @save="onEditorSave"
+  />
 </template>
 
 <script setup>
@@ -213,6 +210,7 @@ import { createTaskApi, snapshotMaterialImagesApi, uploadFilesApi, getScoreItems
 import { useConfig } from '@/composables/useConfig'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import StylePicker from '@/components/material-library/StylePicker.vue'
+import StyleImageEditor from '@/components/task/StyleImageEditor.vue'
 import { getFileUrl, preloadFilesForDrag, setupFileDrag } from '@/api/upload'
 
 const route = useRoute()
@@ -241,8 +239,13 @@ const materialColors = ref([])
 const selectedMaterialStyleName = ref('')
 const materialViewerVisible = ref(false)
 const materialViewerImage = ref(null)
+const editedMaterialImages = reactive(new Map())
 const filteredMaterialImages = computed(() => form.specifiedColor ? materialImages.value.filter(image => image.color === form.specifiedColor) : materialImages.value)
 const selectedMaterialImages = computed(() => materialImages.value.filter(image => selectedMaterialImageIds.value.includes(image.id)))
+const currentEditedMaterialImage = computed(() => editedMaterialImages.get(materialViewerImage.value?.id))
+const editorImage = computed(() => materialViewerImage.value
+  ? { ...materialViewerImage.value, editorUrl: materialImageUrl(materialViewerImage.value) }
+  : null)
 
 const form = reactive({
   title: '',
@@ -258,6 +261,21 @@ const form = reactive({
 })
 
 function materialImageUrl(image) { return getFileUrl(image.previewUrl) }
+function displayMaterialImageUrl(image) { return editedMaterialImages.get(image.id)?.previewUrl || materialImageUrl(image) }
+
+function clearEditedMaterialImages() {
+  editedMaterialImages.forEach(result => {
+    if (result?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(result.previewUrl)
+  })
+  editedMaterialImages.clear()
+}
+
+function onEditorSave(result) {
+  const previous = editedMaterialImages.get(result.materialImageId)
+  if (previous?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(previous.previewUrl)
+  editedMaterialImages.set(result.materialImageId, result)
+  markUnsaved()
+}
 
 function openMaterialPreview(image) {
   materialViewerImage.value = image
@@ -296,6 +314,7 @@ function toggleMaterialImage(image) {
 }
 
 function onMaterialStyleChange(style, images = [], colors = []) {
+  clearEditedMaterialImages()
   materialStyleId.value = style?.id || ''
   form.styleNumber = style?.name || ''
   selectedMaterialStyleName.value = style?.name || ''
@@ -364,6 +383,7 @@ onUnmounted(() => {
   window.removeEventListener('beforeunload', beforeUnload)
   window.removeEventListener('paste', handleRefPaste)
   window.removeEventListener('keydown', handleKeydown)
+  clearEditedMaterialImages()
 })
 
 async function loadScoreItems() {
@@ -539,6 +559,7 @@ function resetForm() {
   selectedMaterialStyleName.value = ''
   materialViewerVisible.value = false
   materialViewerImage.value = null
+  clearEditedMaterialImages()
   form.designerId = null
   hasUnsavedData.value = false
   refImages.value = []
@@ -571,7 +592,8 @@ function resetForm() {
 .cs-selected-image-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; max-height: 180px; overflow-y: auto; }
 .cs-selected-image { min-width: 0; aspect-ratio: 1; overflow: hidden; border: 1px solid var(--el-border-color-lighter); border-radius: 4px; cursor: zoom-in; }
 .cs-selected-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
-.cs-material-viewer-image { display: block; width: 100%; max-height: 72vh; object-fit: contain; cursor: grab; }
+.cs-selected-image { position: relative; }
+.cs-edited-badge { position: absolute; left: 4px; bottom: 4px; padding: 2px 5px; border-radius: 3px; background: rgba(48, 49, 51, 0.82); color: #fff; font-size: 10px; line-height: 1.3; }
 .cs-image-count { color: var(--el-color-primary); font-size: 12px; font-weight: 500; }
 .cs-empty-image { min-height: 92px; display: flex; align-items: center; justify-content: center; padding: 14px; border: 1px dashed var(--el-border-color); border-radius: 6px; color: var(--dd-text-muted); font-size: 12px; text-align: center; }
 .cs-style-preview-empty { min-height: 320px; }
