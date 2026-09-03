@@ -15,7 +15,10 @@ export const uploadMaterialImagesApi = (styleId, files, onUploadProgress) => {
   const form = new FormData()
   files.forEach(file => form.append('files', file))
   return unwrap(request.post(`/api/material-library/styles/${styleId}/images`, form, {
-    headers: { 'Content-Type': 'multipart/form-data' }, timeout: 120000, onUploadProgress
+    // Clear the JSON default so the browser can set multipart/form-data with a
+    // boundary. A hard-coded multipart header is not parseable by busboy.
+    headers: { 'Content-Type': undefined },
+    timeout: 120000, onUploadProgress
   }))
 }
 export const renameMaterialImageApi = (id, data) => unwrap(request.put(`/api/material-library/images/${id}`, data))

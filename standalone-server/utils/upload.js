@@ -85,6 +85,10 @@ function getAttachmentDir(group) {
  */
 function fixFilenameEncoding(name) {
   if (!name) return name
+  // Modern browsers and WHATWG FormData already provide a Unicode filename.
+  // Re-encoding those characters as Latin-1 turns them into '?' and creates
+  // invalid Windows paths. Only attempt the legacy repair for Latin-1 text.
+  if ([...String(name)].some(char => char.charCodeAt(0) > 0xff)) return name
   const bytes = Buffer.from(name, 'latin1')
   const utf8 = bytes.toString('utf8')
   return (!utf8.includes('�') && utf8 !== name) ? utf8 : name
