@@ -62,4 +62,13 @@ describe('permission defaults', () => {
     expect(defaultPermissionsFor('sub_admin')).not.toContain('payment.selection.view');
     expect(expandPermissions(['payment.manage.all'])).toContain('payment.view.all');
   });
+
+  it('grants customer service handoff controls only to customer service by default', () => {
+    expect(defaultPermissionsFor('cs_agent')).toEqual(expect.arrayContaining([
+      'cs.handoff.tasks',
+      'cs.handoff.claim',
+      'cs.shift.toggle'
+    ]));
+    expect(defaultPermissionsFor('basic_designer')).not.toContain('cs.handoff.claim');
+  });
 });

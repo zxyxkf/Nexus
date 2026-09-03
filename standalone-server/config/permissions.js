@@ -7,6 +7,7 @@ const PERMISSIONS = [
   { code: 'operator.tasks.assistant', name: '我的运营任务', type: 'page', group: '运营助理' },
   { code: 'operator.review.assistant', name: '任务审核', type: 'page', group: '运营助理' },
   { code: 'cs.publish.basic', name: '客服发布任务', type: 'page', group: '客服基础美工' },
+  { code: 'cs.handoff.tasks', name: '客服暂存任务', type: 'page', group: '客服基础美工' },
   { code: 'cs.tasks.basic', name: '客服我的任务', type: 'page', group: '客服基础美工' },
   { code: 'cs.review.basic', name: '客服作品审核', type: 'page', group: '客服基础美工' },
   { code: 'designer.hall.design', name: '美工任务大厅', type: 'page', group: '美工设计师' },
@@ -37,6 +38,8 @@ const PERMISSIONS = [
   { code: 'task.create.operator', name: '创建运营助理任务', type: 'action', group: '任务操作' },
   { code: 'task.create.cs', name: '创建客服任务', type: 'action', group: '任务操作' },
   { code: 'cs.task_no.update', name: '修改基础美工任务编号', type: 'action', group: '客服基础美工' },
+  { code: 'cs.handoff.claim', name: '继承客服暂存任务', type: 'action', group: '客服基础美工' },
+  { code: 'cs.shift.toggle', name: '切换客服上线状态', type: 'action', group: '客服基础美工' },
   { code: 'task.review.own', name: '审核自己发布的任务', type: 'action', group: '任务操作' },
   { code: 'task.review.store', name: '审核同店铺任务', type: 'action', group: '任务操作' },
   { code: 'task.review.all', name: '审核全部任务', type: 'action', group: '任务操作' },
@@ -69,9 +72,10 @@ const ROLE_DEFAULTS = {
     'task.view.store', 'task.download.file', 'notification.center'
   ],
   cs_agent: [
-    'cs.publish.basic', 'cs.tasks.basic', 'cs.review.basic',
+    'cs.publish.basic', 'cs.handoff.tasks', 'cs.tasks.basic', 'cs.review.basic',
     'stats.personal', 'dashboard.cs',
-    'task.create.cs', 'cs.task_no.update', 'task.review.own', 'task.view.own', 'task.download.file', 'notification.center'
+    'task.create.cs', 'cs.task_no.update', 'cs.handoff.claim', 'cs.shift.toggle',
+    'task.review.own', 'task.view.own', 'task.download.file', 'notification.center'
   ],
   designer: [
     'designer.hall.design', 'designer.tasks.design', 'stats.personal', 'dashboard.design',

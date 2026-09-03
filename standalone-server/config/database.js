@@ -24,6 +24,7 @@ const CREATE_TABLES_SQL = {
       store TEXT DEFAULT '',
       is_team_lead INTEGER DEFAULT 0,
       is_store_manager INTEGER DEFAULT 0,
+      cs_shift_status TEXT DEFAULT 'online',
       email TEXT DEFAULT '',
       phone TEXT DEFAULT '',
       remark TEXT DEFAULT '',
@@ -124,7 +125,9 @@ const CREATE_TABLES_SQL = {
       shop_name TEXT DEFAULT '',
       quantity INTEGER DEFAULT 1,
       task_file_path TEXT DEFAULT '',
-      work_path TEXT DEFAULT ''
+      work_path TEXT DEFAULT '',
+      handoff_status TEXT DEFAULT '',
+      handoff_time TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS task_file (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -254,6 +257,7 @@ const CREATE_TABLES_SQL = {
       store VARCHAR(100) DEFAULT '',
       is_team_lead TINYINT DEFAULT 0,
       is_store_manager TINYINT DEFAULT 0,
+      cs_shift_status VARCHAR(20) DEFAULT 'online',
       email VARCHAR(200) DEFAULT '',
       phone VARCHAR(50) DEFAULT '',
       remark TEXT,
@@ -351,7 +355,9 @@ const CREATE_TABLES_SQL = {
       shop_name VARCHAR(100) DEFAULT '',
       quantity INT DEFAULT 1,
       task_file_path VARCHAR(1000) DEFAULT '',
-      work_path VARCHAR(1000) DEFAULT ''
+      work_path VARCHAR(1000) DEFAULT '',
+      handoff_status VARCHAR(20) DEFAULT '',
+      handoff_time DATETIME NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     `CREATE TABLE IF NOT EXISTS task_file (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -639,6 +645,7 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN task_file_path VARCHAR(1000) DEFAULT ''`,
       `ALTER TABLE sys_user ADD COLUMN is_team_lead TINYINT DEFAULT 0`,
       `ALTER TABLE sys_user ADD COLUMN is_store_manager TINYINT DEFAULT 0`,
+      `ALTER TABLE sys_user ADD COLUMN cs_shift_status VARCHAR(20) DEFAULT 'online'`,
       `ALTER TABLE sys_user ADD COLUMN avatar_path VARCHAR(500) DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN applied_score DECIMAL(10,2) DEFAULT 0`,
       `ALTER TABLE task_info ADD COLUMN score_review_status VARCHAR(20) DEFAULT ''`,
@@ -648,6 +655,8 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN work_path VARCHAR(1000) DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN submit_time DATETIME`,
       `ALTER TABLE task_info ADD COLUMN urge_time DATETIME`,
+      `ALTER TABLE task_info ADD COLUMN handoff_status VARCHAR(20) DEFAULT ''`,
+      `ALTER TABLE task_info ADD COLUMN handoff_time DATETIME NULL`,
       `CREATE TABLE IF NOT EXISTS task_transfer_record (
         id INT AUTO_INCREMENT PRIMARY KEY,
         task_id INT NOT NULL,
@@ -710,6 +719,7 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN task_file_path TEXT DEFAULT ''`,
       `ALTER TABLE sys_user ADD COLUMN is_team_lead INTEGER DEFAULT 0`,
       `ALTER TABLE sys_user ADD COLUMN is_store_manager INTEGER DEFAULT 0`,
+      `ALTER TABLE sys_user ADD COLUMN cs_shift_status TEXT DEFAULT 'online'`,
       `ALTER TABLE sys_user ADD COLUMN avatar_path TEXT DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN applied_score REAL DEFAULT 0`,
       `ALTER TABLE task_info ADD COLUMN score_review_status TEXT DEFAULT ''`,
@@ -719,6 +729,8 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN work_path TEXT DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN submit_time TEXT`,
       `ALTER TABLE task_info ADD COLUMN urge_time TEXT`,
+      `ALTER TABLE task_info ADD COLUMN handoff_status TEXT DEFAULT ''`,
+      `ALTER TABLE task_info ADD COLUMN handoff_time TEXT`,
       `CREATE TABLE IF NOT EXISTS task_transfer_record (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         task_id INTEGER NOT NULL,
