@@ -93,6 +93,8 @@
 
           <GlobalTaskSearch />
 
+          <BatchWorkSubmit v-if="canBatchSubmit" @submitted="scheduleTodoCountRefresh" />
+
           <!-- 通知 -->
           <el-popover
             placement="bottom-end"
@@ -312,6 +314,7 @@ import InfiniteGridBg from '@/components/InfiniteGridBg.vue'
 import SidebarMenu from '@/components/SidebarMenu.vue'
 import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
 import GlobalTaskSearch from '@/components/GlobalTaskSearch.vue'
+import BatchWorkSubmit from '@/components/basic/BatchWorkSubmit.vue'
 import QuickActions from '@/components/QuickActions.vue'
 import UserAvatar from '@/components/user/UserAvatar.vue'
 import AvatarCropDialog from '@/components/user/AvatarCropDialog.vue'
@@ -342,6 +345,9 @@ const canToggleCsShift = computed(() => (
   userStore.isCsAgent && userStore.hasPermission('cs.shift.toggle')
 ))
 const csShiftStatus = computed(() => userStore.userInfo?.csShiftStatus || 'online')
+const canBatchSubmit = computed(() => (
+  userStore.isBasicDesigner && userStore.hasPermission('task.upload.work')
+))
 
 async function loadCsShiftStatus() {
   if (!canToggleCsShift.value) return

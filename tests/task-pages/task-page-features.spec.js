@@ -420,6 +420,29 @@ test('customer service can toggle shift status and open the shared handoff page'
   await expect(page.getByText('继承', { exact: true })).toBeVisible()
 })
 
+test('batch work submit is basic-designer only and groups files by task', async ({ page }) => {
+  await loginInPage(page, users.cs)
+  await page.goto('/#/cs/publish')
+  await expect(page.getByRole('button', { name: '批量提交', exact: true })).toHaveCount(0)
+
+  await loginInPage(page, users.basic)
+  await page.goto('/#/basic/tasks')
+  const trigger = page.getByRole('button', { name: '批量提交', exact: true })
+  await expect(trigger).toBeVisible()
+  await trigger.click()
+
+  await page.locator('.batch-work-submit input[type="file"]').setInputFiles([
+    { name: 'C202609030001_主图.png', mimeType: 'image/png', buffer: Buffer.from('image-a') },
+    { name: 'C202609030002_详情.png', mimeType: 'image/png', buffer: Buffer.from('image-b') }
+  ])
+
+  await expect(page.getByText('C202609030001', { exact: true })).toBeVisible()
+  await expect(page.getByText('C202609030002', { exact: true })).toBeVisible()
+  const scoreInputs = page.locator('.batch-score-field input')
+  await expect(scoreInputs).toHaveCount(2)
+  await expect.poll(async () => scoreInputs.evaluateAll(inputs => inputs.map(input => Number(input.value)))).toEqual([1, 1])
+})
+
 for (const pageCase of pageCases) {
   test(`${pageCase.name} keeps current visible feature contract`, async ({ page }) => {
     await loginAs(page, pageCase.user)
@@ -1333,6 +1356,21 @@ async function mockApis(page) {
         handoff_status: 'pooled',
         handoff_time: '2026-09-03 12:00:00'
       }]))
+    }
+    if (path === '/api/task/batch-submit/resolve') {
+      const descriptors = request.postDataJSON()?.files || []
+      const groups = descriptors.map((file, index) => {
+        const taskNo = file.name.match(/C\d{12}/)?.[0] || `C20260903${String(index + 1).padStart(4, '0')}`
+        return {
+          taskId: 900 + index,
+          taskNo,
+          title: `批量任务${index + 1}`,
+          wangwangId: `batch-${index + 1}`,
+          status: 'accepted',
+          files: [{ ...file, matchedBy: 'task_no' }]
+        }
+      })
+      return json(route, { code: 0, data: { groups, unresolved: [] } })
     }
 
     if (path === '/api/task/my-accepted') return json(route, listPayload(filterByTaskGroup(url.searchParams.get('taskGroup'))))
