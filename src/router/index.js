@@ -72,6 +72,12 @@ const routes = [
         meta: { title: '发布任务', roles: ['cs_agent', 'admin'], permission: 'cs.publish.basic', role: 'cs_agent', taskGroup: 'cs' }
       },
       {
+        path: 'cs/handoff-tasks',
+        name: 'CsHandoffTasks',
+        component: () => import('@/views/cs/HandoffTasks.vue'),
+        meta: { title: '暂存任务', roles: ['cs_agent', 'admin'], permission: 'cs.handoff.tasks', role: 'cs_agent', taskGroup: 'cs' }
+      },
+      {
         path: 'cs/tasks',
         name: 'CsTasks',
         component: () => import('@/views/shared/MyTasksPub.vue'),

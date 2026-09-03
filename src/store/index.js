@@ -98,6 +98,11 @@ export const useUserStore = defineStore('user', {
       invalidate(this, 'userList')
     },
 
+    updateCsShiftStatus(status) {
+      if (!this.userInfo || this.userInfo.role !== 'cs_agent') return
+      this.applyAuth(this.token, { ...this.userInfo, csShiftStatus: status })
+    },
+
     // 带缓存的用户列表查询
     async getUserList(params = {}, force = false) {
       if (force) invalidate(this, 'userList')

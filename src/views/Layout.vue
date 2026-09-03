@@ -186,6 +186,17 @@
             {{ roleLabel }}
           </el-tag>
 
+          <el-button
+            v-if="canToggleCsShift"
+            class="cs-shift-toggle"
+            :type="csShiftStatus === 'online' ? 'success' : 'info'"
+            :icon="csShiftStatus === 'online' ? CircleCheck : CircleClose"
+            :loading="shiftUpdating"
+            plain
+            size="small"
+            @click="toggleCsShift"
+          >{{ csShiftStatus === 'online' ? '已上线' : '已下线' }}</el-button>
+
           <!-- 用户下拉 -->
           <el-dropdown trigger="click" @command="handleCommand">
             <span class="user-dropdown">
@@ -293,10 +304,10 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store'
-import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, onConnectionChange, getOnlineStatus, getTaskDetailApi, getMyStatsApi, getPaymentManagerReviewCountApi } from '@/api'
+import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, onConnectionChange, getOnlineStatus, getTaskDetailApi, getMyStatsApi, getPaymentManagerReviewCountApi, getCsShiftStatusApi, setCsShiftStatusApi } from '@/api'
 import { ROLE_LABEL, ROLE_TAG_TYPE } from '@/utils/format'
 import { useConfig } from '@/composables/useConfig'
-import { HomeFilled, Bell, Moon, Sunny, User, Connection, WarningFilled, Camera } from '@element-plus/icons-vue'
+import { HomeFilled, Bell, Moon, Sunny, User, Connection, WarningFilled, Camera, CircleCheck, CircleClose } from '@element-plus/icons-vue'
 import InfiniteGridBg from '@/components/InfiniteGridBg.vue'
 import SidebarMenu from '@/components/SidebarMenu.vue'
 import AnnouncementBanner from '@/components/AnnouncementBanner.vue'
@@ -314,6 +325,7 @@ const router = useRouter()
 const userStore = useUserStore()
 const isConnected = ref(getOnlineStatus())
 const sidebarBadges = ref({})
+const shiftUpdating = ref(false)
 let todoRefreshTimer = null
 let todoRefreshDebounceTimer = null
 
@@ -325,6 +337,43 @@ const homeRoute = computed(() => {
   if (role === 'basic_designer') return { path: '/basic/hall' }
   return { path: '/dashboard' }
 })
+
+const canToggleCsShift = computed(() => (
+  userStore.isCsAgent && userStore.hasPermission('cs.shift.toggle')
+))
+const csShiftStatus = computed(() => userStore.userInfo?.csShiftStatus || 'online')
+
+async function loadCsShiftStatus() {
+  if (!canToggleCsShift.value) return
+  try {
+    const response = await getCsShiftStatusApi()
+    if (response.code === 0) userStore.updateCsShiftStatus(response.data?.status || 'online')
+  } catch (error) {
+    console.error('[Layout] 加载客服上线状态失败:', error)
+  }
+}
+
+async function toggleCsShift() {
+  if (shiftUpdating.value) return
+  const nextStatus = csShiftStatus.value === 'online' ? 'offline' : 'online'
+  shiftUpdating.value = true
+  try {
+    const response = await setCsShiftStatusApi(nextStatus)
+    if (response.code !== 0) return
+    userStore.updateCsShiftStatus(response.data?.status || nextStatus)
+    const movedCount = Number(response.data?.movedTaskCount || 0)
+    ElMessage.success(nextStatus === 'online'
+      ? '已上线'
+      : movedCount > 0
+        ? `已下线，${movedCount} 条任务已进入暂存任务`
+        : '已下线')
+    scheduleTodoCountRefresh()
+  } catch (error) {
+    console.error('[Layout] 切换客服上线状态失败:', error)
+  } finally {
+    shiftUpdating.value = false
+  }
+}
 
 // ===== 消息通知 =====
 const notifyPopoverVisible = ref(false)
@@ -496,6 +545,7 @@ onMounted(() => {
   updateClock()
   timeTimer = setInterval(updateClock, 1000)
   loadTodoCount()
+  loadCsShiftStatus()
   todoRefreshTimer = setInterval(loadTodoCount, 60000)
   window.addEventListener('nexus:task-updated', scheduleTodoCountRefresh)
   window.addEventListener('nexus:payment-updated', scheduleTodoCountRefresh)
@@ -1007,6 +1057,10 @@ async function changePassword() {
   letter-spacing: 0.5px;
 }
 
+.cs-shift-toggle {
+  flex: 0 0 auto;
+}
+
 /* 用户下拉 */
 .user-dropdown {
   display: flex;
@@ -1105,6 +1159,10 @@ async function changePassword() {
   .user-name,
   .user-arrow {
     display: none;
+  }
+
+  .cs-shift-toggle {
+    padding-inline: 8px;
   }
 
   .header-right :deep(.global-task-search) {

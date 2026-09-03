@@ -33,6 +33,7 @@ export const MENU_REGISTRY = [
   { group: 'operator_assistant', path: '/operator-assistant/tasks/pending', icon: 'Select', label: '待审核任务', permission: 'assistant.tasks.operator' },
 
   { group: 'cs_basic', path: '/cs/publish', icon: 'Plus', label: '发布任务', permission: 'cs.publish.basic' },
+  { group: 'cs_basic', path: '/cs/handoff-tasks', icon: 'FolderOpened', label: '暂存任务', permission: 'cs.handoff.tasks' },
   { group: 'cs_basic', path: '/cs/tasks', icon: 'List', label: '我的任务', permission: 'cs.tasks.basic' },
   { group: 'cs_basic', path: '/cs/review', icon: 'Select', label: '作品审核', permission: 'cs.review.basic' },
 

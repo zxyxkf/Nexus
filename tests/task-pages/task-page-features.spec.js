@@ -39,7 +39,11 @@ const users = {
     username: 'cs',
     realName: '客服A',
     role: 'cs_agent',
-    permissions: ['cs.tasks.basic', 'cs.review.basic', 'cs.task_no.update', 'notification.center']
+    permissions: [
+      'cs.publish.basic', 'cs.tasks.basic', 'cs.review.basic', 'cs.task_no.update',
+      'cs.handoff.tasks', 'cs.handoff.claim', 'cs.shift.toggle', 'notification.center'
+    ],
+    csShiftStatus: 'online'
   }
 }
 
@@ -400,6 +404,22 @@ test.beforeEach(async ({ page }) => {
   await mockApis(page)
 })
 
+test('customer service can toggle shift status and open the shared handoff page', async ({ page }) => {
+  await loginAs(page, users.cs)
+  await page.goto('/#/cs/publish')
+
+  const handoffMenuItem = page.locator('.layout-aside').getByText('暂存任务', { exact: true })
+  await expect(handoffMenuItem).toBeVisible()
+  const shiftButton = page.getByRole('button', { name: '已上线' })
+  await expect(shiftButton).toBeVisible()
+  await shiftButton.click()
+  await expect(page.getByRole('button', { name: '已下线' })).toBeVisible()
+
+  await handoffMenuItem.click()
+  await expect(page.getByRole('heading', { name: '暂存任务' })).toBeVisible()
+  await expect(page.getByText('继承', { exact: true })).toBeVisible()
+})
+
 for (const pageCase of pageCases) {
   test(`${pageCase.name} keeps current visible feature contract`, async ({ page }) => {
     await loginAs(page, pageCase.user)
@@ -562,7 +582,7 @@ const taskDetailCases = [
   },
   {
     name: 'basic designer', path: '/basic/tasks', user: users.basic, taskNo: 'T-DOING',
-    labels: ['旺旺ID', '款号', '指定颜色', '申请分数', '分数审核状态', '分数审核通过分数'],
+    labels: ['旺旺ID', '款号', '申请分数', '分数审核状态', '分数审核通过分数'],
     forbiddenLabels: ['工作项目', '分值', '任务数量', '完成次数', '上传路径']
   },
   {
@@ -1260,6 +1280,7 @@ async function mockElectronDrag(page, { cached }) {
 }
 
 async function mockApis(page) {
+  let csShiftStatus = 'online'
   await page.route('**/socket.io/**', route => route.abort())
   await page.route('**/*.{png,jpg,jpeg,gif,webp,svg,ico}', route => {
     if (route.request().url().includes('/api/task/preview/')) {
@@ -1297,6 +1318,22 @@ async function mockApis(page) {
     if (path === '/api/user/operator-assistants') return json(route, { code: 0, data: people.assistants })
     if (path === '/api/score/items') return json(route, { code: 0, data: people.scoreItems })
     if (path === '/api/task/stats/my') return json(route, { code: 0, data: statsPayload() })
+    if (path === '/api/task/cs-shift/status') {
+      if (request.method() === 'POST') {
+        csShiftStatus = request.postDataJSON()?.status || csShiftStatus
+        return json(route, { code: 0, data: { status: csShiftStatus, movedTaskCount: csShiftStatus === 'offline' ? 1 : 0 } })
+      }
+      return json(route, { code: 0, data: { status: csShiftStatus } })
+    }
+    if (path === '/api/task/cs-handoff') {
+      return json(route, listPayload([{
+        ...taskRows.find(row => row.task_group === 'cs'),
+        publisher_id: null,
+        publisher_name: '',
+        handoff_status: 'pooled',
+        handoff_time: '2026-09-03 12:00:00'
+      }]))
+    }
 
     if (path === '/api/task/my-accepted') return json(route, listPayload(filterByTaskGroup(url.searchParams.get('taskGroup'))))
     if (path === '/api/task/my-published') return json(route, listPayload(filterByTaskGroup(url.searchParams.get('taskGroup'))))
