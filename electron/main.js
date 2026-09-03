@@ -312,16 +312,28 @@ function httpGetBuffer(url, token) {
 
 // ===== 文件拖拽缓存 =====
 const dragFileCache = new Map(); // fileId → tempPath
+const dragFileNameCache = new Map(); // fileId → sanitized fileName
+
+function sanitizeDragFileName(fileName, fileId) {
+  const fallback = `file-${String(fileId || 'download').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
+  let safeName = path.basename(String(fileName || '')).trim()
+    .replace(/[\u0000-\u001f<>:"/\\|?*]/g, '_')
+    .replace(/[. ]+$/g, '');
+  if (!safeName || safeName === '.' || safeName === '..') safeName = fallback;
+  if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i.test(safeName)) safeName = `_${safeName}`;
+  return safeName;
+}
 
 function cacheDragFile(fileId, fileName, buffer) {
   const tempDir = path.join(app.getPath('temp'), 'nexus-drag');
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+  const safeFileName = sanitizeDragFileName(fileName, fileId);
 
   // 处理重名
-  let tempPath = path.join(tempDir, fileName);
+  let tempPath = path.join(tempDir, safeFileName);
   if (fs.existsSync(tempPath)) {
-    const ext = path.extname(fileName);
-    const base = path.basename(fileName, ext);
+    const ext = path.extname(safeFileName);
+    const base = path.basename(safeFileName, ext);
     let counter = 1;
     while (fs.existsSync(tempPath)) {
       tempPath = path.join(tempDir, `${base}_(${counter})${ext}`);
@@ -331,6 +343,7 @@ function cacheDragFile(fileId, fileName, buffer) {
 
   fs.writeFileSync(tempPath, buffer);
   dragFileCache.set(fileId, tempPath);
+  dragFileNameCache.set(fileId, safeFileName);
 }
 
 // 清理过期缓存文件（1小时后删除）
@@ -347,7 +360,10 @@ function cleanExpiredCache() {
         fs.unlinkSync(p);
         // 清理对应的 cache entry
         for (const [k, v] of dragFileCache) {
-          if (v === p) dragFileCache.delete(k);
+          if (v === p) {
+            dragFileCache.delete(k);
+            dragFileNameCache.delete(k);
+          }
         }
       }
     }
@@ -391,12 +407,24 @@ ipcMain.handle('download-file', async (event, { fileId, fileName, token }) => {
 // ===== 文件拖拽到桌面 =====
 
 // 批量预下载文件到缓存（打开详情时调用，异步不阻塞 UI）
+function resolveDragDownloadPath(fileId, downloadPath) {
+  const requestedPath = String(downloadPath || '');
+  if (/^\/api\/material-library\/images\/\d+\/download$/.test(requestedPath)) {
+    return requestedPath;
+  }
+  return `/api/task/download/${encodeURIComponent(fileId)}`;
+}
+
 ipcMain.handle('prepare-file-drags', async (event, { items, token }) => {
   const config = getServerConfig();
-  for (const { fileId, fileName } of items) {
-    if (dragFileCache.has(fileId) && fs.existsSync(dragFileCache.get(fileId))) continue;
+  for (const { fileId, fileName, downloadPath } of items) {
+    const cachedPath = dragFileCache.get(fileId);
+    const safeFileName = sanitizeDragFileName(fileName, fileId);
+    if (cachedPath && fs.existsSync(cachedPath) && dragFileNameCache.get(fileId) === safeFileName) continue;
+    dragFileCache.delete(fileId);
+    dragFileNameCache.delete(fileId);
     try {
-      const url = `${config.serverUrl}/api/task/download/${fileId}`;
+      const url = `${config.serverUrl}${resolveDragDownloadPath(fileId, downloadPath)}`;
       const { buffer } = await httpGetBuffer(url, token);
       cacheDragFile(fileId, fileName, buffer);
     } catch (e) {
@@ -407,9 +435,16 @@ ipcMain.handle('prepare-file-drags', async (event, { items, token }) => {
 });
 
 // 同步检查文件是否已缓存
-ipcMain.on('is-file-cached', (event, fileId) => {
+ipcMain.on('is-file-cached', (event, request) => {
+  const fileId = request && typeof request === 'object' ? request.fileId : request;
+  const fileName = request && typeof request === 'object' ? request.fileName : '';
   const tempPath = dragFileCache.get(fileId);
-  event.returnValue = !!(tempPath && fs.existsSync(tempPath));
+  const expectedName = fileName ? sanitizeDragFileName(fileName, fileId) : '';
+  event.returnValue = !!(
+    tempPath &&
+    fs.existsSync(tempPath) &&
+    (!expectedName || dragFileNameCache.get(fileId) === expectedName)
+  );
 });
 
 // 同步触发原生文件拖拽（必须在文件已缓存后调用）

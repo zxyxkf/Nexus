@@ -51,14 +51,28 @@ function findDragFileByUrl(url) {
   return dragFileByUrl.get(url) || dragFileByUrl.get(normalizeDragUrl(url)) || null
 }
 
+function getFileDownloadPath(file) {
+  if (!file?.id) return ''
+  if (typeof file.downloadUrl === 'string' && file.downloadUrl.startsWith('/api/')) {
+    return file.downloadUrl
+  }
+  return `/api/task/download/${encodeURIComponent(file.id)}`
+}
+
+function isPublicMaterialDownloadPath(filePath) {
+  return /^\/api\/material-library\/images\/\d+\/download$/.test(filePath)
+}
+
 function getFileDownloadUrl(file) {
   if (!file?.id || !file.file_name) return ''
 
+  const downloadPath = getFileDownloadPath(file)
+  const publicMaterialDownload = isPublicMaterialDownloadPath(downloadPath)
   const token = getToken()
-  if (!token) return ''
+  if (!publicMaterialDownload && !token) return ''
 
   const serverBase = getServerBase()
-  const path = `/api/task/download/${file.id}?token=${encodeURIComponent(token)}`
+  const path = publicMaterialDownload ? downloadPath : appendToken(downloadPath)
   try {
     return new URL(`${serverBase}${path}`, window.location?.href || undefined).href
   } catch (_) {
@@ -80,19 +94,28 @@ function escapeHtml(value) {
     .replace(/>/g, '&gt;')
 }
 
+function sanitizeDragFileName(fileName, fileId) {
+  const fallback = `file-${String(fileId || 'download').replace(/[^a-zA-Z0-9_-]/g, '_')}`
+  let safeName = String(fileName || '').trim()
+    .replace(/[\u0000-\u001f<>:"/\\|?*]/g, '_')
+    .replace(/[. ]+$/g, '')
+  if (!safeName || safeName === '.' || safeName === '..') safeName = fallback
+  if (/^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i.test(safeName)) safeName = `_${safeName}`
+  return safeName
+}
+
 function applyFileDragData(event, file) {
   if (!event?.dataTransfer) return ''
 
   const downloadUrl = getFileDownloadUrl(file)
   if (!downloadUrl) return ''
 
-  const fileName = String(file.file_name)
-  const safeFileName = fileName.replace(/[\r\n:]/g, '_')
+  const safeFileName = sanitizeDragFileName(file.file_name, file.id)
   setDragData(event.dataTransfer, 'DownloadURL', `application/octet-stream:${safeFileName}:${downloadUrl}`)
   setDragData(event.dataTransfer, 'text/uri-list', downloadUrl)
   setDragData(event.dataTransfer, 'text/plain', downloadUrl)
-  setDragData(event.dataTransfer, 'text/x-moz-url', `${downloadUrl}\n${fileName}`)
-  setDragData(event.dataTransfer, 'text/html', `<a href="${escapeHtml(downloadUrl)}" download="${escapeHtml(fileName)}">${escapeHtml(fileName)}</a>`)
+  setDragData(event.dataTransfer, 'text/x-moz-url', `${downloadUrl}\n${safeFileName}`)
+  setDragData(event.dataTransfer, 'text/html', `<a href="${escapeHtml(downloadUrl)}" download="${escapeHtml(safeFileName)}">${escapeHtml(safeFileName)}</a>`)
   event.dataTransfer.effectAllowed = 'copy'
   return downloadUrl
 }
@@ -105,9 +128,7 @@ function prepareFileDragCache(file) {
   if (preloadingDragFileIds.has(fileId)) return
   preloadingDragFileIds.add(fileId)
 
-  Promise.resolve(preloadFilesForDrag([file])).then(success => {
-    if (!success) preloadingDragFileIds.delete(fileId)
-  }).catch(() => {
+  Promise.resolve(preloadFilesForDrag([file])).finally(() => {
     preloadingDragFileIds.delete(fileId)
   })
 }
@@ -116,7 +137,7 @@ function tryElectronFileDrag(file) {
   if (!file?.id || !file.file_name || !window.electronAPI) return false
 
   try {
-    if (window.electronAPI.isFileCached?.(file.id)) {
+    if (window.electronAPI.isFileCached?.({ fileId: file.id, fileName: file.file_name })) {
       const dragged = window.electronAPI.doFileDrag?.(file.id)
       if (dragged) return true
     }
@@ -264,7 +285,7 @@ export async function preloadFilesForDrag(files) {
 
   const items = files
     .filter(f => f.id && f.file_name)
-    .map(f => ({ fileId: f.id, fileName: f.file_name }))
+    .map(f => ({ fileId: f.id, fileName: f.file_name, downloadPath: getFileDownloadPath(f) }))
 
   if (items.length === 0) return false
 
