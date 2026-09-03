@@ -170,6 +170,7 @@ router.get('/batch-download', requireAuth, async (req, res, next) => {
 router.use(requireAuth);
 router.use(require('./task/task-handoff'));
 router.use(require('./task/task-style-snapshot'));
+router.use(require('./task/task-batch-submit'));
 router.use(require('./task/task-crud'));
 router.use(require('./task/task-query'));
 router.use(require('./task/task-action'));

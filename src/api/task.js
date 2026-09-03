@@ -28,6 +28,7 @@ export const saveStyleSnapshotsApi = ({ taskId, materialStyleId, images = [] }) 
     timeout: 120000
   }))
 }
+export const resolveBatchSubmitApi = files => request.post('/api/task/batch-submit/resolve', { files })
 export const getMyPublishedApi = (params) => request.get('/api/task/my-published', { params })
 export const getMyAcceptedApi = (params) => request.get('/api/task/my-accepted', { params })
 export const getTaskHallApi = (params) => request.get('/api/task/hall', { params })
