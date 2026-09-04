@@ -48,6 +48,9 @@ export const uploadFilesApi = (taskId, files, fileCategory = 'work', extraData =
   if (extraData.rejectRecordId !== undefined && extraData.rejectRecordId !== null) {
     formData.append('rejectRecordId', extraData.rejectRecordId)
   }
+  if (Object.prototype.hasOwnProperty.call(extraData, 'modificationReply')) {
+    formData.append('modificationReply', extraData.modificationReply ?? '')
+  }
   files.forEach(file => formData.append('files', file))
   return taskMutation(request.post('/api/task/upload-files', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -58,6 +61,16 @@ export const uploadFilesApi = (taskId, files, fileCategory = 'work', extraData =
 export const finishTaskApi = (data) => taskMutation(request.post('/api/task/finish', data))
 export const transferTaskApi = (data) => taskMutation(request.post('/api/task/transfer', data))
 export const reviewTaskApi = (data) => taskMutation(request.post('/api/task/review', data))
+export const requestCsModificationApi = ({ taskId, note = '', files = [] }) => {
+  const formData = new FormData()
+  formData.append('taskId', taskId)
+  formData.append('note', note)
+  files.forEach(file => formData.append('files', file))
+  return taskMutation(request.post('/api/task/request-modification', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000
+  }))
+}
 export const getAllTasksApi = (params) => request.get('/api/task/all', { params })
 export const getTaskDetailApi = (params) => request.get('/api/task/detail', { params })
 export const getMyStatsApi = () => request.get('/api/task/stats/my')

@@ -111,9 +111,11 @@ async function notifyTaskEvent(eventType, task, actor) {
     task_review_reject: {
       userId: designer_id,
       type: 'task_reject',
-      title: '作品被驳回',
+      title: task.task_group === 'cs' ? '任务需要修改' : '作品被驳回',
       taskTitle: title,
-      content: `您的任务「${title}」已被驳回，请查看驳回原因`,
+      content: task.task_group === 'cs'
+        ? `您的任务「${title}」需要修改，请查看修改说明`
+        : `您的任务「${title}」已被驳回，请查看驳回原因`,
       taskId: task.id,
       taskGroup: task.task_group,
       publisherId: publisher_id,

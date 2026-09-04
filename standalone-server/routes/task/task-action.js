@@ -58,9 +58,63 @@ router.post('/upload-files', requireAnyPermission(['task.upload.work', 'task.cre
         const replaceExisting = req.body.replaceExisting === '1' || req.body.replaceExisting === 'true';
         const saveOnly = req.body.saveOnly === '1' || req.body.saveOnly === 'true';
         const rejectRecordId = req.body.rejectRecordId ? parseInt(req.body.rejectRecordId) : null;
-        const result = await taskService.uploadFiles(taskId, req.files, fileCategory, actualQuantity, appliedScore, workPath, req.user, { replaceExisting, hasWorkPathField, saveOnly, rejectRecordId });
+        const uploadOptions = { replaceExisting, hasWorkPathField, saveOnly, rejectRecordId };
+        if (Object.prototype.hasOwnProperty.call(req.body, 'modificationReply')) {
+          uploadOptions.modificationReply = req.body.modificationReply;
+        }
+        const result = await taskService.uploadFiles(taskId, req.files, fileCategory, actualQuantity, appliedScore, workPath, req.user, uploadOptions);
         res.json({ code: 0, ...result });
-      } catch (err) { next(err); }
+      } catch (err) {
+        for (const file of req.files || []) {
+          try { if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch (_) {}
+        }
+        next(err);
+      }
+    });
+});
+
+router.post('/request-modification', requireAnyPermission(['cs.review.basic', 'task.review.own', 'task.review.store', 'task.review.all'], 'cs_agent', 'admin'), (req, res, next) => {
+  const tmpDir = path.join(os.tmpdir(), 'd-design-tmp');
+  try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
+
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, tmpDir),
+    filename: (req, file, cb) => {
+      file.originalname = fixFilenameEncoding(file.originalname);
+      const ext = path.extname(file.originalname).toLowerCase();
+      cb(null, `${uuidv4().replace(/-/g, '')}${ext}`);
+    }
+  });
+  const fileFilter = (req, file, cb) => {
+    if (file.originalname.includes('..') || file.originalname.includes('/') || file.originalname.includes('\\')) {
+      return cb(new Error('文件名不合法'), false);
+    }
+    cb(null, true);
+  };
+  const cleanupTempFiles = () => {
+    for (const file of req.files || []) {
+      try { if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch (_) {}
+    }
+  };
+
+  multer({ storage, fileFilter, limits: { fileSize: getMaxFileSizeMB() * 1024 * 1024, files: getMaxFileCount() } })
+    .array('files', getMaxFileCount())(req, res, async (err) => {
+      if (err) {
+        cleanupTempFiles();
+        return res.json({ code: 400, msg: err.message });
+      }
+      try {
+        const result = await taskService.requestCsModification(
+          parseInt(req.body.taskId),
+          req.body.note,
+          req.files || [],
+          req.user
+        );
+        res.json({ code: 0, ...result });
+      } catch (error) {
+        cleanupTempFiles();
+        next(error);
+      }
     });
 });
 
