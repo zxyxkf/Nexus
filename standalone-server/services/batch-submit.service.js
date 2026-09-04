@@ -4,11 +4,17 @@ const AppError = require('../utils/AppError');
 
 const ELIGIBLE_STATUSES = new Set(['accepted', 'rejected']);
 
+function isEligibleSubmissionTask(task) {
+  if (!task || !ELIGIBLE_STATUSES.has(task.status)) return false;
+  if (task.status === 'accepted') return true;
+  return Number(task.reject_record_id) > 0 && !task.designer_complete_time;
+}
+
 function eligibleTasksForUser(tasks, userId) {
   return (tasks || []).filter(task =>
     Number(task.designer_id) === Number(userId) &&
     task.task_group === 'cs' &&
-    ELIGIBLE_STATUSES.has(task.status)
+    isEligibleSubmissionTask(task)
   );
 }
 
@@ -26,19 +32,27 @@ function unresolvedFile(file, reason) {
 }
 
 function publicTask(task) {
+  const isModification = task.status === 'rejected';
+  const sourceScore = isModification && Number(task.modification_applied_score) > 0
+    ? Number(task.modification_applied_score)
+    : Number(task.applied_score);
   return {
     taskId: Number(task.id),
     taskNo: task.task_no,
     title: task.title || '',
     wangwangId: task.wangwang_id || '',
     publisherName: task.publisher_name || '',
-    status: task.status
+    status: task.status,
+    submissionType: isModification ? 'modification' : 'initial',
+    rejectRecordId: isModification ? Number(task.reject_record_id) : null,
+    rejectIndex: isModification ? Number(task.reject_index) : null,
+    appliedScore: Number.isFinite(sourceScore) && sourceScore >= 1 ? sourceScore : 1
   };
 }
 
 function resolveBatchFiles(files, candidateTasks) {
   const tasks = (candidateTasks || []).filter(task =>
-    task?.task_group === 'cs' && ELIGIBLE_STATUSES.has(task.status)
+    task?.task_group === 'cs' && isEligibleSubmissionTask(task)
   );
   const groupsByTaskId = new Map();
   const unresolved = [];
@@ -105,10 +119,25 @@ async function resolveBatchSubmission(files, user) {
   if (files.length > 500) throw new AppError(400, '单次最多匹配500个文件');
 
   const [tasks] = await execute(
-    `SELECT id, task_no, title, wangwang_id, publisher_name, status, task_group, designer_id
-     FROM task_info
-     WHERE designer_id = ? AND task_group = 'cs' AND status IN ('accepted', 'rejected')
-     ORDER BY id ASC`,
+    `SELECT t.id, t.task_no, t.title, t.wangwang_id, t.publisher_name,
+            t.status, t.task_group, t.designer_id, t.applied_score,
+            rr.id AS reject_record_id, rr.reject_index,
+            rr.applied_score AS modification_applied_score,
+            rr.designer_complete_time
+     FROM task_info t
+     LEFT JOIN task_reject_record rr ON rr.id = (
+       SELECT latest.id
+       FROM task_reject_record latest
+       WHERE latest.task_id = t.id
+       ORDER BY latest.reject_index DESC, latest.id DESC
+       LIMIT 1
+     )
+     WHERE t.designer_id = ? AND t.task_group = 'cs'
+       AND (
+         t.status = 'accepted'
+         OR (t.status = 'rejected' AND rr.id IS NOT NULL AND rr.designer_complete_time IS NULL)
+       )
+     ORDER BY t.id ASC`,
     [user.id]
   );
   return resolveBatchFiles(files, eligibleTasksForUser(tasks, user.id));

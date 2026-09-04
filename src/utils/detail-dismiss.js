@@ -21,7 +21,10 @@ function closeDetail(overlay) {
   }
 }
 
-function isBlankDetailArea(target, overlay) {
+function isBlankDetailArea(event, overlay) {
+  const path = typeof event.composedPath === 'function' ? event.composedPath() : []
+  if (path.includes(overlay)) return false
+  const target = event.target
   if (!(target instanceof HTMLElement)) return false
   return !overlay.contains(target)
 }
@@ -41,7 +44,7 @@ export function installDetailDismiss() {
   document.addEventListener('click', (event) => {
     if (hasActiveUiOverlay()) return
     const overlay = getActiveDetailOverlay()
-    if (!overlay || !isBlankDetailArea(event.target, overlay)) return
+    if (!overlay || !isBlankDetailArea(event, overlay)) return
     closeDetail(overlay)
   })
 }

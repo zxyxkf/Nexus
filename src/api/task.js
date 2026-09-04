@@ -51,6 +51,9 @@ export const uploadFilesApi = (taskId, files, fileCategory = 'work', extraData =
   if (Object.prototype.hasOwnProperty.call(extraData, 'modificationReply')) {
     formData.append('modificationReply', extraData.modificationReply ?? '')
   }
+  if (Object.prototype.hasOwnProperty.call(extraData, 'retainedFileIds')) {
+    formData.append('retainedFileIds', JSON.stringify(extraData.retainedFileIds || []))
+  }
   files.forEach(file => formData.append('files', file))
   return taskMutation(request.post('/api/task/upload-files', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
@@ -67,6 +70,26 @@ export const requestCsModificationApi = ({ taskId, note = '', files = [] }) => {
   formData.append('note', note)
   files.forEach(file => formData.append('files', file))
   return taskMutation(request.post('/api/task/request-modification', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000
+  }))
+}
+export const completeCsModificationApi = ({
+  taskId,
+  rejectRecordId,
+  reply = '',
+  appliedScore = 1,
+  retainedFileIds = [],
+  files = []
+}) => {
+  const formData = new FormData()
+  formData.append('taskId', taskId)
+  formData.append('rejectRecordId', rejectRecordId)
+  formData.append('reply', reply)
+  formData.append('appliedScore', appliedScore)
+  formData.append('retainedFileIds', JSON.stringify(retainedFileIds))
+  files.forEach(file => formData.append('files', file))
+  return taskMutation(request.post('/api/task/complete-modification', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000
   }))

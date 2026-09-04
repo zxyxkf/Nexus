@@ -50,6 +50,12 @@
                 <el-button class="batch-task-number" link type="primary" @click="openDetail(group)">
                   {{ group.taskNo }}
                 </el-button>
+                <el-tag
+                  class="batch-submission-type"
+                  :type="group.submissionType === 'modification' ? 'warning' : 'info'"
+                  size="small"
+                  effect="plain"
+                >{{ submissionLabel(group) }}</el-tag>
                 <span>发布人：{{ group.publisherName || '-' }}</span>
               </div>
               <label class="batch-score-field">
@@ -130,7 +136,7 @@
 import { computed, onBeforeUnmount, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { CircleCheck, CircleClose, Delete, Loading, Picture, UploadFilled, Warning } from '@element-plus/icons-vue'
-import { resolveBatchSubmitApi, uploadFilesApi } from '@/api'
+import { completeCsModificationApi, resolveBatchSubmitApi, uploadFilesApi } from '@/api'
 import { useConfig } from '@/composables/useConfig'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import TaskDetail from '@/components/TaskDetail.vue'
@@ -223,7 +229,10 @@ async function resolveFiles() {
     const groups = response.data?.groups || []
     groups.forEach(group => {
       const taskId = Number(group.taskId)
-      if (!Object.prototype.hasOwnProperty.call(scoreByTaskId, taskId)) scoreByTaskId[taskId] = 1
+      if (!Object.prototype.hasOwnProperty.call(scoreByTaskId, taskId)) {
+        const score = Number(group.appliedScore)
+        scoreByTaskId[taskId] = Number.isFinite(score) && score >= 1 ? score : 1
+      }
     })
     state.groups = groups
     state.unresolved = response.data?.unresolved || []
@@ -272,12 +281,26 @@ function reasonLabel(reason) {
   })[reason] || '无法匹配'
 }
 
+function submissionLabel(group) {
+  if (group.submissionType !== 'modification') return '首次提交'
+  return `第 ${Number(group.rejectIndex) || 1} 次修改`
+}
+
 async function submitGroup(group) {
   const rawFiles = group.files.map(file => fileByClientId.get(String(file.clientId))).filter(Boolean)
   if (rawFiles.length !== group.files.length) throw new Error('部分本地文件已失效，请重新选择')
-  const response = await uploadFilesApi(group.taskId, rawFiles, 'work', {
-    appliedScore: scoreFor(group.taskId)
-  })
+  const response = group.submissionType === 'modification'
+    ? await completeCsModificationApi({
+        taskId: group.taskId,
+        rejectRecordId: group.rejectRecordId,
+        reply: '',
+        appliedScore: scoreFor(group.taskId),
+        retainedFileIds: [],
+        files: rawFiles
+      })
+    : await uploadFilesApi(group.taskId, rawFiles, 'work', {
+        appliedScore: scoreFor(group.taskId)
+      })
   if (response.code !== 0) throw new Error(response.msg || '提交失败')
   return response.msg || '提交成功'
 }
@@ -357,6 +380,7 @@ onBeforeUnmount(() => {
 .batch-task-head { justify-content: space-between; gap: 16px; margin-bottom: 8px; }
 .batch-task-title { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
 .batch-task-number { align-self: flex-start; height: auto; padding: 0; font-size: 13px; font-weight: 700; }
+.batch-submission-type { align-self: flex-start; }
 .batch-task-title span { overflow: hidden; color: var(--el-text-color-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .batch-score-field { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; color: var(--el-text-color-regular); font-size: 12px; }
 .batch-score-field :deep(.el-input-number) { width: 120px; }

@@ -29,7 +29,31 @@ test('matched task includes publisher name for the batch submission UI', () => {
   expect(result.groups[0]).toMatchObject({
     taskId: 1,
     taskNo: 'C202609030001',
-    publisherName: '客服甲'
+    publisherName: '客服甲',
+    submissionType: 'initial',
+    appliedScore: 1
+  });
+});
+
+test('rejected task exposes its active modification round and current score', () => {
+  const result = resolveBatchFiles([file('C202609030001_修改稿.png')], [
+    task(1, 'C202609030001', '旺旺甲', {
+      status: 'rejected',
+      applied_score: 2.5,
+      reject_record_id: 81,
+      reject_index: 3,
+      modification_applied_score: 2.5,
+      designer_complete_time: null
+    })
+  ]);
+
+  expect(result.unresolved).toHaveLength(0);
+  expect(result.groups[0]).toMatchObject({
+    taskId: 1,
+    submissionType: 'modification',
+    rejectRecordId: 81,
+    rejectIndex: 3,
+    appliedScore: 2.5
   });
 });
 
@@ -75,7 +99,19 @@ test('doing finished foreign and non-cs tasks are not candidates', () => {
     task(3, 'C202609030003', '已完成', { status: 'finished' }),
     task(4, 'C202609030004', '他人任务', { designer_id: 10 }),
     task(5, 'D202609030005', '运营任务', { task_group: 'design' }),
-    task(6, 'C202609030006', '驳回任务', { status: 'rejected' })
+    task(6, 'C202609030006', '驳回任务', {
+      status: 'rejected',
+      reject_record_id: 86,
+      reject_index: 2,
+      designer_complete_time: null
+    }),
+    task(7, 'C202609030007', '无修改记录', { status: 'rejected' }),
+    task(8, 'C202609030008', '已提交修改', {
+      status: 'rejected',
+      reject_record_id: 88,
+      reject_index: 1,
+      designer_complete_time: '2026-09-03 12:00:00'
+    })
   ];
 
   expect(eligibleTasksForUser(tasks, 9).map(item => item.id)).toEqual([1, 6]);

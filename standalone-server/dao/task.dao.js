@@ -77,7 +77,11 @@ async function attachFilesToTasks(taskIds) {
   const pool = getPool();
   const placeholders = taskIds.map(() => '?').join(',');
   const [files] = await pool.execute(
-    `SELECT * FROM task_file WHERE task_id IN (${placeholders}) ORDER BY create_time ASC, id ASC`,
+    `SELECT tf.*, tr.reject_index
+     FROM task_file tf
+     LEFT JOIN task_reject_record tr ON tr.id = tf.reject_record_id
+     WHERE tf.task_id IN (${placeholders})
+     ORDER BY tf.create_time ASC, tf.id ASC`,
     taskIds
   );
   for (const f of files) {
@@ -141,7 +145,12 @@ async function getTaskDetail(taskId) {
 async function getTaskFiles(taskId) {
   const pool = getPool();
   const [files] = await pool.execute(
-    `SELECT * FROM task_file WHERE task_id = ? ORDER BY create_time ASC, id ASC`, [taskId]
+    `SELECT tf.*, tr.reject_index
+     FROM task_file tf
+     LEFT JOIN task_reject_record tr ON tr.id = tf.reject_record_id
+     WHERE tf.task_id = ?
+     ORDER BY tf.create_time ASC, tf.id ASC`,
+    [taskId]
   );
   return files.map(f => ({
     ...f,
@@ -255,27 +264,98 @@ async function insertRejectRecord(conn, data) {
     [data.taskId]
   );
   const rejectIndex = Number(rows?.[0]?.next_index) || 1;
+  const appliedScore = Number(data.appliedScore);
   const [result] = await conn.execute(
     `INSERT INTO task_reject_record
-       (task_id, reject_index, reviewer_id, reviewer_name, reject_reason)
-     VALUES (?,?,?,?,?)`,
+       (task_id, reject_index, reviewer_id, reviewer_name, reject_reason, applied_score)
+     VALUES (?,?,?,?,?,?)`,
     [
       data.taskId,
       rejectIndex,
       data.reviewerId || null,
       data.reviewerName || '',
-      data.reason || ''
+      data.reason || '',
+      Number.isFinite(appliedScore) && appliedScore >= 1 ? appliedScore : 1
     ]
   );
   return { id: result.insertId || result.lastID, rejectIndex };
 }
 
-async function updateRejectRecordReply(conn, recordId, taskId, reply) {
+async function completeRejectRecord(conn, data) {
   const [result] = await conn.execute(
     `UPDATE task_reject_record
-     SET designer_reply = ?
-     WHERE id = ? AND task_id = ?`,
-    [reply || '', recordId, taskId]
+     SET designer_reply = ?, designer_id = ?, designer_name = ?,
+         designer_complete_time = NOW(), applied_score = ?
+     WHERE id = ? AND task_id = ? AND designer_complete_time IS NULL`,
+    [
+      data.reply || '',
+      data.designerId || null,
+      data.designerName || '',
+      Number(data.appliedScore) || 1,
+      data.recordId,
+      data.taskId
+    ]
+  );
+  return Number(result.affectedRows || 0);
+}
+
+async function getLatestRejectRecordForUpdate(conn, taskId) {
+  const [rows] = await conn.execute(
+    `SELECT * FROM task_reject_record
+     WHERE task_id = ?
+     ORDER BY reject_index DESC, id DESC
+     LIMIT 1 FOR UPDATE`,
+    [taskId]
+  );
+  return rows[0] || null;
+}
+
+async function countIncompleteRejectRecords(conn, taskId) {
+  const [rows] = await conn.execute(
+    `SELECT COUNT(*) AS total
+     FROM task_reject_record
+     WHERE task_id = ? AND designer_complete_time IS NULL`,
+    [taskId]
+  );
+  return Number(rows[0]?.total || 0);
+}
+
+async function reopenRejectRecord(conn, recordId, taskId) {
+  const [result] = await conn.execute(
+    `UPDATE task_reject_record
+     SET designer_complete_time = NULL
+     WHERE id = ? AND task_id = ? AND designer_complete_time IS NOT NULL`,
+    [recordId, taskId]
+  );
+  return Number(result.affectedRows || 0);
+}
+
+async function getRecordWorkFilesForUpdate(conn, taskId, recordId) {
+  const [rows] = await conn.execute(
+    `SELECT * FROM task_file
+     WHERE task_id = ? AND file_category = 'work' AND reject_record_id = ?
+     ORDER BY create_time ASC, id ASC FOR UPDATE`,
+    [taskId, recordId]
+  );
+  return rows || [];
+}
+
+async function getInitialWorkFilesForUpdate(conn, taskId) {
+  const [rows] = await conn.execute(
+    `SELECT * FROM task_file
+     WHERE task_id = ? AND file_category = 'work' AND reject_record_id IS NULL
+     ORDER BY create_time ASC, id ASC FOR UPDATE`,
+    [taskId]
+  );
+  return rows || [];
+}
+
+async function deleteFileRecords(conn, fileIds) {
+  if (!fileIds.length) return 0;
+  const placeholders = fileIds.map(() => '?').join(',');
+  const [result] = await conn.execute(
+    `DELETE FROM task_file WHERE id IN (${placeholders})`,
+    fileIds
   );
   return Number(result.affectedRows || 0);
 }
@@ -935,7 +1015,13 @@ module.exports = {
   updateTaskFields,
   insertTransferRecord,
   insertRejectRecord,
-  updateRejectRecordReply,
+  completeRejectRecord,
+  getLatestRejectRecordForUpdate,
+  countIncompleteRejectRecords,
+  reopenRejectRecord,
+  getRecordWorkFilesForUpdate,
+  getInitialWorkFilesForUpdate,
+  deleteFileRecords,
   deleteTaskData,
   batchDeleteTasks,
   batchReassignTasks,

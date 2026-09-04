@@ -124,7 +124,13 @@
         </section>
       </div>
 
-      <RejectHistory v-if="showRejectHistory" :records="task.reject_records || []" />
+      <slot name="modifications" :task="task">
+        <RejectHistory
+          v-if="showRejectHistory"
+          :records="task.reject_records || []"
+          :task-status="task.status"
+        />
+      </slot>
     </div>
   </TaskDetailOverlay>
 </template>
@@ -171,6 +177,7 @@ const styleFiles = computed(() => allFiles.value.filter(file => file.file_catego
 const workFiles = computed(() => allFiles.value.filter(file => (
   file.file_category !== 'reference' &&
   file.file_category !== 'style' &&
+  (!isCsTask.value || file.file_category !== 'work' || !file.reject_record_id) &&
   (['design-assignee', 'hall'].includes(currentContext.value) || file.file_category !== 'reject')
 )))
 const refImageFiles = computed(() => refFiles.value.filter(file => file.file_type === 'image'))

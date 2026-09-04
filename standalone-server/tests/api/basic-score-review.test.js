@@ -81,10 +81,10 @@ beforeAll(async () => {
   operatorToken = (await request(app).post('/api/auth/login').send({ username: operatorUser, password: 'test123456' })).body.data.token;
 }, 30000);
 
-describe('基础美工申请分以客服通过为最终入账基准', () => {
+describe('基础美工申请分以客服最终通过为审核起点', () => {
   let taskId;
 
-  it('组长通过后客服未通过前不计入已完成分值；客服驳回会撤销本次申请', async () => {
+  it('客服未通过前不创建分值审核；发起修改保留当前申请分', async () => {
     const create = await request(app)
       .post('/api/task/create')
       .set('Authorization', `Bearer ${csToken}`)
@@ -107,11 +107,10 @@ describe('基础美工申请分以客服通过为最终入账基准', () => {
       .attach('files', Buffer.from('first work'), 'first.txt')
       .expect(200);
 
-    const approve = await request(app)
-      .post('/api/score/review/approve')
-      .set('Authorization', `Bearer ${leadToken}`)
-      .send({ taskId });
-    expect(approve.body.code).toBe(0);
+    let reviewList = await request(app)
+      .get('/api/score/review/list?pageSize=50')
+      .set('Authorization', `Bearer ${leadToken}`);
+    expect(reviewList.body.data.list.some(t => Number(t.id) === Number(taskId))).toBe(false);
 
     const beforeCsPassStats = await request(app)
       .get('/api/task/stats/my')
@@ -119,9 +118,10 @@ describe('基础美工申请分以客服通过为最终入账基准', () => {
     expect(Number(beforeCsPassStats.body.data.total_score || 0)).toBe(0);
 
     const reject = await request(app)
-      .post('/api/task/review')
+      .post('/api/task/request-modification')
       .set('Authorization', `Bearer ${csToken}`)
-      .send({ taskId, action: 'reject', rejectReason: '需要修改' });
+      .field('taskId', String(taskId))
+      .field('note', '需要修改');
     expect(reject.body.code).toBe(0);
 
     const detail = await request(app)
@@ -130,38 +130,55 @@ describe('基础美工申请分以客服通过为最终入账基准', () => {
     expect(detail.body.data.status).toBe('rejected');
     expect(Number(detail.body.data.score)).toBe(1);
     expect(Number(detail.body.data.applied_score || 0)).toBe(3);
-    expect(Number(detail.body.data.score_review_score || 0)).toBe(3);
-    expect(detail.body.data.score_review_time).toBeTruthy();
+    expect(Number(detail.body.data.reject_records[0].applied_score || 0)).toBe(3);
+    expect(Number(detail.body.data.score_review_score || 0)).toBe(0);
+    expect(detail.body.data.score_review_time).toBeFalsy();
     expect(detail.body.data.score_review_status || '').toBe('');
 
-    const reviewList = await request(app)
+    reviewList = await request(app)
       .get('/api/score/review/list?pageSize=50')
       .set('Authorization', `Bearer ${leadToken}`);
     expect(reviewList.body.data.list.some(t => Number(t.id) === Number(taskId))).toBe(false);
   });
 
-  it('二次提交同样申请分后，仅客服最终通过时计一次申请分', async () => {
+  it('修改完成后仍不进入分值审核，客服最终通过后才进入', async () => {
+    const detailBefore = await request(app)
+      .get(`/api/task/detail?taskId=${taskId}`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    const rejectRecordId = detailBefore.body.data.reject_records[0].id;
+
     await request(app)
-      .post('/api/task/upload-files')
+      .post('/api/task/complete-modification')
       .set('Authorization', `Bearer ${basicToken}`)
       .field('taskId', String(taskId))
-      .field('fileCategory', 'work')
-      .field('actualQuantity', '1')
+      .field('rejectRecordId', String(rejectRecordId))
+      .field('reply', '已完成修改')
       .field('appliedScore', '3')
+      .field('retainedFileIds', '[]')
       .attach('files', Buffer.from('second work'), 'second.txt')
       .expect(200);
 
-    const approve = await request(app)
-      .post('/api/score/review/approve')
-      .set('Authorization', `Bearer ${leadToken}`)
-      .send({ taskId });
-    expect(approve.body.code).toBe(0);
+    let reviewList = await request(app)
+      .get('/api/score/review/list?pageSize=50')
+      .set('Authorization', `Bearer ${leadToken}`);
+    expect(reviewList.body.data.list.some(t => Number(t.id) === Number(taskId))).toBe(false);
 
     const pass = await request(app)
       .post('/api/task/review')
       .set('Authorization', `Bearer ${csToken}`)
       .send({ taskId, action: 'pass' });
     expect(pass.body.code).toBe(0);
+
+    reviewList = await request(app)
+      .get('/api/score/review/list?pageSize=50')
+      .set('Authorization', `Bearer ${leadToken}`);
+    expect(reviewList.body.data.list.some(t => Number(t.id) === Number(taskId))).toBe(true);
+
+    const approve = await request(app)
+      .post('/api/score/review/approve')
+      .set('Authorization', `Bearer ${leadToken}`)
+      .send({ taskId });
+    expect(approve.body.code).toBe(0);
 
     const stats = await request(app)
       .get('/api/task/stats/my')

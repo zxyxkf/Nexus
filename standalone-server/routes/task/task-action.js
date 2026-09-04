@@ -10,8 +10,21 @@ const { v4: uuidv4 } = require('uuid');
 const multer = require('multer');
 const { requireRole, requireAnyPermission } = require('../../middleware/auth');
 const taskService = require('../../services/task.service');
+const AppError = require('../../utils/AppError');
 const { fixFilenameEncoding } = require('../../utils/upload');
 const { getMaxFileSizeMB, getMaxFileCount } = require('../../utils/share');
+
+function parseIdArray(value, fieldName) {
+  if (value === undefined || value === null || value === '') return [];
+  let parsed;
+  try {
+    parsed = typeof value === 'string' ? JSON.parse(value) : value;
+  } catch (_) {
+    throw new AppError(400, `${fieldName}格式不正确`);
+  }
+  if (!Array.isArray(parsed)) throw new AppError(400, `${fieldName}格式不正确`);
+  return [...new Set(parsed.map(Number).filter(id => Number.isInteger(id) && id > 0))];
+}
 
 // ==================== 接单 ====================
 
@@ -59,6 +72,9 @@ router.post('/upload-files', requireAnyPermission(['task.upload.work', 'task.cre
         const saveOnly = req.body.saveOnly === '1' || req.body.saveOnly === 'true';
         const rejectRecordId = req.body.rejectRecordId ? parseInt(req.body.rejectRecordId) : null;
         const uploadOptions = { replaceExisting, hasWorkPathField, saveOnly, rejectRecordId };
+        if (Object.prototype.hasOwnProperty.call(req.body, 'retainedFileIds')) {
+          uploadOptions.retainedFileIds = parseIdArray(req.body.retainedFileIds, '保留文件');
+        }
         if (Object.prototype.hasOwnProperty.call(req.body, 'modificationReply')) {
           uploadOptions.modificationReply = req.body.modificationReply;
         }
@@ -107,6 +123,53 @@ router.post('/request-modification', requireAnyPermission(['cs.review.basic', 't
         const result = await taskService.requestCsModification(
           parseInt(req.body.taskId),
           req.body.note,
+          req.files || [],
+          req.user
+        );
+        res.json({ code: 0, ...result });
+      } catch (error) {
+        cleanupTempFiles();
+        next(error);
+      }
+    });
+});
+
+router.post('/complete-modification', requireAnyPermission(['task.upload.work'], 'basic_designer'), (req, res, next) => {
+  const tmpDir = path.join(os.tmpdir(), 'd-design-tmp');
+  try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
+
+  const storage = multer.diskStorage({
+    destination: (request, file, cb) => cb(null, tmpDir),
+    filename: (request, file, cb) => {
+      file.originalname = fixFilenameEncoding(file.originalname);
+      cb(null, `${uuidv4().replace(/-/g, '')}${path.extname(file.originalname).toLowerCase()}`);
+    }
+  });
+  const fileFilter = (request, file, cb) => {
+    if (file.originalname.includes('..') || file.originalname.includes('/') || file.originalname.includes('\\')) {
+      return cb(new Error('文件名不合法'), false);
+    }
+    cb(null, true);
+  };
+  const cleanupTempFiles = () => {
+    for (const file of req.files || []) {
+      try { if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch (_) {}
+    }
+  };
+
+  multer({ storage, fileFilter, limits: { fileSize: getMaxFileSizeMB() * 1024 * 1024, files: getMaxFileCount() } })
+    .array('files', getMaxFileCount())(req, res, async (err) => {
+      if (err) {
+        cleanupTempFiles();
+        return res.json({ code: 400, msg: err.message });
+      }
+      try {
+        const result = await taskService.completeCsModification(
+          parseInt(req.body.taskId),
+          parseInt(req.body.rejectRecordId),
+          req.body.reply,
+          req.body.appliedScore,
+          parseIdArray(req.body.retainedFileIds, '保留文件'),
           req.files || [],
           req.user
         );

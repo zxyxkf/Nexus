@@ -125,6 +125,9 @@ const taskRows = [
         reject_index: 1,
         reject_reason: '细节需要调整',
         designer_reply: '已经按说明调整',
+        designer_complete_time: '2026-06-02 11:55:00',
+        designer_name: '基础美工A',
+        applied_score: 8,
         reviewer_name: '客服A',
         create_time: '2026-06-02 11:40:00',
         files: [
@@ -133,7 +136,10 @@ const taskRows = [
         ]
       }
     ],
-    files
+    files: [
+      ...files,
+      { id: 6012, file_name: '重新上传.png', file_type: 'image', file_category: 'work', file_size: 2048, reject_record_id: 601, reject_index: 1 }
+    ]
   },
   {
     id: 203,
@@ -296,7 +302,7 @@ const taskRows = [
     designer_name: '基础美工A',
     style_number: 'SN-010',
     wangwang_id: 'ww-010',
-    applied_score: 1,
+    applied_score: 2.5,
     reject_reason: '请修改文字位置',
     create_time: '2026-06-06 09:00:00',
     reject_records: [
@@ -304,13 +310,21 @@ const taskRows = [
         id: 602,
         reject_index: 2,
         reject_reason: '请修改文字位置',
-        designer_reply: '',
+        designer_reply: '已调整文字位置',
+        designer_complete_time: null,
+        designer_name: '基础美工A',
+        applied_score: 2.5,
         reviewer_name: '客服A',
         create_time: '2026-06-06 09:10:00',
-        files: []
+        files: [
+          { id: 6021, file_name: '撤回前修改稿.png', file_type: 'image', file_category: 'work', file_size: 2048, reject_record_id: 602 }
+        ]
       }
     ],
-    files
+    files: [
+      ...files,
+      { id: 6021, file_name: '撤回前修改稿.png', file_type: 'image', file_category: 'work', file_size: 2048, reject_record_id: 602, reject_index: 2 }
+    ]
   },
   {
     id: 211,
@@ -328,6 +342,27 @@ const taskRows = [
     wangwang_id: 'ww-011',
     create_time: '2026-06-06 10:00:00',
     files
+  },
+  {
+    id: 212,
+    task_no: 'T-CS-ACCEPTED',
+    title: '客服首次作品已撤回',
+    score_item_name: '客服首次作品已撤回',
+    score: 1,
+    status: 'accepted',
+    task_group: 'cs',
+    publisher_id: 6,
+    publisher_name: '客服A',
+    designer_id: 3,
+    designer_name: '基础美工A',
+    style_number: 'SN-012',
+    wangwang_id: 'ww-012',
+    applied_score: 2.5,
+    create_time: '2026-06-06 11:00:00',
+    files: [
+      ...files.filter(file => file.file_category !== 'work'),
+      { id: 2121, file_name: '撤回后保留的首次作品.png', file_type: 'image', file_category: 'work', file_size: 4096 }
+    ]
   }
 ]
 
@@ -475,6 +510,57 @@ test('customer service can toggle shift status and open the shared handoff page'
   await expect(page.getByText('继承', { exact: true })).toBeVisible()
 })
 
+test('image processing removes solid backgrounds with soft edges and supports recoloring', async ({ page }) => {
+  await page.goto('/#/login')
+  const result = await page.evaluate(async () => {
+    const processing = await import('/src/utils/background-removal.js')
+    const width = 5
+    const height = 5
+    const pixels = new Uint8ClampedArray(width * height * 4)
+    for (let index = 0; index < width * height; index += 1) {
+      pixels.set([255, 255, 255, 255], index * 4)
+    }
+    pixels.set([0, 0, 0, 255], (2 * width + 2) * 4)
+    pixels.set([225, 225, 225, 255], (2 * width + 1) * 4)
+    const source = new ImageData(pixels, width, height)
+    const background = processing.estimateEdgeBackground(source)
+    const removed = processing.removeBackground(source, { tolerance: 28, edgeCleanup: 55 })
+    const solid = processing.recolorSolid(
+      new ImageData(new Uint8ClampedArray([20, 30, 40, 180]), 1, 1),
+      '#ff0000'
+    )
+    const matching = processing.recolorMatching(
+      new ImageData(new Uint8ClampedArray([200, 20, 20, 255, 20, 180, 20, 255]), 2, 1),
+      [200, 20, 20],
+      '#3366ff',
+      35
+    )
+    return {
+      background,
+      cornerAlpha: removed.data[3],
+      enclosedWhiteAlpha: removed.data[(1 * width + 1) * 4 + 3],
+      softAlpha: removed.data[(2 * width + 1) * 4 + 3],
+      subjectAlpha: removed.data[(2 * width + 2) * 4 + 3],
+      originalCornerAlpha: source.data[3],
+      solid: Array.from(solid.data),
+      matching: Array.from(matching.data),
+      sampled: processing.samplePixel(matching, 0, 0)
+    }
+  })
+
+  expect(result.background).toEqual({ r: 255, g: 255, b: 255 })
+  expect(result.cornerAlpha).toBe(0)
+  expect(result.enclosedWhiteAlpha).toBe(0)
+  expect(result.softAlpha).toBeGreaterThan(0)
+  expect(result.softAlpha).toBeLessThan(255)
+  expect(result.subjectAlpha).toBe(255)
+  expect(result.originalCornerAlpha).toBe(255)
+  expect(result.solid).toEqual([255, 0, 0, 180])
+  expect(result.matching.slice(0, 4)).toEqual([51, 102, 255, 255])
+  expect(result.matching.slice(4)).toEqual([20, 180, 20, 255])
+  expect(result.sampled).toEqual({ r: 51, g: 102, b: 255, a: 255 })
+})
+
 test('style image editor supports canvas panning without changing saved scene', async ({ page }) => {
   await loginAs(page, users.cs)
   await page.goto('/#/cs/publish')
@@ -490,6 +576,18 @@ test('style image editor supports canvas panning without changing saved scene', 
   const interactiveCanvas = dialog.locator('canvas.upper-canvas')
   const renderedCanvas = dialog.locator('canvas.lower-canvas')
   await expect(interactiveCanvas).toBeVisible()
+
+  await dialog.locator('input[type="file"]').setInputFiles({
+    name: 'logo.png',
+    mimeType: 'image/png',
+    buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR42mP4z8DwH4QZGBgYGMAAAAD//wMAFJQEBqSx8ZkAAAAASUVORK5CYII=', 'base64')
+  })
+  await expect(dialog.getByText('边缘净化', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('整体单色', { exact: true })).toBeVisible()
+  await dialog.getByText('指定颜色', { exact: true }).click()
+  await expect(dialog.getByRole('button', { name: '吸管取色', exact: true })).toBeVisible()
+  await expect(dialog.getByText('颜色容差', { exact: true })).toBeVisible()
+  await expect(dialog.getByRole('button', { name: '应用换色', exact: true })).toBeVisible()
 
   await dialog.getByText('选择形状', { exact: true }).click()
   await page.getByRole('option', { name: '矩形', exact: true }).click()
@@ -540,7 +638,9 @@ test('batch work submit groups files by task for a basic designer', async ({ pag
   await expect(page.getByText('C202609030002', { exact: true })).toBeVisible()
   const scoreInputs = page.locator('.batch-score-field input')
   await expect(scoreInputs).toHaveCount(2)
-  await expect.poll(async () => scoreInputs.evaluateAll(inputs => inputs.map(input => Number(input.value)))).toEqual([1, 1])
+  await expect.poll(async () => scoreInputs.evaluateAll(inputs => inputs.map(input => Number(input.value)))).toEqual([1, 2.5])
+  await expect(page.getByText('首次提交', { exact: true })).toBeVisible()
+  await expect(page.getByText('第 2 次修改', { exact: true })).toBeVisible()
 })
 
 test('batch submission keeps edited score and opens matched task details', async ({ page }) => {
@@ -912,36 +1012,61 @@ test('customer service review uses modification history instead of rejection', a
   await page.goto('/#/cs/review')
 
   const row = page.locator('.el-table__body tr').filter({ hasText: 'T-DOING' })
-  await expect(row.getByRole('button', { name: '新增修改', exact: true })).toBeVisible()
+  await expect(row.getByRole('button', { name: '新增修改', exact: true })).toHaveCount(0)
   await expect(row.getByRole('button', { name: '驳回', exact: true })).toHaveCount(0)
 
   await row.getByRole('button', { name: '查看作品', exact: true }).click()
   const overlay = page.locator('.task-detail-overlay')
   await expect(overlay.getByText('修改历史', { exact: true })).toBeVisible()
   await expect(overlay.getByText('第 1 次修改', { exact: true })).toBeVisible()
-  await expect(overlay.getByText('客服修改说明', { exact: true })).toBeVisible()
-  await expect(overlay.getByText('基础美工回复', { exact: true })).toBeVisible()
+  await overlay.getByText('第 1 次修改', { exact: true }).click()
+  await expect(overlay.getByText('客服修改要求', { exact: true }).first()).toBeVisible()
+  await expect(overlay.getByText('基础美工处理结果', { exact: true }).first()).toBeVisible()
   await expect(overlay.getByText('已经按说明调整', { exact: true })).toBeVisible()
   await expect(overlay.getByText('驳回历史', { exact: true })).toHaveCount(0)
-  await overlay.getByRole('button', { name: '关闭', exact: true }).click()
-
-  await row.getByRole('button', { name: '新增修改', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '新增修改' })
-  await expect(dialog).toBeVisible()
-  await dialog.getByRole('button', { name: '确认新增修改', exact: true }).click()
+  await overlay.getByRole('button', { name: '新增修改', exact: true }).click()
+  await expect(overlay.getByText('第 2 次修改', { exact: true })).toBeVisible()
+  await expect(overlay.getByPlaceholder('填写本次修改要求')).toBeVisible()
+  await overlay.getByRole('button', { name: '完成', exact: true }).click()
   await expect(page.getByText('请填写修改说明或上传附件', { exact: true })).toBeVisible()
+  await overlay.getByPlaceholder('填写本次修改要求').fill('请调整最新版本的文字位置')
+  await overlay.getByRole('button', { name: '完成', exact: true }).click()
+  await expect(page.getByText('已新增修改', { exact: true })).toBeVisible()
+  await expect(overlay).toBeHidden()
 })
 
-test('basic designer sees customer service rejection as modification and can reply', async ({ page }) => {
+test('basic designer handles a modification inline and keeps withdrawn content and score', async ({ page }) => {
   await loginAs(page, users.basic)
   await page.goto('/#/basic/tasks')
 
   const row = page.locator('.el-table__body tr').filter({ hasText: 'T-CS-REJECTED' })
   await expect(row.getByText('修改中', { exact: true })).toBeVisible()
-  await row.getByRole('button', { name: '重新上传', exact: true }).click()
-  const dialog = page.getByRole('dialog', { name: '重新上传作品' })
-  await expect(dialog.getByText('本次修改回复', { exact: true })).toBeVisible()
-  await expect(dialog.getByPlaceholder('可填写本次修改内容')).toBeVisible()
+  await row.getByRole('button', { name: '处理修改', exact: true }).click()
+  const overlay = page.locator('.task-detail-overlay')
+  await expect(overlay.getByText('第 2 次修改', { exact: true })).toBeVisible()
+  await expect(overlay.getByPlaceholder('填写本次处理结果')).toHaveValue('已调整文字位置')
+  await expect(overlay.getByText('撤回前修改稿.png', { exact: true })).toBeVisible()
+  await expect(overlay.locator('.modification-score-field input')).toHaveValue('2.5')
+  await expect(page.getByRole('dialog', { name: '重新上传作品' })).toHaveCount(0)
+})
+
+test('withdrawn first submission keeps its existing work and score in the upload dialog', async ({ page }) => {
+  await loginAs(page, users.basic)
+  await page.goto('/#/basic/tasks')
+
+  const row = page.locator('.el-table__body tr').filter({ hasText: 'T-CS-ACCEPTED' })
+  await row.getByRole('button', { name: '上传作品', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '上传作品' })
+  await expect(dialog.getByText('撤回后保留的首次作品.png', { exact: true })).toBeVisible()
+  await expect(dialog.locator('.el-input-number input')).toHaveValue('2.5')
+})
+
+test('customer service work preview prefers the newest modification image', async ({ page }) => {
+  await loginAs(page, users.cs)
+  await page.goto('/#/cs/review')
+
+  const row = page.locator('.el-table__body tr').filter({ hasText: 'T-DOING' })
+  await expect(row.locator('[draggable="true"] .el-image img').last()).toHaveAttribute('src', /\/api\/task\/preview\/6012(?:\?|$)/)
 })
 
 test('customer service and basic designer task lists show style images without changing designer columns', async ({ page, browser }) => {
@@ -1567,13 +1692,18 @@ async function mockApis(page) {
       const descriptors = request.postDataJSON()?.files || []
       const groups = descriptors.map((file, index) => {
         const taskNo = file.name.match(/C\d{12}/)?.[0] || `C20260903${String(index + 1).padStart(4, '0')}`
+        const isModification = taskNo.endsWith('0002')
         return {
-          taskId: index === 0 ? 202 : 900 + index,
+          taskId: index === 0 ? 202 : isModification ? 210 : 900 + index,
           taskNo,
           title: `批量任务${index + 1}`,
           publisherName: '客服甲',
           wangwangId: `batch-${index + 1}`,
-          status: 'accepted',
+          status: isModification ? 'rejected' : 'accepted',
+          submissionType: isModification ? 'modification' : 'initial',
+          rejectRecordId: isModification ? 602 : null,
+          rejectIndex: isModification ? 2 : null,
+          appliedScore: isModification ? 2.5 : 1,
           files: [{ ...file, matchedBy: 'task_no' }]
         }
       })
@@ -1587,7 +1717,7 @@ async function mockApis(page) {
     if (path === '/api/task/detail') {
       const taskId = Number(url.searchParams.get('taskId'))
       const task = [...taskRows, ...scoreRows].find(row => row.id === taskId) || taskRows[0]
-      return json(route, { code: 0, data: { ...task, files, reject_records: task.reject_records || [] } })
+      return json(route, { code: 0, data: { ...task, files: task.files || files, reject_records: task.reject_records || [] } })
     }
     if (path.startsWith('/api/task/preview/')) {
       return route.fulfill({

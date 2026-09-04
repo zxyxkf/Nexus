@@ -167,8 +167,8 @@
               v-if="row.status === 'rejected'"
               type="warning"
               link size="small"
-              @click="openUpload(row)"
-            >重新上传</el-button>
+              @click="viewDetail(row)"
+            >处理修改</el-button>
             <el-button
               v-if="row.status === 'doing'"
               type="warning"
@@ -207,10 +207,17 @@
       >
         <template #actions>
           <el-button
-            v-if="currentTask.status === 'accepted' || currentTask.status === 'rejected'"
+            v-if="currentTask.status === 'accepted'"
             type="warning"
             @click="openUpload(currentTask)"
-          >{{ currentTask.status === 'rejected' ? '重新上传' : '上传作品' }}</el-button>
+          >上传作品</el-button>
+        </template>
+        <template #modifications>
+          <CsModificationRecords
+            :task="currentTask"
+            mode="designer"
+            :submit-designer="submitDesignerModification"
+          />
         </template>
       </TaskDetail>
     </el-card>
@@ -218,13 +225,32 @@
     <!-- 上传作品对话框 -->
     <el-dialog
       v-model="uploadVisible"
-      :title="uploadIsModification ? '重新上传作品' : '上传作品'"
+      title="上传作品"
       width="500px"
       append-to-body
       :z-index="2000"
       :close-on-click-modal="false"
       @keydown.enter.exact.prevent="handleUpload"
     >
+      <div v-if="retainedWorkFiles.length" class="retained-work-list">
+        <div class="retained-work-title">现有作品</div>
+        <div v-for="file in retainedWorkFiles" :key="file.id" class="retained-work-file">
+          <el-image
+            v-if="file.file_type === 'image'"
+            :src="file._previewSrc || getFileUrl(file)"
+            fit="cover"
+            :preview-src-list="retainedWorkImageList"
+            preview-teleported
+          />
+          <el-icon v-else :size="22"><Document /></el-icon>
+          <span :title="file.file_name">{{ file.file_name }}</span>
+          <small>{{ formatSize(file.file_size) }}</small>
+          <el-button circle text aria-label="移除现有作品" @click="removeRetainedWorkFile(file)">
+            <el-icon><Delete /></el-icon>
+          </el-button>
+        </div>
+      </div>
+
       <el-upload
         ref="uploadRef"
         drag
@@ -244,17 +270,6 @@
           </div>
         </template>
       </el-upload>
-
-      <el-form-item v-if="uploadIsModification" label="本次修改回复" style="margin-top:12px;">
-        <el-input
-          v-model="modificationReply"
-          type="textarea"
-          :rows="3"
-          maxlength="500"
-          show-word-limit
-          placeholder="可填写本次修改内容"
-        />
-      </el-form-item>
 
       <el-form-item label="申请分数" style="margin-top:12px;">
         <el-input-number v-model="appliedScore" :min="1" :step="0.5" :precision="1" style="width:100%;" placeholder="默认为1分，大于1需组长审核" />
@@ -317,8 +332,8 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Search, UploadFilled } from '@element-plus/icons-vue'
-import { getMyAcceptedApi, uploadFilesApi, finishTaskApi, transferTaskApi, undoSubmitApi, getBasicDesignerListApi, getPublisherListApi, getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { Delete, Document, Search, UploadFilled } from '@element-plus/icons-vue'
+import { completeCsModificationApi, getMyAcceptedApi, uploadFilesApi, finishTaskApi, transferTaskApi, undoSubmitApi, getBasicDesignerListApi, getPublisherListApi, getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, scoreReviewTagType } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
@@ -330,6 +345,7 @@ import { useTaskDetail } from '@/composables/useTaskDetail'
 import { getUser } from '@/utils/auth'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskDetail from '@/components/TaskDetail.vue'
+import CsModificationRecords from '@/components/task/CsModificationRecords.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -356,13 +372,14 @@ const pageTitle = computed(() => route.meta.title || '我的任务')
 const uploadVisible = ref(false)
 const uploadLoading = ref(false)
 const uploadTaskId = ref(null)
-const uploadTaskStatus = ref('')
 const uploadUiFiles = ref([])
 const fileList = ref([])
 const uploadRef = ref(null)
 const uploadProgress = ref(0)
-const modificationReply = ref('')
-const uploadIsModification = computed(() => uploadTaskStatus.value === 'rejected')
+const retainedWorkFiles = ref([])
+const retainedWorkImageList = computed(() => retainedWorkFiles.value
+  .filter(file => file.file_type === 'image')
+  .map(file => file._previewSrc || getFileUrl(file)))
 
 const appliedScore = ref(1)
 const transferVisible = ref(false)
@@ -503,13 +520,22 @@ watch(() => route.path, () => {
 })
 
 function openUpload(row) {
+  if (row.status !== 'accepted') {
+    viewDetail(row)
+    return
+  }
   uploadTaskId.value = row.id
-  uploadTaskStatus.value = row.status || ''
   uploadUiFiles.value = []
   fileList.value = []
-  modificationReply.value = ''
-  appliedScore.value = 1
+  retainedWorkFiles.value = (row.files || []).filter(file => (
+    file.file_category === 'work' && !file.reject_record_id
+  ))
+  appliedScore.value = Number(row.applied_score) > 0 ? Number(row.applied_score) : 1
   uploadVisible.value = true
+}
+
+function removeRetainedWorkFile(file) {
+  retainedWorkFiles.value = retainedWorkFiles.value.filter(item => Number(item.id) !== Number(file.id))
 }
 
 function handleFileChange(uploadFile, uploadFiles) {
@@ -527,7 +553,7 @@ function handleUploadPaste(event) {
 
 async function handleUpload() {
   if (uploadLoading.value) return
-  if (!fileList.value.length) {
+  if (!fileList.value.length && !retainedWorkFiles.value.length) {
     ElMessage.warning('请先选择文件')
     return
   }
@@ -551,11 +577,11 @@ async function handleUpload() {
   try {
     const uploadOptions = {
       appliedScore: appliedScore.value,
+      retainedFileIds: retainedWorkFiles.value.map(file => file.id),
       onUploadProgress: (event) => {
         if (event.total) uploadProgress.value = Math.min(99, Math.round((event.loaded * 100) / event.total))
       }
     }
-    if (uploadIsModification.value) uploadOptions.modificationReply = modificationReply.value.trim()
     const res = await uploadFilesApi(uploadTaskId.value, fileList.value, 'work', uploadOptions)
     if (res.code === 0) {
       uploadProgress.value = 100
@@ -573,6 +599,23 @@ async function handleUpload() {
   } finally {
     uploadLoading.value = false
     setTimeout(() => { uploadProgress.value = 0 }, 500)
+  }
+}
+
+async function submitDesignerModification(payload) {
+  try {
+    const res = await completeCsModificationApi(payload)
+    if (res.code !== 0) {
+      ElMessage.error(res.msg || '提交修改失败')
+      return false
+    }
+    ElMessage.success(res.msg || '本次修改已完成')
+    detailVisible.value = false
+    await loadData()
+    return true
+  } catch (error) {
+    ElMessage.error(error.response?.data?.msg || error.message || '提交修改失败')
+    return false
   }
 }
 
@@ -692,6 +735,12 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVi
 .file-badge span { font-size: 10px; }
 .style-thumb-cell { display:inline-flex; align-items:center; gap:5px; color:var(--dd-text-secondary); font-size:11px; }
 .style-thumb-cell .el-image { width:42px; height:42px; border-radius:5px; border:1px solid var(--dd-border-light); cursor:pointer; }
+.retained-work-list { margin-bottom: 12px; border: 1px solid var(--dd-border-light); border-radius: 6px; overflow: hidden; }
+.retained-work-title { padding: 8px 10px; background: var(--dd-bg-secondary); color: var(--dd-text-regular); font-size: 12px; font-weight: 700; }
+.retained-work-file { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 5px 8px; border-top: 1px solid var(--dd-border-light); }
+.retained-work-file .el-image { width: 32px; height: 32px; flex: 0 0 auto; border-radius: 4px; }
+.retained-work-file > span { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
+.retained-work-file > small { color: var(--dd-text-muted); font-size: 11px; }
 
 .file-card {
   display: flex; align-items: center; gap: 10px;

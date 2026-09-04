@@ -84,9 +84,10 @@ describe('sidebar badge counts', () => {
       .attach('files', Buffer.from('reject me'), 'reject-me.txt')
       .expect(200);
     const reject = await request(app)
-      .post('/api/task/review')
+      .post('/api/task/request-modification')
       .set('Authorization', `Bearer ${csToken}`)
-      .send({ taskId: rejectedTaskId, action: 'reject', rejectReason: 'needs changes' });
+      .field('taskId', String(rejectedTaskId))
+      .field('note', 'needs changes');
     expect(reject.body.code).toBe(0);
 
     await request(app)

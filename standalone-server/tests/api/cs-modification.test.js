@@ -13,9 +13,15 @@ beforeAll(async () => {
   taskDao = require('../../dao/task.dao');
 });
 
-test('customer service modification records include a basic designer reply field', async () => {
+test('customer service modification records include completion metadata', async () => {
   const [columns] = await execute('PRAGMA table_info(task_reject_record)');
-  expect(columns.map(column => column.name)).toContain('designer_reply');
+  expect(columns.map(column => column.name)).toEqual(expect.arrayContaining([
+    'designer_reply',
+    'designer_id',
+    'designer_name',
+    'designer_complete_time',
+    'applied_score'
+  ]));
 });
 
 test('modification records increment and update the matching reply only', async () => {
@@ -40,9 +46,22 @@ test('modification records increment and update the matching reply only', async 
   });
 
   expect([first.rejectIndex, second.rejectIndex]).toEqual([1, 2]);
-  await taskDao.updateRejectRecordReply(conn, second.id, taskId, '基础美工已修改');
+  await taskDao.completeRejectRecord(conn, {
+    recordId: second.id,
+    taskId,
+    designerId: 9,
+    designerName: '基础美工甲',
+    reply: '基础美工已修改',
+    appliedScore: 2.5
+  });
   const records = await taskDao.getTaskRejectRecords(taskId);
   expect(records.map(record => record.designer_reply)).toEqual(['', '基础美工已修改']);
+  expect(records[1]).toEqual(expect.objectContaining({
+    designer_id: 9,
+    designer_name: '基础美工甲',
+    applied_score: 2.5
+  }));
+  expect(records[1].designer_complete_time).toBeTruthy();
 });
 
 describe('customer service modification workflow', () => {
@@ -141,7 +160,8 @@ describe('customer service modification workflow', () => {
     expect(task.reject_records[0]).toMatchObject({
       reject_index: 1,
       reject_reason: '请调整图片文字',
-      designer_reply: ''
+      designer_reply: '',
+      applied_score: 2.5
     });
 
     const repeated = await request(app)
@@ -223,6 +243,11 @@ describe('customer service modification workflow', () => {
     const task = (await detail(id)).body.data;
     expect(task.status).toBe('doing');
     expect(task.reject_records[0].designer_reply).toBe('已调整主体位置');
+    expect(task.reject_records[0].designer_id).toBe(basicId);
+    expect(task.reject_records[0].designer_name).toBe('基础美工甲');
+    expect(Number(task.reject_records[0].applied_score)).toBe(2.5);
+    expect(task.reject_records[0].designer_complete_time).toBeTruthy();
+    expect(task.score_review_status || '').toBe('');
     expect(task.reject_records[0].files).toEqual(expect.arrayContaining([
       expect.objectContaining({ file_name: '修改作品A.png', file_category: 'work' }),
       expect.objectContaining({ file_name: '修改作品B.png', file_category: 'work' })
@@ -237,6 +262,92 @@ describe('customer service modification workflow', () => {
       .attach('files', Buffer.from('duplicate work'), '重复.png');
     expect(repeated.body.code).toBe(400);
     expect((await detail(id)).body.data.reject_records[0].files).toHaveLength(2);
+  });
+
+  test('basic designer can complete a modification with text only and customer cannot pass an unfinished round', async () => {
+    const id = await createTask();
+    const modification = await request(app)
+      .post('/api/task/request-modification')
+      .set('Authorization', `Bearer ${publisherToken}`)
+      .field('taskId', String(id))
+      .field('note', '请确认文字内容');
+    expect(modification.body.code).toBe(0);
+
+    const blockedPass = await request(app)
+      .post('/api/task/review')
+      .set('Authorization', `Bearer ${publisherToken}`)
+      .send({ taskId: id, action: 'pass' });
+    expect(blockedPass.body.code).toBe(400);
+
+    const completed = await request(app)
+      .post('/api/task/complete-modification')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(id))
+      .field('rejectRecordId', String(modification.body.data.rejectRecordId))
+      .field('reply', '文字已经调整')
+      .field('appliedScore', '3')
+      .field('retainedFileIds', '[]');
+    expect(completed.body.code).toBe(0);
+
+    const task = (await detail(id)).body.data;
+    expect(task.status).toBe('doing');
+    expect(task.reject_records[0].designer_reply).toBe('文字已经调整');
+    expect(Number(task.applied_score)).toBe(3);
+    expect(task.score_review_status || '').toBe('');
+  });
+
+  test('undo keeps first work and score, and undo after a modification reopens the same round', async () => {
+    const id = await createTask({ status: 'accepted' });
+    await request(app)
+      .post('/api/task/upload-files')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(id))
+      .field('fileCategory', 'work')
+      .field('appliedScore', '2.5')
+      .attach('files', Buffer.from('first work'), '首次作品.png');
+
+    const firstUndo = await request(app)
+      .post('/api/task/undo-submit')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .send({ taskId: id });
+    expect(firstUndo.body.code).toBe(0);
+    let task = (await detail(id)).body.data;
+    expect(task.status).toBe('accepted');
+    expect(Number(task.applied_score)).toBe(2.5);
+    expect(task.files.some(file => file.file_name === '首次作品.png')).toBe(true);
+
+    await request(app)
+      .post('/api/task/upload-files')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(id))
+      .field('fileCategory', 'work')
+      .field('appliedScore', '2.5')
+      .field('retainedFileIds', JSON.stringify(task.files.map(file => file.id)));
+    const modification = await request(app)
+      .post('/api/task/request-modification')
+      .set('Authorization', `Bearer ${publisherToken}`)
+      .field('taskId', String(id))
+      .field('note', '第二轮调整');
+    await request(app)
+      .post('/api/task/complete-modification')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(id))
+      .field('rejectRecordId', String(modification.body.data.rejectRecordId))
+      .field('reply', '已完成第二轮')
+      .field('appliedScore', '3')
+      .field('retainedFileIds', '[]');
+
+    const roundUndo = await request(app)
+      .post('/api/task/undo-submit')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .send({ taskId: id });
+    expect(roundUndo.body.code).toBe(0);
+    task = (await detail(id)).body.data;
+    expect(task.status).toBe('rejected');
+    expect(task.reject_records).toHaveLength(1);
+    expect(task.reject_records[0].designer_reply).toBe('已完成第二轮');
+    expect(task.reject_records[0].designer_complete_time).toBeFalsy();
+    expect(Number(task.applied_score)).toBe(3);
   });
 
   afterAll(async () => {

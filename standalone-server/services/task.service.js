@@ -648,6 +648,7 @@ async function acceptTask(taskId, user) {
 
 async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedScore, workPath, user, options = {}) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
+  files = files || [];
   appliedScore = parseFloat(appliedScore) || 0;
   workPath = (workPath || '').trim();
   const hasWorkPathField = Object.prototype.hasOwnProperty.call(options, 'hasWorkPathField')
@@ -661,13 +662,20 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
   const rejectRecordId = options.rejectRecordId ? Number(options.rejectRecordId) : null;
   const hasModificationReply = Object.prototype.hasOwnProperty.call(options, 'modificationReply');
   const modificationReply = String(options.modificationReply || '').trim();
+  const hasRetainedFileIds = Object.prototype.hasOwnProperty.call(options, 'retainedFileIds');
+  const retainedFileIds = [...new Set((options.retainedFileIds || [])
+    .map(Number)
+    .filter(id => Number.isInteger(id) && id > 0))];
+  const isBasicRetainedSubmission = user.role === 'basic_designer'
+    && fileCategory === 'work'
+    && hasRetainedFileIds;
 
   // 运营助理允许无文件仅提交完成次数；美工允许无文件仅保存上传路径。
-  if ((!files || files.length === 0) && !isOpAssistant && !canUpdateWorkPathOnly) {
+  if ((!files || files.length === 0) && !isOpAssistant && !canUpdateWorkPathOnly && !isBasicRetainedSubmission) {
     throw new AppError(400, '请选择文件');
   }
 
-  if (!files || files.length === 0) {
+  if ((!files || files.length === 0) && !isBasicRetainedSubmission) {
     let pathOnlyUpdated = false;
     await executeTransaction(async (conn) => {
       const task = await taskDao.getTaskForUpdate(conn, taskId);
@@ -692,6 +700,7 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
     return { msg: pathOnlyUpdated ? '上传路径已保存' : '完成次数已提交，等待审核' };
   }
 
+  const removedStoredPaths = [];
   await executeTransaction(async (conn) => {
     const task = await taskDao.getTaskForUpdate(conn, taskId);
     if (!task) throw new AppError(400, '任务不存在');
@@ -751,22 +760,32 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
       );
       if (!records.length) throw new AppError(400, '驳回记录不存在');
     } else if (isCsModificationSubmission) {
-      const [records] = await conn.execute(
-        `SELECT id, designer_reply FROM task_reject_record
-         WHERE task_id = ? ORDER BY reject_index DESC, id DESC LIMIT 1`,
-        [taskId]
-      );
-      if (!records.length) throw new AppError(400, '修改记录不存在');
-      if (String(records[0].designer_reply || '').trim()) {
+      const record = await taskDao.getLatestRejectRecordForUpdate(conn, taskId);
+      if (!record) throw new AppError(400, '修改记录不存在');
+      if (rejectRecordId && Number(record.id) !== rejectRecordId) {
+        throw new AppError(409, '修改轮次已变化，请刷新后重试');
+      }
+      if (record.designer_complete_time) {
         throw new AppError(400, '本次修改已重新提交');
       }
-      activeRejectRecordId = records[0].id;
+      activeRejectRecordId = record.id;
     } else if (user.role === 'basic_designer' && task.status === 'rejected') {
       const [records] = await conn.execute(
         `SELECT id FROM task_reject_record WHERE task_id = ? ORDER BY reject_index DESC, id DESC LIMIT 1`,
         [taskId]
       );
       activeRejectRecordId = records[0]?.id || null;
+    }
+
+    if (isBasicRetainedSubmission && taskGroup === 'cs' && task.status === 'accepted') {
+      const existingFiles = await taskDao.getInitialWorkFilesForUpdate(conn, taskId);
+      const existingIds = new Set(existingFiles.map(file => Number(file.id)));
+      if (retainedFileIds.some(id => !existingIds.has(id))) {
+        throw new AppError(400, '保留的作品文件无效');
+      }
+      const removedFiles = existingFiles.filter(file => !retainedFileIds.includes(Number(file.id)));
+      await taskDao.deleteFileRecords(conn, removedFiles.map(file => Number(file.id)));
+      removedStoredPaths.push(...removedFiles.map(file => file.file_path).filter(Boolean));
     }
 
     let submitted = false;
@@ -808,7 +827,8 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
         const extraFields = { actual_quantity: actualQuantity, urge_time: null };
         if (user.role === 'basic_designer') {
           extraFields.applied_score = appliedScore > 0 ? appliedScore : 1;
-          extraFields.score_review_status = appliedScore > 1 ? 'pending' : '';
+          extraFields.score = taskGroup === 'cs' ? 1 : task.score;
+          extraFields.score_review_status = '';
           extraFields.score_review_reason = '';
           extraFields.score_review_time = null;
           extraFields.score_review_score = 0;
@@ -827,16 +847,172 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
       }
     }
 
+    if (!submitted && isBasicRetainedSubmission && taskGroup === 'cs' && task.status === 'accepted') {
+      const remainingFiles = await taskDao.getInitialWorkFilesForUpdate(conn, taskId);
+      if (!remainingFiles.length) throw new AppError(400, '请至少保留或上传一个作品文件');
+      await taskDao.updateTaskStatus(conn, taskId, 'doing', {
+        actual_quantity: actualQuantity,
+        applied_score: appliedScore > 0 ? appliedScore : 1,
+        score: 1,
+        score_review_status: '',
+        score_review_reason: '',
+        score_review_time: null,
+        score_review_score: 0,
+        urge_time: null
+      });
+      submitted = true;
+      socketEmit(`user:${task.publisher_id}`);
+      socketEmit('group:cs');
+    }
+
     if (submitted) {
       if (isCsModificationSubmission) {
-        await taskDao.updateRejectRecordReply(conn, activeRejectRecordId, taskId, modificationReply);
+        const completed = await taskDao.completeRejectRecord(conn, {
+          recordId: activeRejectRecordId,
+          taskId,
+          designerId: user.id,
+          designerName: user.realName || user.username || '',
+          reply: modificationReply,
+          appliedScore: appliedScore > 0 ? appliedScore : 1
+        });
+        if (!completed) throw new AppError(409, '本次修改状态已变化，请刷新后重试');
       }
       const { notifyTaskEvent } = require('../utils/notification');
       await notifyTaskEvent('task_submit', { ...task, id: taskId }, user);
     }
   });
 
+  for (const storedPath of removedStoredPaths) {
+    try {
+      const absolutePath = resolvePath(storedPath);
+      if (absolutePath && fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
+    } catch (_) {}
+  }
+
   return { msg: saveOnly ? `已保存(${files.length}个文件)，请确认后提交` : `上传成功(${files.length}个文件)` };
+}
+
+async function completeCsModification(taskId, recordId, reply, appliedScore, retainedFileIds, files, user) {
+  if (!taskId || !recordId) throw new AppError(400, '任务或修改记录ID不能为空');
+  const normalizedReply = String(reply || '').trim();
+  const normalizedScore = Number(appliedScore);
+  if (!Number.isFinite(normalizedScore) || normalizedScore < 1 || normalizedScore > 9999) {
+    throw new AppError(400, '申请分数必须在1到9999之间');
+  }
+  const retainedIds = [...new Set((retainedFileIds || [])
+    .map(Number)
+    .filter(id => Number.isInteger(id) && id > 0))];
+  files = files || [];
+
+  return withLock(`review:${taskId}`, async () => {
+    const storedPaths = [];
+    const removedPaths = [];
+    let taskBrief = null;
+    try {
+      await executeTransaction(async (conn) => {
+        const task = await taskDao.getTaskForUpdate(conn, taskId);
+        if (!task) throw new AppError(400, '任务不存在');
+        if ((task.task_group || 'design') !== 'cs') {
+          throw new AppError(400, '仅客服基础美工任务支持修改提交');
+        }
+        if (user.role !== 'basic_designer' || Number(task.designer_id) !== Number(user.id)) {
+          throw new AppError(403, '无权处理此任务的修改');
+        }
+        if (task.status !== 'rejected') {
+          throw new AppError(400, '当前任务不在修改处理状态');
+        }
+
+        const latestRecord = await taskDao.getLatestRejectRecordForUpdate(conn, taskId);
+        if (!latestRecord || Number(latestRecord.id) !== Number(recordId)) {
+          throw new AppError(409, '修改轮次已变化，请刷新后重试');
+        }
+        if (latestRecord.designer_complete_time) {
+          throw new AppError(409, '本次修改已经完成');
+        }
+
+        const existingFiles = await taskDao.getRecordWorkFilesForUpdate(conn, taskId, recordId);
+        const existingIds = new Set(existingFiles.map(file => Number(file.id)));
+        if (retainedIds.some(id => !existingIds.has(id))) {
+          throw new AppError(400, '保留的修改作品文件无效');
+        }
+        if (!normalizedReply && retainedIds.length === 0 && files.length === 0) {
+          throw new AppError(400, '请填写处理结果或上传作品');
+        }
+
+        const removedFiles = existingFiles.filter(file => !retainedIds.includes(Number(file.id)));
+        await taskDao.deleteFileRecords(conn, removedFiles.map(file => Number(file.id)));
+        removedPaths.push(...removedFiles.map(file => file.file_path).filter(Boolean));
+
+        const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+        for (const file of files) {
+          file.originalname = fixFilenameEncoding(file.originalname);
+          const ext = path.extname(file.originalname).toLowerCase();
+          const fileType = IMAGE_EXTS.includes(ext) ? 'image' : 'attachment';
+          let filePath;
+          if (fileType === 'image') {
+            filePath = saveImage('cs', dateStr, path.basename(file.path), fs.readFileSync(file.path));
+          } else {
+            filePath = saveAttachment('cs', dateStr, path.basename(file.path), file.path);
+          }
+          storedPaths.push(filePath);
+          try { fs.unlinkSync(file.path); } catch (_) {}
+          await taskDao.insertFileRecord(conn, {
+            taskId,
+            fileName: file.originalname,
+            filePath,
+            fileSize: file.size,
+            fileType,
+            mimeType: file.mimetype || '',
+            uploaderId: user.id,
+            fileCategory: 'work',
+            rejectRecordId: recordId
+          });
+        }
+
+        const completed = await taskDao.completeRejectRecord(conn, {
+          recordId,
+          taskId,
+          designerId: user.id,
+          designerName: user.realName || user.username || '',
+          reply: normalizedReply,
+          appliedScore: normalizedScore
+        });
+        if (!completed) throw new AppError(409, '本次修改状态已变化，请刷新后重试');
+
+        await taskDao.updateTaskStatus(conn, taskId, 'doing', {
+          applied_score: normalizedScore,
+          score: 1,
+          score_review_status: '',
+          score_review_reason: '',
+          score_review_time: null,
+          score_review_score: 0,
+          urge_time: null
+        });
+        taskBrief = { ...task, id: taskId };
+      });
+    } catch (error) {
+      for (const storedPath of storedPaths) {
+        try {
+          const absolutePath = resolvePath(storedPath);
+          if (absolutePath && fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
+        } catch (_) {}
+      }
+      throw error;
+    }
+
+    for (const removedPath of removedPaths) {
+      try {
+        const absolutePath = resolvePath(removedPath);
+        if (absolutePath && fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
+      } catch (_) {}
+    }
+    if (taskBrief) {
+      await notifyTaskEvent('task_submit', taskBrief, user);
+      socketEmit(`user:${taskBrief.publisher_id}`);
+      socketEmit('group:cs');
+    }
+    return { msg: '本次修改已完成' };
+  });
 }
 
 async function requestCsModification(taskId, note, files, user) {
@@ -863,12 +1039,16 @@ async function requestCsModification(taskId, note, files, user) {
         if (task.status !== 'doing') {
           throw new AppError(400, '当前任务不在待审核状态');
         }
+        if (await taskDao.countIncompleteRejectRecords(conn, taskId)) {
+          throw new AppError(409, '当前仍有待处理的修改，请刷新后重试');
+        }
 
         rejectRecord = await taskDao.insertRejectRecord(conn, {
           taskId,
           reviewerId: user.id,
           reviewerName: user.realName || user.username || '',
-          reason: normalizedNote
+          reason: normalizedNote,
+          appliedScore: Number(task.applied_score) > 0 ? Number(task.applied_score) : 1
         });
 
         for (const file of files || []) {
@@ -1018,6 +1198,7 @@ async function reviewTask(taskId, action, rejectReason, user) {
 
   return withLock(`review:${taskId}`, async () => {
     let rejectRecord = null;
+    let alreadyFinished = false;
     await executeTransaction(async (conn) => {
       const task = await taskDao.getTaskForUpdate(conn, taskId);
       if (!task) throw new AppError(400, '任务不存在');
@@ -1026,11 +1207,29 @@ async function reviewTask(taskId, action, rejectReason, user) {
       if ((user.role === 'operator' || user.role === 'cs_agent') && Number(task.publisher_id) !== Number(user.id)) {
         throw new AppError(403, '无权审核他人发布的任务');
       }
+      if (task.status === 'finished' && action === 'pass') {
+        alreadyFinished = true;
+        return;
+      }
+      if (task.status !== 'doing') {
+        throw new AppError(400, '当前任务不在待审核状态');
+      }
+      if (task.task_group === 'cs' && action === 'reject') {
+        throw new AppError(400, '客服基础美工任务请使用新增修改');
+      }
 
       if (action === 'pass') {
         const extra = { finish_time: new Date(), urge_time: null };
-        if (task.task_group === 'cs' && Number(task.applied_score) > 1 && task.score_review_status === 'approved') {
-          extra.score = Number(task.score_review_score || task.applied_score) || 1;
+        if (task.task_group === 'cs') {
+          if (await taskDao.countIncompleteRejectRecords(conn, taskId)) {
+            throw new AppError(400, '当前仍有待处理的修改，不能通过');
+          }
+          const finalScore = Number(task.applied_score) > 0 ? Number(task.applied_score) : 1;
+          extra.score = 1;
+          extra.score_review_status = finalScore > 1 ? 'pending' : '';
+          extra.score_review_reason = '';
+          extra.score_review_time = null;
+          extra.score_review_score = 0;
         }
         await taskDao.updateTaskStatus(conn, taskId, 'finished', extra);
       } else {
@@ -1049,6 +1248,8 @@ async function reviewTask(taskId, action, rejectReason, user) {
         await taskDao.updateTaskStatus(conn, taskId, 'rejected', extra);
       }
     });
+
+    if (alreadyFinished) return { msg: '任务已完成' };
 
     const { notifyTaskEvent } = require('../utils/notification');
     const brief = await taskDao.getTaskBrief(taskId);
@@ -1085,15 +1286,35 @@ async function batchReview(taskIds, user) {
     const validIds = rows.filter(r => r.status === 'doing').map(r => r.id);
     if (validIds.length === 0) throw new AppError(400, '所选任务均不可审核');
 
+    const csIds = rows
+      .filter(row => row.status === 'doing' && row.task_group === 'cs')
+      .map(row => Number(row.id));
+    if (csIds.length) {
+      const csPlaceholders = csIds.map(() => '?').join(',');
+      const [pendingRounds] = await conn.execute(
+        `SELECT DISTINCT task_id FROM task_reject_record
+         WHERE task_id IN (${csPlaceholders}) AND designer_complete_time IS NULL`,
+        csIds
+      );
+      if (pendingRounds.length) throw new AppError(400, '所选任务中存在待处理的修改，不能通过');
+    }
+
     const vPlaceholders = validIds.map(() => '?').join(',');
     await conn.execute(
       `UPDATE task_info
        SET status = 'finished',
             score = CASE
-              WHEN task_group = 'cs' AND COALESCE(applied_score, 0) > 1 AND score_review_status = 'approved'
-                THEN CASE WHEN COALESCE(score_review_score, 0) > 0 THEN score_review_score ELSE applied_score END
+              WHEN task_group = 'cs' THEN 1
               ELSE score
             END,
+           score_review_status = CASE
+             WHEN task_group = 'cs' AND COALESCE(applied_score, 0) > 1 THEN 'pending'
+             WHEN task_group = 'cs' THEN ''
+             ELSE score_review_status
+           END,
+           score_review_reason = CASE WHEN task_group = 'cs' THEN '' ELSE score_review_reason END,
+           score_review_time = CASE WHEN task_group = 'cs' THEN NULL ELSE score_review_time END,
+           score_review_score = CASE WHEN task_group = 'cs' THEN 0 ELSE score_review_score END,
            finish_time = NOW(),
            urge_time = NULL,
            update_time = NOW()
@@ -1131,6 +1352,7 @@ async function withdrawTask(taskId, user) {
 async function undoSubmit(taskId, user) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
 
+  let reopenedModification = false;
   await executeTransaction(async (conn) => {
     const task = await taskDao.getTaskForUpdate(conn, taskId);
     if (!task) throw new AppError(400, '任务不存在');
@@ -1138,18 +1360,25 @@ async function undoSubmit(taskId, user) {
     if (task.status !== 'doing') throw new AppError(400, '仅已提交待审核状态可撤回');
 
     const extra = {};
+    let targetStatus = 'accepted';
     if (task.task_group === 'cs') {
-      extra.applied_score = 0;
       extra.score_review_status = '';
       extra.score_review_reason = '';
       extra.score_review_time = null;
       extra.score_review_score = 0;
+      const latestRecord = await taskDao.getLatestRejectRecordForUpdate(conn, taskId);
+      if (latestRecord?.designer_complete_time) {
+        const reopened = await taskDao.reopenRejectRecord(conn, latestRecord.id, taskId);
+        if (!reopened) throw new AppError(409, '修改轮次状态已变化，请刷新后重试');
+        targetStatus = 'rejected';
+        reopenedModification = true;
+      }
     }
-    await taskDao.updateTaskStatus(conn, taskId, 'accepted', extra);
+    await taskDao.updateTaskStatus(conn, taskId, targetStatus, extra);
     socketEmit(`user:${task.publisher_id}`);
   });
 
-  return { msg: '已撤回提交，可重新上传' };
+  return { msg: reopenedModification ? '已撤回，可继续修改本轮内容' : '已撤回提交，可重新上传' };
 }
 
 // ==================== 统计 ====================
@@ -1627,7 +1856,7 @@ async function getAdminDetailStats(user = null) {
 module.exports = {
   createTask, snapshotMaterialImages, getTaskDetail, deleteTask, updateTask, reopenFinishedCsTask, updateCsTaskNo, batchDelete, batchReassign,
   getMyPublished, getMyAccepted, getTaskHall, getAllTasks, getAllTasksForUser, searchTasks,
-  acceptTask, uploadFiles, transferTask, finishTask, reviewTask, requestCsModification, batchReview,
+  acceptTask, uploadFiles, completeCsModification, transferTask, finishTask, reviewTask, requestCsModification, batchReview,
   withdrawTask, undoSubmit,
   getMyStats, getDashboardStats, getAdminDetailStats
 };

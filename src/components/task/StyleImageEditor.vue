@@ -92,9 +92,44 @@
               <span>去底容差</span>
               <el-slider v-model="backgroundTolerance" :min="0" :max="255" :show-input="true" />
             </label>
+            <label class="property-column">
+              <span>边缘净化</span>
+              <el-slider v-model="edgeCleanup" :min="0" :max="100" :show-input="true" />
+            </label>
             <div class="tool-row">
-              <el-button :loading="processingBackground" @click="removeImageBackground">一键透明底</el-button>
+              <el-button :loading="processingImage" @click="removeImageBackground">一键透明底</el-button>
               <el-button @click="restoreUploadedImage">恢复图片</el-button>
+            </div>
+
+            <div class="image-color-tools">
+              <span class="property-title">图片换色</span>
+              <el-radio-group v-model="recolorMode" size="small">
+                <el-radio-button value="solid">整体单色</el-radio-button>
+                <el-radio-button value="matching">指定颜色</el-radio-button>
+              </el-radio-group>
+              <div v-if="recolorMode === 'matching'" class="property-row">
+                <span>原颜色</span>
+                <div class="color-pick-row">
+                  <span class="color-swatch" :style="{ backgroundColor: sourceColor }" />
+                  <el-button
+                    size="small"
+                    :type="eyedropperActive ? 'primary' : undefined"
+                    @click="toggleEyedropper"
+                  >{{ eyedropperActive ? '点击图片取色' : '吸管取色' }}</el-button>
+                </div>
+              </div>
+              <label class="property-row">
+                <span>目标颜色</span>
+                <el-color-picker v-model="targetColor" />
+              </label>
+              <label v-if="recolorMode === 'matching'" class="property-column">
+                <span>颜色容差</span>
+                <el-slider v-model="colorTolerance" :min="1" :max="255" :show-input="true" />
+              </label>
+              <div class="tool-row">
+                <el-button type="primary" :loading="processingImage" @click="applyImageRecolor">应用换色</el-button>
+                <el-button :disabled="!canUndo" @click="undo">撤销换色</el-button>
+              </div>
             </div>
           </template>
 
@@ -170,9 +205,15 @@ import {
   Point,
   Polygon,
   Rect,
-  Triangle
+  Triangle,
+  util
 } from 'fabric'
-import { removeConnectedBackground } from '@/utils/background-removal'
+import {
+  recolorMatching,
+  recolorSolid,
+  removeBackground,
+  samplePixel
+} from '@/utils/background-removal'
 
 const props = defineProps({
   modelValue: { type: Boolean, default: false },
@@ -198,7 +239,7 @@ const viewportRef = ref(null)
 const overlayInputRef = ref(null)
 const loading = ref(false)
 const saving = ref(false)
-const processingBackground = ref(false)
+const processingImage = ref(false)
 const zoom = ref(1)
 const shapeTool = ref('')
 const selectedObject = shallowRef(null)
@@ -209,6 +250,12 @@ const fontSize = ref(44)
 const textColor = ref('#111111')
 const textBackground = ref('rgba(255,255,255,0)')
 const backgroundTolerance = ref(42)
+const edgeCleanup = ref(55)
+const recolorMode = ref('solid')
+const sourceColor = ref('#000000')
+const targetColor = ref('#ff3b30')
+const colorTolerance = ref(36)
+const eyedropperActive = ref(false)
 const canUndo = ref(false)
 const canRedo = ref(false)
 const panMode = ref(false)
@@ -253,16 +300,6 @@ function readFileAsDataUrl(file) {
     reader.onload = () => resolve(String(reader.result || ''))
     reader.onerror = () => reject(reader.error || new Error('图片读取失败'))
     reader.readAsDataURL(file)
-  })
-}
-
-function loadNativeImage(source) {
-  return new Promise((resolve, reject) => {
-    const image = new Image()
-    image.onload = () => resolve(image)
-    image.onerror = () => reject(new Error('图片读取失败'))
-    if (!String(source).startsWith('data:') && !String(source).startsWith('blob:')) image.crossOrigin = 'anonymous'
-    image.src = source
   })
 }
 
@@ -351,6 +388,7 @@ function bindCanvasEvents() {
   canvas.on('object:modified', scheduleHistory)
   canvas.on('object:removed', scheduleHistory)
   canvas.on('text:changed', scheduleHistory)
+  canvas.on('mouse:down', handleEyedropperPick)
   canvas.on('mouse:wheel', event => {
     event.e.preventDefault()
     event.e.stopPropagation()
@@ -425,6 +463,7 @@ function stopPanning(event) {
 
 function setPanMode(enabled) {
   panMode.value = Boolean(enabled)
+  eyedropperActive.value = false
   isPanning = false
   if (!canvas) return
   canvas.selection = !panMode.value
@@ -467,7 +506,11 @@ function resetViewport() {
 function syncSelectedObject(object) {
   selectedObject.value = object?.nexusType === 'base-image' ? null : (object || null)
   const selected = selectedObject.value
-  if (!selected) return
+  if (!selected) {
+    eyedropperActive.value = false
+    return
+  }
+  if (selected.nexusType !== 'uploaded-image') eyedropperActive.value = false
 
   strokeColor.value = selected.nexusType === 'shape'
     ? (selected.stroke || selected.getObjects?.()[0]?.stroke || '#ff3b30')
@@ -634,28 +677,93 @@ function clearTextBackground() {
   applyTextStyle()
 }
 
-async function removeImageBackground() {
+function imageDataForObject(object) {
+  const element = object?.getElement?.()
+  if (!element) throw new Error('当前图片图层不可用')
+  const width = Number(element.naturalWidth || element.videoWidth || element.width) || 0
+  const height = Number(element.naturalHeight || element.videoHeight || element.height) || 0
+  if (!width || !height) throw new Error('当前图片尺寸无效')
+  const workCanvas = document.createElement('canvas')
+  workCanvas.width = width
+  workCanvas.height = height
+  const context = workCanvas.getContext('2d', { willReadFrequently: true })
+  context.drawImage(element, 0, 0, width, height)
+  return { workCanvas, context, imageData: context.getImageData(0, 0, width, height) }
+}
+
+async function transformUploadedImage(transform, failureMessage) {
   const object = selectedObject.value
-  if (!object?.uploadedLayer || !object.originalDataUrl) return
-  processingBackground.value = true
+  if (!object?.uploadedLayer) return
+  processingImage.value = true
   try {
-    const image = await loadNativeImage(object.originalDataUrl)
-    const workCanvas = document.createElement('canvas')
-    workCanvas.width = image.naturalWidth || image.width
-    workCanvas.height = image.naturalHeight || image.height
-    const context = workCanvas.getContext('2d', { willReadFrequently: true })
-    context.drawImage(image, 0, 0)
-    const source = context.getImageData(0, 0, workCanvas.width, workCanvas.height)
-    context.putImageData(removeConnectedBackground(source, backgroundTolerance.value), 0, 0)
+    const { workCanvas, context, imageData } = imageDataForObject(object)
+    context.putImageData(transform(imageData), 0, 0)
     await object.setSrc(workCanvas.toDataURL('image/png'))
     object.setCoords()
     canvas.requestRenderAll()
     captureHistory()
   } catch (error) {
-    console.error('[StyleEditor] 去底失败:', error)
-    ElMessage.error(error.message || '透明底处理失败')
+    console.error(`[StyleEditor] ${failureMessage}:`, error)
+    ElMessage.error(error.message || failureMessage)
   } finally {
-    processingBackground.value = false
+    processingImage.value = false
+  }
+}
+
+async function removeImageBackground() {
+  await transformUploadedImage(
+    imageData => removeBackground(imageData, {
+      tolerance: backgroundTolerance.value,
+      edgeCleanup: edgeCleanup.value
+    }),
+    '透明底处理失败'
+  )
+}
+
+async function applyImageRecolor() {
+  if (recolorMode.value === 'matching' && !sourceColor.value) {
+    ElMessage.warning('请先使用吸管选择原颜色')
+    return
+  }
+  await transformUploadedImage(
+    imageData => recolorMode.value === 'solid'
+      ? recolorSolid(imageData, targetColor.value)
+      : recolorMatching(imageData, sourceColor.value, targetColor.value, colorTolerance.value),
+    '图片换色失败'
+  )
+}
+
+function colorToHex(color) {
+  return `#${[color.r, color.g, color.b]
+    .map(channel => Number(channel).toString(16).padStart(2, '0'))
+    .join('')}`
+}
+
+function toggleEyedropper() {
+  eyedropperActive.value = !eyedropperActive.value
+  if (canvas) {
+    canvas.defaultCursor = eyedropperActive.value ? 'crosshair' : 'default'
+    canvas.hoverCursor = eyedropperActive.value ? 'crosshair' : 'move'
+    canvas.requestRenderAll()
+  }
+}
+
+function handleEyedropperPick(event) {
+  const object = selectedObject.value
+  if (!eyedropperActive.value || !object?.uploadedLayer || !canvas) return
+  try {
+    const scenePoint = canvas.getScenePoint(event.e)
+    const localPoint = util.transformPoint(scenePoint, util.invertTransform(object.calcTransformMatrix()))
+    const { imageData } = imageDataForObject(object)
+    const pixelX = ((localPoint.x / Math.max(1, Number(object.width))) + 0.5) * imageData.width
+    const pixelY = ((localPoint.y / Math.max(1, Number(object.height))) + 0.5) * imageData.height
+    sourceColor.value = colorToHex(samplePixel(imageData, pixelX, pixelY))
+    eyedropperActive.value = false
+    canvas.defaultCursor = 'default'
+    canvas.hoverCursor = 'move'
+    canvas.requestRenderAll()
+  } catch (error) {
+    ElMessage.error(error.message || '取色失败')
   }
 }
 
@@ -847,6 +955,7 @@ function disposeEditor() {
   zoom.value = 1
   viewportX.value = 0
   viewportY.value = 0
+  eyedropperActive.value = false
 }
 
 function handleResize() {
@@ -933,6 +1042,28 @@ onBeforeUnmount(() => {
 .property-row :deep(.el-input-number) { width: 132px; }
 .property-column :deep(.el-slider) { margin: 0 10px; width: calc(100% - 20px); }
 .color-with-clear { display: flex; align-items: center; gap: 4px; }
+.image-color-tools {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin-top: 16px;
+  padding-top: 14px;
+  border-top: 1px solid var(--el-border-color-lighter);
+}
+.property-title {
+  color: var(--el-text-color-primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+.color-pick-row { display: flex; align-items: center; gap: 8px; }
+.color-swatch {
+  width: 26px;
+  height: 26px;
+  flex: 0 0 auto;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 2px var(--el-bg-color);
+}
 .layer-actions { display: flex; gap: 8px; margin-top: 16px; }
 .layer-actions .el-button + .el-button { margin-left: 0; }
 .style-editor-footer { display: flex; align-items: center; justify-content: space-between; gap: 16px; }

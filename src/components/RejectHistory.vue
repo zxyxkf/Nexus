@@ -11,8 +11,8 @@
           <div class="modification-record__head">
             <span>第 {{ record.reject_index || record.rejectIndex || index + 1 }} 次修改</span>
             <small>{{ formatTime(record.create_time) }}</small>
-            <el-tag :type="isResubmitted(record) ? 'success' : 'warning'" size="small" effect="plain">
-              {{ isResubmitted(record) ? '已重新提交' : '等待基础美工修改' }}
+            <el-tag :type="isResubmitted(record, index) ? 'success' : 'warning'" size="small" effect="plain">
+              {{ isResubmitted(record, index) ? '已重新提交' : '等待基础美工修改' }}
             </el-tag>
           </div>
         </template>
@@ -46,7 +46,8 @@ import { getFileUrl, saveFileToDisk, setupFileDrag } from '@/api'
 import { formatFileSize } from '@/utils/format'
 
 const props = defineProps({
-  records: { type: Array, default: () => [] }
+  records: { type: Array, default: () => [] },
+  taskStatus: { type: String, default: '' }
 })
 
 const records = computed(() => props.records || [])
@@ -73,7 +74,9 @@ function designerFiles(record) {
   return (record.files || []).filter(file => file.file_category === 'work')
 }
 
-function isResubmitted(record) {
+function isResubmitted(record, index) {
+  if (record.designer_complete_time) return true
+  if (props.taskStatus === 'rejected' && index === records.value.length - 1) return false
   return Boolean(String(record.designer_reply || '').trim() || designerFiles(record).length)
 }
 

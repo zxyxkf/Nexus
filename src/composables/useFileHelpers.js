@@ -28,17 +28,29 @@ export function useFileHelpers() {
 
   function getWorkFiles(files) {
     if (!files || !files.length) return []
-    return files.filter(isCurrentWorkFile)
+    return files
+      .map((file, index) => ({ file, index }))
+      .filter(item => isCurrentWorkFile(item.file))
+      .sort((left, right) => {
+        const leftIsModification = Number(left.file.reject_record_id) > 0
+        const rightIsModification = Number(right.file.reject_record_id) > 0
+        if (leftIsModification !== rightIsModification) return leftIsModification ? -1 : 1
+        if (leftIsModification) {
+          const leftRound = Number(left.file.reject_index) || Number(left.file.reject_record_id) || 0
+          const rightRound = Number(right.file.reject_index) || Number(right.file.reject_record_id) || 0
+          if (leftRound !== rightRound) return rightRound - leftRound
+        }
+        return left.index - right.index
+      })
+      .map(item => item.file)
   }
 
   function getFirstImage(files) {
-    if (!files || !files.length) return null
-    return files.find(f => isCurrentWorkFile(f) && f.file_type === 'image') || null
+    return getWorkFiles(files).find(file => file.file_type === 'image') || null
   }
 
   function getImageSrcList(files) {
-    if (!files) return []
-    return files.filter(f => isCurrentWorkFile(f) && f.file_type === 'image').map(f => getFileUrl(f))
+    return getWorkFiles(files).filter(file => file.file_type === 'image').map(file => getFileUrl(file))
   }
 
   function getRefImageSrcList(files) {
