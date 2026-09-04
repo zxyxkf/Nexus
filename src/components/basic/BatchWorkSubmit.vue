@@ -47,19 +47,21 @@
           <article v-for="group in state.groups" :key="group.taskId" class="batch-task-group">
             <div class="batch-task-head">
               <div class="batch-task-title">
-                <strong>{{ group.taskNo }}</strong>
-                <span>{{ group.title || group.wangwangId || '客服任务' }}</span>
+                <el-button class="batch-task-number" link type="primary" @click="openDetail(group)">
+                  {{ group.taskNo }}
+                </el-button>
+                <span>发布人：{{ group.publisherName || '-' }}</span>
               </div>
               <label class="batch-score-field">
                 <span>申请分值</span>
                 <el-input-number
-                  :model-value="scoreFor(group.taskId)"
-                  :min="0.1"
+                  v-model="scoreByTaskId[group.taskId]"
+                  :min="1"
                   :max="9999"
                   :precision="1"
                   :step="0.5"
                   controls-position="right"
-                  @change="value => setScore(group.taskId, value)"
+                  @change="value => normalizeScore(group.taskId, value)"
                 />
               </label>
             </div>
@@ -114,6 +116,14 @@
       </div>
     </div>
   </el-popover>
+
+  <TaskDetail
+    :visible="detailVisible"
+    :task="currentTask"
+    task-group="cs"
+    detail-context="cs-assignee"
+    @close="closeDetail"
+  />
 </template>
 
 <script setup>
@@ -122,14 +132,21 @@ import { ElMessage } from 'element-plus'
 import { CircleCheck, CircleClose, Delete, Loading, Picture, UploadFilled, Warning } from '@element-plus/icons-vue'
 import { resolveBatchSubmitApi, uploadFilesApi } from '@/api'
 import { useConfig } from '@/composables/useConfig'
+import { useTaskDetail } from '@/composables/useTaskDetail'
+import TaskDetail from '@/components/TaskDetail.vue'
 
 const emit = defineEmits(['submitted'])
 const { ensureLoaded, getInt } = useConfig()
 const uploadRef = ref(null)
 const fileByClientId = new Map()
-const scoreByTaskId = new Map()
+const scoreByTaskId = reactive({})
 let resolveTimer = null
 let resolveVersion = 0
+
+const { detailVisible, currentTask, openDetail, closeDetail } = useTaskDetail({
+  getTaskId: group => group?.taskId,
+  onError: error => console.error('[BatchWorkSubmit] 加载任务详情失败:', error)
+})
 
 const state = reactive({
   visible: false,
@@ -205,7 +222,8 @@ async function resolveFiles() {
     }
     const groups = response.data?.groups || []
     groups.forEach(group => {
-      if (!scoreByTaskId.has(Number(group.taskId))) scoreByTaskId.set(Number(group.taskId), 1)
+      const taskId = Number(group.taskId)
+      if (!Object.prototype.hasOwnProperty.call(scoreByTaskId, taskId)) scoreByTaskId[taskId] = 1
     })
     state.groups = groups
     state.unresolved = response.data?.unresolved || []
@@ -217,12 +235,12 @@ async function resolveFiles() {
 }
 
 function scoreFor(taskId) {
-  return scoreByTaskId.get(Number(taskId)) ?? 1
+  return scoreByTaskId[Number(taskId)] ?? 1
 }
 
-function setScore(taskId, value) {
+function normalizeScore(taskId, value) {
   const score = Number(value)
-  scoreByTaskId.set(Number(taskId), Number.isFinite(score) && score > 0 ? score : 1)
+  scoreByTaskId[Number(taskId)] = Number.isFinite(score) && score >= 1 ? score : 1
 }
 
 function removeFile(clientId) {
@@ -235,7 +253,7 @@ function clearAll() {
   clearTimeout(resolveTimer)
   resolveVersion += 1
   fileByClientId.clear()
-  scoreByTaskId.clear()
+  Object.keys(scoreByTaskId).forEach(taskId => delete scoreByTaskId[taskId])
   uploadRef.value?.clearFiles()
   state.files = []
   state.groups = []
@@ -338,7 +356,7 @@ onBeforeUnmount(() => {
 .batch-task-group { margin-bottom: 10px; padding: 12px; border: 1px solid var(--el-border-color-lighter); border-radius: 6px; background: var(--el-fill-color-blank); }
 .batch-task-head { justify-content: space-between; gap: 16px; margin-bottom: 8px; }
 .batch-task-title { min-width: 0; display: flex; flex-direction: column; gap: 3px; }
-.batch-task-title strong { font-size: 13px; }
+.batch-task-number { align-self: flex-start; height: auto; padding: 0; font-size: 13px; font-weight: 700; }
 .batch-task-title span { overflow: hidden; color: var(--el-text-color-secondary); font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .batch-score-field { display: flex; align-items: center; gap: 8px; flex: 0 0 auto; color: var(--el-text-color-regular); font-size: 12px; }
 .batch-score-field :deep(.el-input-number) { width: 120px; }

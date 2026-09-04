@@ -31,6 +31,7 @@ function publicTask(task) {
     taskNo: task.task_no,
     title: task.title || '',
     wangwangId: task.wangwang_id || '',
+    publisherName: task.publisher_name || '',
     status: task.status
   };
 }
@@ -104,7 +105,7 @@ async function resolveBatchSubmission(files, user) {
   if (files.length > 500) throw new AppError(400, '单次最多匹配500个文件');
 
   const [tasks] = await execute(
-    `SELECT id, task_no, title, wangwang_id, status, task_group, designer_id
+    `SELECT id, task_no, title, wangwang_id, publisher_name, status, task_group, designer_id
      FROM task_info
      WHERE designer_id = ? AND task_group = 'cs' AND status IN ('accepted', 'rejected')
      ORDER BY id ASC`,

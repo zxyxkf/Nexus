@@ -543,6 +543,36 @@ test('batch work submit groups files by task for a basic designer', async ({ pag
   await expect.poll(async () => scoreInputs.evaluateAll(inputs => inputs.map(input => Number(input.value)))).toEqual([1, 1])
 })
 
+test('batch submission keeps edited score and opens matched task details', async ({ page }) => {
+  await loginAs(page, users.basic)
+  await page.goto('/#/basic/tasks')
+  await page.getByRole('button', { name: '批量提交', exact: true }).click()
+
+  const uploadInput = page.locator('.batch-work-submit input[type="file"]')
+  await uploadInput.setInputFiles([
+    { name: 'C202609030001_主图.png', mimeType: 'image/png', buffer: Buffer.from('image-a') }
+  ])
+
+  const panel = page.locator('.batch-work-submit')
+  await expect(panel.getByText('发布人：客服甲', { exact: true })).toBeVisible()
+  const taskButton = panel.getByRole('button', { name: 'C202609030001', exact: true })
+  await taskButton.click()
+  const overlay = page.locator('.task-detail-overlay')
+  await expect(overlay).toBeVisible()
+  await expect(overlay.getByText('客服A', { exact: true })).toBeVisible()
+  await overlay.getByRole('button', { name: '关闭', exact: true }).click()
+  await expect(panel).toBeVisible()
+
+  const scoreInput = panel.locator('.batch-score-field input')
+  await expect(scoreInput).toHaveAttribute('aria-valuemin', '1')
+  await scoreInput.fill('2.5')
+  await scoreInput.press('Enter')
+  await uploadInput.setInputFiles([
+    { name: 'C202609030001_详情.png', mimeType: 'image/png', buffer: Buffer.from('image-b') }
+  ])
+  await expect.poll(() => scoreInput.inputValue()).toBe('2.5')
+})
+
 for (const pageCase of pageCases) {
   test(`${pageCase.name} keeps current visible feature contract`, async ({ page }) => {
     await loginAs(page, pageCase.user)
@@ -1538,9 +1568,10 @@ async function mockApis(page) {
       const groups = descriptors.map((file, index) => {
         const taskNo = file.name.match(/C\d{12}/)?.[0] || `C20260903${String(index + 1).padStart(4, '0')}`
         return {
-          taskId: 900 + index,
+          taskId: index === 0 ? 202 : 900 + index,
           taskNo,
           title: `批量任务${index + 1}`,
+          publisherName: '客服甲',
           wangwangId: `batch-${index + 1}`,
           status: 'accepted',
           files: [{ ...file, matchedBy: 'task_no' }]

@@ -16,9 +16,22 @@ function task(id, taskNo, wangwangId, extra = {}) {
     status: 'accepted',
     task_group: 'cs',
     designer_id: 9,
+    publisher_name: `客服${id}`,
     ...extra
   };
 }
+
+test('matched task includes publisher name for the batch submission UI', () => {
+  const result = resolveBatchFiles([file('C202609030001_主图.png')], [
+    task(1, 'C202609030001', '旺旺甲', { publisher_name: '客服甲' })
+  ]);
+
+  expect(result.groups[0]).toMatchObject({
+    taskId: 1,
+    taskNo: 'C202609030001',
+    publisherName: '客服甲'
+  });
+});
 
 test('full task number wins even when filename also contains a wangwang id', () => {
   const tasks = [task(1, 'C202609030001', '旺旺甲'), task(2, 'C202609030002', '旺旺乙')];
