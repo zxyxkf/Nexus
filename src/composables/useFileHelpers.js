@@ -13,7 +13,8 @@ export function useFileHelpers() {
     return file &&
       file.file_category !== 'reference' &&
       file.file_category !== 'reject' &&
-      file.file_category !== 'style'
+      file.file_category !== 'style' &&
+      file.file_category !== 'original'
   }
 
   function getRefImages(files) {
@@ -49,6 +50,34 @@ export function useFileHelpers() {
     return getWorkFiles(files).find(file => file.file_type === 'image') || null
   }
 
+  function getInitialWorkFiles(files) {
+    return (files || []).filter(file => file.file_category === 'work' && !Number(file.reject_record_id))
+  }
+
+  function getEffectFiles(files) {
+    const modifications = (files || [])
+      .filter(file => file.file_category === 'work' && Number(file.reject_record_id) > 0)
+      .sort((left, right) => {
+        const leftRound = Number(left.reject_index) || Number(left.reject_record_id) || 0
+        const rightRound = Number(right.reject_index) || Number(right.reject_record_id) || 0
+        return rightRound - leftRound || Number(left.id || 0) - Number(right.id || 0)
+      })
+    if (!modifications.length) return getInitialWorkFiles(files)
+    const latestRound = Number(modifications[0].reject_index)
+      || Number(modifications[0].reject_record_id)
+      || 0
+    return modifications.filter(file => (
+      (Number(file.reject_index) || Number(file.reject_record_id) || 0) === latestRound
+    ))
+  }
+
+  function getOriginalFiles(files) {
+    return (files || [])
+      .filter(file => file.file_category === 'original')
+      .sort((left, right) => new Date(left.create_time || 0) - new Date(right.create_time || 0)
+        || Number(left.id || 0) - Number(right.id || 0))
+  }
+
   function getImageSrcList(files) {
     return getWorkFiles(files).filter(file => file.file_type === 'image').map(file => getFileUrl(file))
   }
@@ -71,5 +100,17 @@ export function useFileHelpers() {
     saveFileToDisk(file)
   }
 
-  return { getRefImages, getRefAttachments, getWorkFiles, getFirstImage, getImageSrcList, getRefImageSrcList, getImagePreviewIndex, downloadFile }
+  return {
+    getRefImages,
+    getRefAttachments,
+    getWorkFiles,
+    getInitialWorkFiles,
+    getEffectFiles,
+    getOriginalFiles,
+    getFirstImage,
+    getImageSrcList,
+    getRefImageSrcList,
+    getImagePreviewIndex,
+    downloadFile
+  }
 }

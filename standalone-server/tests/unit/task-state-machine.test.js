@@ -11,10 +11,11 @@ const VALID_TRANSITIONS = {
   accepted: ['doing', 'draft'],
   doing:   ['finished', 'rejected', 'accepted'],
   rejected: ['doing'],
+  pending_original: ['finished'],
   finished: [],
 };
 
-const ALL_STATUSES = ['draft', 'wait', 'accepted', 'doing', 'submitted', 'finished', 'rejected'];
+const ALL_STATUSES = ['draft', 'wait', 'accepted', 'doing', 'submitted', 'pending_original', 'finished', 'rejected'];
 
 function isValidTransition(from, to) {
   const valid = VALID_TRANSITIONS[from];
@@ -84,6 +85,12 @@ describe('任务状态机', () => {
 
     it('rejected 可以重新提交转为 doing', () => {
       expect(isValidTransition('rejected', 'doing')).toBe(true);
+    });
+
+    it('pending_original 只能在完成原图上传后转为 finished', () => {
+      expect(isValidTransition('pending_original', 'finished')).toBe(true);
+      expect(isValidTransition('pending_original', 'doing')).toBe(false);
+      expect(isValidTransition('pending_original', 'rejected')).toBe(false);
     });
 
     it('finished 不能再转换到任何状态', () => {
