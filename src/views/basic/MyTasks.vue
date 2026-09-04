@@ -46,7 +46,7 @@
               <el-option label="已接单" value="accepted" />
               <el-option label="作图中" value="doing" />
               <el-option label="已完成" value="finished" />
-              <el-option label="已驳回" value="rejected" />
+              <el-option label="修改中" value="rejected" />
             </el-select>
           </div>
         </div>
@@ -201,7 +201,7 @@
     <!-- 上传作品对话框 -->
     <el-dialog
       v-model="uploadVisible"
-      title="上传作品"
+      :title="uploadIsModification ? '重新上传作品' : '上传作品'"
       width="500px"
       append-to-body
       :z-index="2000"
@@ -227,6 +227,17 @@
           </div>
         </template>
       </el-upload>
+
+      <el-form-item v-if="uploadIsModification" label="本次修改回复" style="margin-top:12px;">
+        <el-input
+          v-model="modificationReply"
+          type="textarea"
+          :rows="3"
+          maxlength="500"
+          show-word-limit
+          placeholder="可填写本次修改内容"
+        />
+      </el-form-item>
 
       <el-form-item label="申请分数" style="margin-top:12px;">
         <el-input-number v-model="appliedScore" :min="1" :step="0.5" :precision="1" style="width:100%;" placeholder="默认为1分，大于1需组长审核" />
@@ -289,7 +300,7 @@
 import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Document, Search } from '@element-plus/icons-vue'
+import { Document, Search, UploadFilled } from '@element-plus/icons-vue'
 import { getMyAcceptedApi, uploadFilesApi, finishTaskApi, transferTaskApi, undoSubmitApi, getBasicDesignerListApi, getPublisherListApi, getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, scoreReviewTagType } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
@@ -328,10 +339,13 @@ const pageTitle = computed(() => route.meta.title || '我的任务')
 const uploadVisible = ref(false)
 const uploadLoading = ref(false)
 const uploadTaskId = ref(null)
+const uploadTaskStatus = ref('')
 const uploadUiFiles = ref([])
 const fileList = ref([])
 const uploadRef = ref(null)
 const uploadProgress = ref(0)
+const modificationReply = ref('')
+const uploadIsModification = computed(() => uploadTaskStatus.value === 'rejected')
 
 const appliedScore = ref(1)
 const transferVisible = ref(false)
@@ -377,7 +391,7 @@ function handleSortChange({ prop, order }) {
   sortOrder.value = order || ''
 }
 
-function statusLabel(s) { return STATUS_MAP[s] || s }
+function statusLabel(s) { return s === 'rejected' ? '修改中' : STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
 const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList, downloadFile } = useFileHelpers()
 const detailRefImages = computed(() => {
@@ -469,8 +483,10 @@ watch(() => route.path, () => {
 
 function openUpload(row) {
   uploadTaskId.value = row.id
+  uploadTaskStatus.value = row.status || ''
   uploadUiFiles.value = []
   fileList.value = []
+  modificationReply.value = ''
   appliedScore.value = 1
   uploadVisible.value = true
 }
@@ -512,12 +528,14 @@ async function handleUpload() {
   uploadLoading.value = true
   uploadProgress.value = 0
   try {
-    const res = await uploadFilesApi(uploadTaskId.value, fileList.value, 'work', {
+    const uploadOptions = {
       appliedScore: appliedScore.value,
       onUploadProgress: (event) => {
         if (event.total) uploadProgress.value = Math.min(99, Math.round((event.loaded * 100) / event.total))
       }
-    })
+    }
+    if (uploadIsModification.value) uploadOptions.modificationReply = modificationReply.value.trim()
+    const res = await uploadFilesApi(uploadTaskId.value, fileList.value, 'work', uploadOptions)
     if (res.code === 0) {
       uploadProgress.value = 100
       ElMessage.success(res.msg || '上传成功')

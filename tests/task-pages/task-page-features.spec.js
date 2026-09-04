@@ -122,9 +122,13 @@ const taskRows = [
         id: 601,
         reject_index: 1,
         reject_reason: '细节需要调整',
+        designer_reply: '已经按说明调整',
         reviewer_name: '客服A',
         create_time: '2026-06-02 11:40:00',
-        files: []
+        files: [
+          { id: 6011, file_name: '修改说明.png', file_type: 'image', file_category: 'reject', file_size: 1024 },
+          { id: 6012, file_name: '重新上传.png', file_type: 'image', file_category: 'work', file_size: 2048 }
+        ]
       }
     ],
     files
@@ -273,6 +277,37 @@ const taskRows = [
     shop_name: '运营店',
     task_file_path: '/operator/accepted',
     create_time: '2026-06-05 13:00:00',
+    files
+  },
+  {
+    id: 210,
+    task_no: 'T-CS-REJECTED',
+    title: '客服修改中任务',
+    score_item_name: '客服修改中任务',
+    score: 1,
+    actual_quantity: 1,
+    status: 'rejected',
+    task_group: 'cs',
+    publisher_id: 6,
+    publisher_name: '客服A',
+    designer_id: 3,
+    designer_name: '基础美工A',
+    style_number: 'SN-010',
+    wangwang_id: 'ww-010',
+    applied_score: 1,
+    reject_reason: '请修改文字位置',
+    create_time: '2026-06-06 09:00:00',
+    reject_records: [
+      {
+        id: 602,
+        reject_index: 2,
+        reject_reason: '请修改文字位置',
+        designer_reply: '',
+        reviewer_name: '客服A',
+        create_time: '2026-06-06 09:10:00',
+        files: []
+      }
+    ],
     files
   }
 ]
@@ -772,6 +807,43 @@ test('review detail actions stay isolated by page and role', async ({ page }) =>
     await expect(overlay.getByRole('button', { name: '开启打款', exact: true })).toHaveCount(0)
     await overlay.getByRole('button', { name: '关闭', exact: true }).click()
   }
+})
+
+test('customer service review uses modification history instead of rejection', async ({ page }) => {
+  await loginAs(page, users.cs)
+  await page.goto('/#/cs/review')
+
+  const row = page.locator('.el-table__body tr').filter({ hasText: 'T-DOING' })
+  await expect(row.getByRole('button', { name: '新增修改', exact: true })).toBeVisible()
+  await expect(row.getByRole('button', { name: '驳回', exact: true })).toHaveCount(0)
+
+  await row.getByRole('button', { name: '查看作品', exact: true }).click()
+  const overlay = page.locator('.task-detail-overlay')
+  await expect(overlay.getByText('修改历史', { exact: true })).toBeVisible()
+  await expect(overlay.getByText('第 1 次修改', { exact: true })).toBeVisible()
+  await expect(overlay.getByText('客服修改说明', { exact: true })).toBeVisible()
+  await expect(overlay.getByText('基础美工回复', { exact: true })).toBeVisible()
+  await expect(overlay.getByText('已经按说明调整', { exact: true })).toBeVisible()
+  await expect(overlay.getByText('驳回历史', { exact: true })).toHaveCount(0)
+  await overlay.getByRole('button', { name: '关闭', exact: true }).click()
+
+  await row.getByRole('button', { name: '新增修改', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '新增修改' })
+  await expect(dialog).toBeVisible()
+  await dialog.getByRole('button', { name: '确认新增修改', exact: true }).click()
+  await expect(page.getByText('请填写修改说明或上传附件', { exact: true })).toBeVisible()
+})
+
+test('basic designer sees customer service rejection as modification and can reply', async ({ page }) => {
+  await loginAs(page, users.basic)
+  await page.goto('/#/basic/tasks')
+
+  const row = page.locator('.el-table__body tr').filter({ hasText: 'T-CS-REJECTED' })
+  await expect(row.getByText('修改中', { exact: true })).toBeVisible()
+  await row.getByRole('button', { name: '重新上传', exact: true }).click()
+  const dialog = page.getByRole('dialog', { name: '重新上传作品' })
+  await expect(dialog.getByText('本次修改回复', { exact: true })).toBeVisible()
+  await expect(dialog.getByPlaceholder('可填写本次修改内容')).toBeVisible()
 })
 
 test('table and detail file drag writes browser download data', async ({ page }) => {

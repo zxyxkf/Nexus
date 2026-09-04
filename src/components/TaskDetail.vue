@@ -304,6 +304,7 @@ const detailFields = computed(() => {
     add('分数审核通过分数', formatScoreReviewApprovedScore(task))
   }
   const addTaskRejectReason = (label = '驳回原因') => {
+    if (isCsTask.value) return
     add(label, task.reject_reason, { span: 3, danger: true })
   }
 
@@ -485,6 +486,7 @@ const detailPathRows = computed(() => {
 })
 
 function statusLabel(status) {
+  if (isCsTask.value && status === 'rejected') return '修改中'
   if (currentContext.value === 'source-task') return sourceStatusLabel(status)
   return STATUS_MAP[status] || status || '-'
 }

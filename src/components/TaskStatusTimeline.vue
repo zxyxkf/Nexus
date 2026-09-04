@@ -10,7 +10,7 @@
       show-icon
       :closable="false"
       class="task-status-alert"
-      title="任务已被驳回，请根据驳回原因修改后重新提交。"
+      :title="rejectedHint"
     />
     <el-alert
       v-else-if="task.status === 'doing'"
@@ -44,9 +44,14 @@ const props = defineProps({
 
 const reviewerName = computed(() => props.taskGroup === 'operator' ? '运营' : props.taskGroup === 'cs' ? '客服' : '运营')
 const workerName = computed(() => props.taskGroup === 'operator' ? '运营助理' : props.taskGroup === 'cs' ? '基础美工' : '美工')
-const statusLabel = computed(() => STATUS_MAP[props.task.status] || props.task.status)
+const statusLabel = computed(() => props.taskGroup === 'cs' && props.task.status === 'rejected'
+  ? '修改中'
+  : STATUS_MAP[props.task.status] || props.task.status)
 const statusType = computed(() => STATUS_TAG_TYPE[props.task.status] || 'info')
 const reviewHint = computed(() => `任务已提交，等待${reviewerName.value}审核。审核通过后会进入完成记录。`)
+const rejectedHint = computed(() => props.taskGroup === 'cs'
+  ? '客服已提出修改，请根据最新一轮修改说明完成后重新提交。'
+  : '任务已被驳回，请根据驳回原因修改后重新提交。')
 
 const timeline = computed(() => {
   const task = props.task
@@ -56,7 +61,12 @@ const timeline = computed(() => {
     { key: 'create', label: '发布任务', time: task.create_time, done: true },
     { key: 'accept', label: `${workerName.value}接单`, time: task.designer_id ? (task.accept_time || '') : '', done: ['accepted', 'doing', 'rejected', 'finished'].includes(task.status) },
     { key: 'submit', label: '上传提交', time: hasSubmitTime ? (task.submit_time || task.update_time || '') : '', done: hasSubmitTime },
-    { key: 'review', label: `${reviewerName.value}审核`, time: task.finish_time || (task.status === 'rejected' ? task.update_time : ''), done: ['rejected', 'finished'].includes(task.status) }
+    {
+      key: 'review',
+      label: props.taskGroup === 'cs' && task.status === 'rejected' ? '客服提出修改' : `${reviewerName.value}审核`,
+      time: task.finish_time || (task.status === 'rejected' ? task.update_time : ''),
+      done: ['rejected', 'finished'].includes(task.status)
+    }
   ]
   if (hasScoreReview) {
     items.push({

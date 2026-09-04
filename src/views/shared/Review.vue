@@ -130,9 +130,9 @@
             >通过</el-button>
             <el-button
               v-if="row.status === 'doing' && row.allowedActions?.review"
-              type="danger" link size="small"
+              :type="isCsAgent ? 'warning' : 'danger'" link size="small"
               @click="handleReview(row, 'reject')"
-            >驳回</el-button>
+            >{{ isCsAgent ? '新增修改' : '驳回' }}</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -159,7 +159,7 @@
     >
       <template #actions>
         <el-button v-if="currentTask.status === 'doing' && currentTask.allowedActions?.review" type="success" size="small" @click="doReview('pass')" :loading="reviewLoading">通过</el-button>
-        <el-button v-if="currentTask.status === 'doing' && currentTask.allowedActions?.review" type="danger" size="small" @click="doReview('reject')" :loading="reviewLoading">驳回</el-button>
+        <el-button v-if="currentTask.status === 'doing' && currentTask.allowedActions?.review" :type="isCsAgent ? 'warning' : 'danger'" size="small" @click="doReview('reject')" :loading="reviewLoading">{{ isCsAgent ? '新增修改' : '驳回' }}</el-button>
         <el-button
           v-if="canOpenPayment && currentTask.allowedActions?.openPayment"
           type="warning"
@@ -174,7 +174,7 @@
 
     <el-dialog
       v-model="rejectDialogVisible"
-      title="驳回原因"
+      title="新增修改"
       width="520px"
       :close-on-click-modal="false"
     >
@@ -192,7 +192,7 @@
         <div style="margin-top:8px;">拖拽图片或文件到此处，或点击上传</div>
         <template #tip>
           <div style="margin-top:8px;font-size:12px;color:#909399;">
-            可选，支持截图粘贴；单文件最大{{ maxFileSizeMB }}MB，最多{{ maxFileCount }}个
+            支持截图粘贴；单文件最大{{ maxFileSizeMB }}MB，最多{{ maxFileCount }}个
           </div>
         </template>
       </el-upload>
@@ -204,15 +204,15 @@
         :rows="4"
         maxlength="500"
         show-word-limit
-        placeholder="请填写驳回原因"
+        placeholder="请填写修改说明（可与附件任选其一）"
         style="margin-top:14px;"
         @keydown.enter.ctrl.prevent="confirmRejectDialog"
       />
 
       <template #footer>
         <el-button @click="cancelRejectDialog">取消</el-button>
-        <el-button type="danger" :loading="reviewLoading || rejectUploading" @click="confirmRejectDialog">
-          确认驳回
+        <el-button type="warning" :loading="reviewLoading" @click="confirmRejectDialog">
+          确认新增修改
         </el-button>
       </template>
     </el-dialog>
@@ -224,7 +224,7 @@ import { nextTick, ref, computed, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { PictureFilled, Document, Plus } from '@element-plus/icons-vue'
-import { getMyPublishedApi, reviewTaskApi, batchReviewApi, uploadFilesApi, getFileUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
+import { getMyPublishedApi, reviewTaskApi, requestCsModificationApi, batchReviewApi, getFileUrl, saveFileToDisk, setupFileDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'
@@ -318,7 +318,6 @@ const rejectUploadFiles = ref([])
 const rejectRawFiles = ref([])
 const rejectUploadRef = ref(null)
 const rejectReasonInputRef = ref(null)
-const rejectUploading = ref(false)
 const { getInt } = useConfig()
 const maxFileCount = computed(() => getInt('upload.max_file_count', 10))
 const maxFileSizeMB = computed(() => getInt('upload.max_file_size_mb', 50))
@@ -442,16 +441,18 @@ async function loadData(options = {}) {
 
 async function handleReview(row, action) {
   if (!row.allowedActions?.review) return
-  const actionLabel = action === 'pass' ? '审核通过' : '驳回'
+  const isModification = action === 'reject' && isCsAgent.value
+  const actionLabel = action === 'pass' ? '审核通过' : isModification ? '新增修改' : '驳回'
   try {
     const rejectPayload = await getRejectPayload(action)
-    if (!rejectPayload.reason) {
+    if (!isModification) {
       await ElMessageBox.confirm(`确认${actionLabel}该任务？`, '提示')
     }
     reviewLoading.value = true
-    const res = await reviewTaskApi({ taskId: row.id, action, rejectReason: rejectPayload.reason })
+    const res = isModification
+      ? await requestCsModificationApi({ taskId: row.id, note: rejectPayload.reason, files: rejectPayload.files })
+      : await reviewTaskApi({ taskId: row.id, action, rejectReason: rejectPayload.reason })
     if (res.code === 0) {
-      await uploadRejectFilesIfNeeded(row.id, res.data?.rejectRecordId, rejectPayload.files)
       ElMessage.success(actionLabel)
       list.value = list.value.filter(item => item.id !== row.id)
       await loadData()
@@ -467,13 +468,15 @@ async function handleReview(row, action) {
 
 async function doReview(action) {
   if (!currentTask.value?.allowedActions?.review) return
+  const isModification = action === 'reject' && isCsAgent.value
   try {
     const rejectPayload = await getRejectPayload(action)
     reviewLoading.value = true
-    const res = await reviewTaskApi({ taskId: currentTask.value.id, action, rejectReason: rejectPayload.reason })
+    const res = isModification
+      ? await requestCsModificationApi({ taskId: currentTask.value.id, note: rejectPayload.reason, files: rejectPayload.files })
+      : await reviewTaskApi({ taskId: currentTask.value.id, action, rejectReason: rejectPayload.reason })
     if (res.code === 0) {
-      await uploadRejectFilesIfNeeded(currentTask.value.id, res.data?.rejectRecordId, rejectPayload.files)
-      ElMessage.success(action === 'pass' ? '审核通过' : '已驳回')
+      ElMessage.success(action === 'pass' ? '审核通过' : isModification ? '已新增修改' : '已驳回')
       list.value = list.value.filter(item => item.id !== currentTask.value.id)
       detailVisible.value = false
       await loadData()
@@ -520,35 +523,18 @@ function cancelRejectDialog() {
 
 function confirmRejectDialog() {
   const text = String(rejectDialogReason.value || '').trim()
-  if (!text) {
-    ElMessage.warning('请填写驳回原因')
+  const files = [...rejectRawFiles.value]
+  if (!text && !files.length) {
+    ElMessage.warning('请填写修改说明或上传附件')
     return
   }
   if (text.length > 500) {
-    ElMessage.warning('驳回原因不能超过500字')
+    ElMessage.warning('修改说明不能超过500字')
     return
   }
-  const files = [...rejectRawFiles.value]
   rejectDialogVisible.value = false
   rejectDialogResolve.value?.resolve?.({ reason: text, files })
   rejectDialogResolve.value = null
-}
-
-async function uploadRejectFilesIfNeeded(taskId, rejectRecordId, files) {
-  if (!files?.length) return
-  if (!rejectRecordId) {
-    ElMessage.warning('驳回已提交，但驳回附件缺少记录ID，未上传附件')
-    return
-  }
-  rejectUploading.value = true
-  try {
-    const res = await uploadFilesApi(taskId, files, 'reject', { rejectRecordId })
-    if (res.code !== 0) ElMessage.error(res.msg || '驳回附件上传失败')
-  } catch (err) {
-    ElMessage.error('驳回附件上传失败: ' + (err.response?.data?.msg || err.message || '未知错误'))
-  } finally {
-    rejectUploading.value = false
-  }
 }
 
 const formatSize = formatFileSize
