@@ -149,6 +149,7 @@ const CREATE_TABLES_SQL = {
       reviewer_id INTEGER,
       reviewer_name TEXT DEFAULT '',
       reject_reason TEXT DEFAULT '',
+      designer_reply TEXT DEFAULT '',
       create_time TEXT DEFAULT (datetime('now', 'localtime'))
     )`,
     `CREATE TABLE IF NOT EXISTS task_transfer_record (
@@ -379,6 +380,7 @@ const CREATE_TABLES_SQL = {
       reviewer_id INT,
       reviewer_name VARCHAR(100) DEFAULT '',
       reject_reason TEXT,
+      designer_reply TEXT,
       create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
       KEY idx_task_id (task_id)
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
@@ -633,9 +635,11 @@ async function initDatabase() {
         reviewer_id INT,
         reviewer_name VARCHAR(100) DEFAULT '',
         reject_reason TEXT,
+        designer_reply TEXT,
         create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
         KEY idx_task_id (task_id)
       ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+      `ALTER TABLE task_reject_record ADD COLUMN designer_reply TEXT`,
       `ALTER TABLE task_info ADD COLUMN task_group VARCHAR(20) DEFAULT 'design'`,
       `ALTER TABLE task_info ADD COLUMN specified_color VARCHAR(100) DEFAULT ''`,
       `ALTER TABLE sys_score_item ADD COLUMN task_group VARCHAR(20) DEFAULT NULL`,
@@ -708,8 +712,10 @@ async function initDatabase() {
         reviewer_id INTEGER,
         reviewer_name TEXT DEFAULT '',
         reject_reason TEXT DEFAULT '',
+        designer_reply TEXT DEFAULT '',
         create_time TEXT DEFAULT (datetime('now', 'localtime'))
       )`,
+      `ALTER TABLE task_reject_record ADD COLUMN designer_reply TEXT DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN task_group TEXT DEFAULT 'design'`,
       `ALTER TABLE task_info ADD COLUMN specified_color TEXT DEFAULT ''`,
       `ALTER TABLE sys_score_item ADD COLUMN task_group TEXT DEFAULT NULL`,

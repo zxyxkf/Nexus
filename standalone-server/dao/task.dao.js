@@ -270,6 +270,16 @@ async function insertRejectRecord(conn, data) {
   return { id: result.insertId || result.lastID, rejectIndex };
 }
 
+async function updateRejectRecordReply(conn, recordId, taskId, reply) {
+  const [result] = await conn.execute(
+    `UPDATE task_reject_record
+     SET designer_reply = ?
+     WHERE id = ? AND task_id = ?`,
+    [reply || '', recordId, taskId]
+  );
+  return Number(result.affectedRows || 0);
+}
+
 async function deleteTaskData(taskId) {
   await execute(`DELETE FROM task_reject_record WHERE task_id = ?`, [taskId]);
   await execute(`DELETE FROM task_transfer_record WHERE task_id = ?`, [taskId]);
@@ -925,6 +935,7 @@ module.exports = {
   updateTaskFields,
   insertTransferRecord,
   insertRejectRecord,
+  updateRejectRecordReply,
   deleteTaskData,
   batchDeleteTasks,
   batchReassignTasks,
