@@ -13,7 +13,12 @@
   >
     <div v-loading="loading" class="style-editor-shell">
       <section class="style-editor-workspace">
-        <div ref="viewportRef" class="style-editor-viewport">
+        <div
+          ref="viewportRef"
+          class="style-editor-viewport"
+          :data-viewport-x="viewportX"
+          :data-viewport-y="viewportY"
+        >
           <canvas ref="canvasRef" />
         </div>
         <div class="style-editor-status">
@@ -120,6 +125,16 @@
           <el-tooltip content="恢复" placement="top">
             <el-button :icon="RefreshRight" circle :disabled="!canRedo" @click="redo" />
           </el-tooltip>
+          <el-tooltip content="移动画布" placement="top">
+            <el-button
+              :icon="Rank"
+              circle
+              :type="panMode ? 'primary' : undefined"
+              aria-label="移动画布"
+              :aria-pressed="panMode"
+              @click="togglePanMode"
+            />
+          </el-tooltip>
           <el-button @click="restoreOriginal">还原原图</el-button>
         </div>
         <div>
@@ -140,6 +155,7 @@ import {
   Delete,
   EditPen,
   Picture,
+  Rank,
   RefreshLeft,
   RefreshRight,
   Top
@@ -195,12 +211,20 @@ const textBackground = ref('rgba(255,255,255,0)')
 const backgroundTolerance = ref(42)
 const canUndo = ref(false)
 const canRedo = ref(false)
+const panMode = ref(false)
+const viewportX = ref(0)
+const viewportY = ref(0)
 
 let canvas = null
 let history = []
 let historyIndex = -1
 let historyLocked = false
 let historyTimer = null
+let isPanning = false
+let lastPanX = 0
+let lastPanY = 0
+let panPointerId = null
+let panCanvasElement = null
 
 const hasSelection = computed(() => Boolean(selectedObject.value))
 const isShapeSelected = computed(() => selectedObject.value?.nexusType === 'shape')
@@ -304,6 +328,7 @@ async function initializeEditor() {
     historyLocked = false
 
     bindCanvasEvents()
+    bindPanEvents()
     resizeCanvasDisplay()
     resetViewport()
     resetHistory()
@@ -332,7 +357,91 @@ function bindCanvasEvents() {
     const nextZoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, canvas.getZoom() * (0.999 ** event.e.deltaY)))
     canvas.zoomToPoint(new Point(event.e.offsetX, event.e.offsetY), nextZoom)
     zoom.value = nextZoom
+    syncViewportPosition()
   })
+}
+
+function syncViewportPosition() {
+  viewportX.value = Number(canvas?.viewportTransform?.[4]) || 0
+  viewportY.value = Number(canvas?.viewportTransform?.[5]) || 0
+}
+
+function bindPanEvents() {
+  if (!canvas?.upperCanvasEl) return
+  panCanvasElement = canvas.upperCanvasEl
+  panCanvasElement.addEventListener('pointerdown', startPanning, true)
+  panCanvasElement.addEventListener('pointermove', movePanning, true)
+  panCanvasElement.addEventListener('pointerup', stopPanning, true)
+  panCanvasElement.addEventListener('pointercancel', stopPanning, true)
+}
+
+function unbindPanEvents() {
+  if (!panCanvasElement) return
+  panCanvasElement.removeEventListener('pointerdown', startPanning, true)
+  panCanvasElement.removeEventListener('pointermove', movePanning, true)
+  panCanvasElement.removeEventListener('pointerup', stopPanning, true)
+  panCanvasElement.removeEventListener('pointercancel', stopPanning, true)
+  panCanvasElement = null
+  panPointerId = null
+}
+
+function startPanning(event) {
+  if (!panMode.value || event.button !== 0 || !canvas) return
+  isPanning = true
+  panPointerId = event.pointerId
+  lastPanX = event.clientX
+  lastPanY = event.clientY
+  panCanvasElement?.setPointerCapture?.(event.pointerId)
+  canvas.defaultCursor = 'grabbing'
+  canvas.setCursor('grabbing')
+  event.preventDefault()
+}
+
+function movePanning(event) {
+  if (!panMode.value || !isPanning || !canvas) return
+  const transform = [...canvas.viewportTransform]
+  transform[4] += event.clientX - lastPanX
+  transform[5] += event.clientY - lastPanY
+  lastPanX = event.clientX
+  lastPanY = event.clientY
+  canvas.setViewportTransform(transform)
+  syncViewportPosition()
+  canvas.renderAll()
+  event.preventDefault()
+}
+
+function stopPanning(event) {
+  if (!isPanning) return
+  if (panPointerId !== null && panCanvasElement?.hasPointerCapture?.(panPointerId)) {
+    panCanvasElement.releasePointerCapture(panPointerId)
+  }
+  isPanning = false
+  panPointerId = null
+  if (panMode.value && canvas) {
+    canvas.defaultCursor = 'grab'
+    canvas.setCursor('grab')
+  }
+}
+
+function setPanMode(enabled) {
+  panMode.value = Boolean(enabled)
+  isPanning = false
+  if (!canvas) return
+  canvas.selection = !panMode.value
+  canvas.skipTargetFind = panMode.value
+  if (panMode.value) {
+    canvas.discardActiveObject()
+    syncSelectedObject(null)
+  }
+  const cursor = panMode.value ? 'grab' : 'default'
+  canvas.defaultCursor = cursor
+  canvas.hoverCursor = panMode.value ? 'grab' : 'move'
+  canvas.setCursor(cursor)
+  canvas.requestRenderAll()
+}
+
+function togglePanMode() {
+  setPanMode(!panMode.value)
 }
 
 function resizeCanvasDisplay() {
@@ -348,8 +457,10 @@ function resizeCanvasDisplay() {
 
 function resetViewport() {
   if (!canvas) return
+  setPanMode(false)
   canvas.setViewportTransform([1, 0, 0, 1, 0, 0])
   zoom.value = 1
+  syncViewportPosition()
   canvas.requestRenderAll()
 }
 
@@ -718,6 +829,8 @@ async function saveResult() {
 function disposeCanvasOnly() {
   clearTimeout(historyTimer)
   if (canvas) {
+    setPanMode(false)
+    unbindPanEvents()
     canvas.dispose()
     canvas = null
   }
@@ -730,7 +843,10 @@ function disposeEditor() {
   historyIndex = -1
   canUndo.value = false
   canRedo.value = false
+  panMode.value = false
   zoom.value = 1
+  viewportX.value = 0
+  viewportY.value = 0
 }
 
 function handleResize() {

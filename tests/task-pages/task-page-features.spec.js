@@ -475,6 +475,55 @@ test('customer service can toggle shift status and open the shared handoff page'
   await expect(page.getByText('继承', { exact: true })).toBeVisible()
 })
 
+test('style image editor supports canvas panning without changing saved scene', async ({ page }) => {
+  await loginAs(page, users.cs)
+  await page.goto('/#/cs/publish')
+
+  const stylePicker = page.getByRole('combobox', { name: '款号', exact: true })
+  await stylePicker.fill('D-3')
+  await page.getByRole('option', { name: '围裙 / D-3围裙', exact: true }).click()
+  await page.locator('.cs-material-image').click()
+  await page.locator('.cs-selected-image').dblclick()
+
+  const dialog = page.getByRole('dialog', { name: '编辑款式图' })
+  await expect(dialog).toBeVisible()
+  const interactiveCanvas = dialog.locator('canvas.upper-canvas')
+  const renderedCanvas = dialog.locator('canvas.lower-canvas')
+  await expect(interactiveCanvas).toBeVisible()
+
+  await dialog.getByText('选择形状', { exact: true }).click()
+  await page.getByRole('option', { name: '矩形', exact: true }).click()
+  await dialog.getByRole('button', { name: '添加', exact: true }).click()
+
+  const panButton = dialog.getByRole('button', { name: '移动画布', exact: true })
+  await panButton.click()
+  await expect(panButton).toHaveAttribute('aria-pressed', 'true')
+  const savedSceneBaseline = await renderedCanvas.evaluate(element => element.toDataURL())
+  await interactiveCanvas.dispatchEvent('wheel', { deltaY: -700 })
+  await expect(dialog.locator('.style-editor-status').getByText(/%/)).not.toHaveText('100%')
+  const viewport = dialog.locator('.style-editor-viewport')
+  const beforePan = await viewport.evaluate(element => ({
+    x: Number(element.dataset.viewportX),
+    y: Number(element.dataset.viewportY)
+  }))
+
+  const box = await interactiveCanvas.boundingBox()
+  await page.mouse.move(box.x + box.width / 2, box.y + box.height / 2)
+  await page.mouse.down()
+  await expect(interactiveCanvas).toHaveCSS('cursor', 'grabbing')
+  await page.mouse.move(box.x + box.width / 2 + 90, box.y + box.height / 2 + 60, { steps: 4 })
+  await page.mouse.up()
+  await expect.poll(() => viewport.evaluate(element => Number(element.dataset.viewportX))).toBeCloseTo(beforePan.x + 90, 0)
+  await expect.poll(() => viewport.evaluate(element => Number(element.dataset.viewportY))).toBeCloseTo(beforePan.y + 60, 0)
+
+  await dialog.getByRole('button', { name: '保存成品', exact: true }).click()
+  await expect(dialog).toBeHidden()
+  await page.locator('.cs-selected-image').dblclick()
+  await expect(dialog).toBeVisible()
+  await expect(panButton).toHaveAttribute('aria-pressed', 'false')
+  await expect.poll(() => renderedCanvas.evaluate(element => element.toDataURL())).toBe(savedSceneBaseline)
+})
+
 test('batch work submit groups files by task for a basic designer', async ({ page }) => {
   await loginAs(page, users.basic)
   await page.goto('/#/basic/tasks')
@@ -1436,6 +1485,31 @@ async function mockApis(page) {
         { config_key: 'upload.max_file_size_mb', config_value: '50' }
       ]
     })
+    if (path === '/api/material-library/search') return json(route, {
+      code: 0,
+      data: { styles: [{ id: 701, name: 'D-3围裙', product_name: '围裙' }] }
+    })
+    if (path === '/api/material-library/styles/701/images') return json(route, {
+      code: 0,
+      data: {
+        style: { id: 701, name: 'D-3围裙', product_name: '围裙' },
+        colors: [],
+        images: [{
+          id: 801,
+          display_name: 'D-3正面.png',
+          original_name: 'D-3正面.png',
+          mime_type: 'image/png',
+          previewUrl: '/api/material-library/images/801/preview'
+        }]
+      }
+    })
+    if (path === '/api/material-library/images/801/preview') {
+      return route.fulfill({
+        status: 200,
+        contentType: 'image/svg+xml',
+        body: '<svg xmlns="http://www.w3.org/2000/svg" width="400" height="300"><rect width="400" height="300" fill="#f4f6f8"/><rect width="200" height="150" fill="#4f46e5"/><rect x="200" y="150" width="200" height="150" fill="#ef4444"/></svg>'
+      })
+    }
 
     if (path === '/api/user/publishers' || path === '/api/user/task-publishers') return json(route, { code: 0, data: people.publishers })
     if (path === '/api/user/designers' || path === '/api/user/task-designers') return json(route, { code: 0, data: people.designers })
