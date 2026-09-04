@@ -48,26 +48,36 @@ const statusLabel = computed(() => props.taskGroup === 'cs' && props.task.status
   ? '修改中'
   : STATUS_MAP[props.task.status] || props.task.status)
 const statusType = computed(() => STATUS_TAG_TYPE[props.task.status] || 'info')
-const reviewHint = computed(() => `任务已提交，等待${reviewerName.value}审核。审核通过后会进入完成记录。`)
+const reviewHint = computed(() => props.taskGroup === 'cs'
+  ? '任务已提交，等待客服审核。审核通过后将进入上传原图阶段。'
+  : `任务已提交，等待${reviewerName.value}审核。审核通过后会进入完成记录。`)
 const rejectedHint = computed(() => props.taskGroup === 'cs'
   ? '客服已提出修改，请根据最新一轮修改说明完成后重新提交。'
   : '任务已被驳回，请根据驳回原因修改后重新提交。')
 
 const timeline = computed(() => {
   const task = props.task
-  const hasSubmitTime = ['doing', 'rejected', 'finished'].includes(task.status)
+  const hasSubmitTime = ['doing', 'rejected', 'pending_original', 'finished'].includes(task.status)
   const hasScoreReview = props.taskGroup === 'cs' && (task.score_review_time || ['approved', 'rejected'].includes(task.score_review_status))
   const items = [
     { key: 'create', label: '发布任务', time: task.create_time, done: true },
-    { key: 'accept', label: `${workerName.value}接单`, time: task.designer_id ? (task.accept_time || '') : '', done: ['accepted', 'doing', 'rejected', 'finished'].includes(task.status) },
+    { key: 'accept', label: `${workerName.value}接单`, time: task.designer_id ? (task.accept_time || '') : '', done: ['accepted', 'doing', 'rejected', 'pending_original', 'finished'].includes(task.status) },
     { key: 'submit', label: '上传提交', time: hasSubmitTime ? (task.submit_time || task.update_time || '') : '', done: hasSubmitTime },
     {
       key: 'review',
       label: props.taskGroup === 'cs' && task.status === 'rejected' ? '客服提出修改' : `${reviewerName.value}审核`,
-      time: task.finish_time || (task.status === 'rejected' ? task.update_time : ''),
-      done: ['rejected', 'finished'].includes(task.status)
+      time: task.finish_time || (['rejected', 'pending_original'].includes(task.status) ? task.update_time : ''),
+      done: ['rejected', 'pending_original', 'finished'].includes(task.status)
     }
   ]
+  if (props.taskGroup === 'cs' && ['pending_original', 'finished'].includes(task.status)) {
+    items.push({
+      key: 'original-upload',
+      label: '上传原图',
+      time: task.status === 'finished' ? (task.finish_time || task.update_time || '') : '',
+      done: task.status === 'finished'
+    })
+  }
   if (hasScoreReview) {
     items.push({
       key: 'score-review',
@@ -84,6 +94,7 @@ function activeKey(status) {
   if (status === 'accepted') return 'submit'
   if (status === 'doing') return 'review'
   if (status === 'rejected') return 'submit'
+  if (status === 'pending_original') return 'original-upload'
   return ''
 }
 </script>

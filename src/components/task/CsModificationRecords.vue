@@ -238,6 +238,12 @@ function openCustomerDraft() {
   expandedRecords.value = ['customer-draft']
 }
 
+function openNewModification() {
+  if (canCreateCustomerRound.value) openCustomerDraft()
+}
+
+defineExpose({ openNewModification })
+
 function cancelCustomerDraft() {
   customerDraftOpen.value = false
   customerNote.value = ''
@@ -331,7 +337,7 @@ const ModificationPersistedFiles = defineComponent({
             ? h(ElImage, {
                 class: 'modification-file-image',
                 src: file._previewSrc || getFileUrl(file),
-                fit: 'cover',
+                fit: 'contain',
                 previewSrcList: previewList(fileProps.files),
                 initialIndex: previewIndex(fileProps.files, file),
                 previewTeleported: true
@@ -388,6 +394,7 @@ const ModificationUploader = defineComponent({
       h(ElUpload, {
         class: 'modification-uploader',
         fileList: uploadProps.modelValue,
+        listType: 'picture-card',
         'onUpdate:fileList': value => emit('update:modelValue', value),
         drag: true,
         multiple: true,

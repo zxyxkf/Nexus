@@ -60,21 +60,48 @@
         </div>
       </section>
 
-      <section v-if="isCsTask && styleImageFiles.length" class="task-detail-media-section task-style-media-section">
-        <h3>款式图 ({{ styleImageFiles.length }})</h3>
-        <div class="task-detail-image-grid">
-          <TaskDetailImage
-            v-for="(file, index) in styleImageFiles"
+      <div
+        v-if="isCsTask && (styleImageFiles.length || originalFiles.length)"
+        class="task-detail-media-grid task-style-original-grid"
+      >
+        <section v-if="styleImageFiles.length" class="task-detail-media-section task-style-media-section">
+          <h3>款式图 ({{ styleImageFiles.length }})</h3>
+          <div class="task-detail-image-grid">
+            <TaskDetailImage
+              v-for="(file, index) in styleImageFiles"
+              :key="file.id"
+              :file="file"
+              :preview-list="stylePreviewList"
+              :initial-index="index"
+              @download="downloadDetailFile(file)"
+            />
+          </div>
+        </section>
+
+        <section v-if="originalFiles.length" class="task-detail-media-section task-original-media-section">
+          <h3 v-if="originalImageFiles.length">原图 ({{ originalImageFiles.length }})</h3>
+          <div v-if="originalImageFiles.length" class="task-detail-image-grid">
+            <TaskDetailImage
+              v-for="(file, index) in originalImageFiles"
+              :key="file.id"
+              :file="file"
+              :preview-list="originalPreviewList"
+              :initial-index="index"
+              @download="downloadDetailFile(file)"
+            />
+          </div>
+          <h4 v-if="originalAttachments.length">原图文件 ({{ originalAttachments.length }})</h4>
+          <TaskDetailAttachment
+            v-for="file in originalAttachments"
             :key="file.id"
             :file="file"
-            :preview-list="stylePreviewList"
-            :initial-index="index"
+            :formatted-size="sourceFileSize(file.file_size)"
             @download="downloadDetailFile(file)"
           />
-        </div>
-      </section>
+        </section>
+      </div>
 
-      <div v-if="hasMedia" class="task-detail-media-grid">
+      <div v-if="hasGeneralMedia" class="task-detail-media-grid">
         <section v-if="refFiles.length" class="task-detail-media-section">
           <h3 v-if="refImageFiles.length">{{ refImageLabel }} ({{ refImageFiles.length }})</h3>
           <div v-if="refImageFiles.length" class="task-detail-image-grid">
@@ -122,7 +149,17 @@
             @download="downloadDetailFile(file)"
           />
         </section>
+
       </div>
+
+      <OriginalUploadPanel
+        v-if="isCsTask && currentContext === 'cs-assignee' && task.status === 'pending_original'"
+        :task="task"
+        :max-file-count="maxFileCount"
+        :max-file-size-m-b="maxFileSizeMB"
+        @uploaded="emit('original-uploaded', $event)"
+        @completed="emit('original-completed', $event)"
+      />
 
       <slot name="modifications" :task="task">
         <RejectHistory
@@ -143,6 +180,7 @@ import TaskDetailAttachment from '@/components/TaskDetailAttachment.vue'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import RejectHistory from '@/components/RejectHistory.vue'
+import OriginalUploadPanel from '@/components/task/OriginalUploadPanel.vue'
 import { downloadFile, getFileUrl, saveFileToDisk } from '@/api/upload'
 import {
   STATUS_MAP,
@@ -155,15 +193,18 @@ import {
   scoreReviewTagType
 } from '@/utils/format'
 import { useTaskStatus } from '@/composables/useTaskStatus'
+import { useFileHelpers } from '@/composables/useFileHelpers'
 
 const props = defineProps({
   visible: { type: Boolean, default: false },
   task: { type: Object, default: null },
   taskGroup: { type: String, default: 'design' },
-  detailContext: { type: String, default: '' }
+  detailContext: { type: String, default: '' },
+  maxFileCount: { type: Number, default: 10 },
+  maxFileSizeMB: { type: Number, default: 50 }
 })
 
-defineEmits(['close'])
+const emit = defineEmits(['close', 'original-uploaded', 'original-completed'])
 
 const {
   statusLabel: sourceStatusLabel,
@@ -172,14 +213,17 @@ const {
 
 const currentContext = computed(() => props.detailContext || 'source-task')
 const allFiles = computed(() => props.task?.files || [])
+const { getOriginalFiles } = useFileHelpers()
 const refFiles = computed(() => allFiles.value.filter(file => file.file_category === 'reference'))
 const styleFiles = computed(() => allFiles.value.filter(file => file.file_category === 'style'))
 const workFiles = computed(() => allFiles.value.filter(file => (
   file.file_category !== 'reference' &&
   file.file_category !== 'style' &&
+  file.file_category !== 'original' &&
   (!isCsTask.value || file.file_category !== 'work' || !file.reject_record_id) &&
   (['design-assignee', 'hall'].includes(currentContext.value) || file.file_category !== 'reject')
 )))
+const originalFiles = computed(() => isCsTask.value ? getOriginalFiles(allFiles.value) : [])
 const refImageFiles = computed(() => refFiles.value.filter(file => file.file_type === 'image'))
 const refAttachments = computed(() => refFiles.value.filter(file => file.file_type !== 'image'))
 const workImageFiles = computed(() => currentContext.value === 'hall'
@@ -190,6 +234,9 @@ const workAttachments = computed(() => currentContext.value === 'hall'
   : workFiles.value.filter(file => file.file_type !== 'image'))
 const styleImageFiles = computed(() => styleFiles.value.filter(file => file.file_type === 'image'))
 const stylePreviewList = computed(() => styleImageFiles.value.map(file => file._previewSrc || getFileUrl(file)))
+const originalImageFiles = computed(() => originalFiles.value.filter(file => file.file_type === 'image'))
+const originalAttachments = computed(() => originalFiles.value.filter(file => file.file_type !== 'image'))
+const originalPreviewList = computed(() => originalImageFiles.value.map(file => file._previewSrc || getFileUrl(file)))
 const sourcePreviewList = computed(() => [...refImageFiles.value, ...workImageFiles.value]
   .map(file => file._previewSrc || getFileUrl(file)))
 const refPreviewList = computed(() => currentContext.value === 'source-task'
@@ -198,7 +245,7 @@ const refPreviewList = computed(() => currentContext.value === 'source-task'
 const workPreviewList = computed(() => currentContext.value === 'source-task'
   ? sourcePreviewList.value
   : workImageFiles.value.map(file => file._previewSrc || getFileUrl(file)))
-const hasMedia = computed(() => refFiles.value.length > 0 || workFiles.value.length > 0 || (isCsTask.value && styleImageFiles.value.length > 0))
+const hasGeneralMedia = computed(() => refFiles.value.length > 0 || workFiles.value.length > 0)
 const isOperatorTask = computed(() => props.taskGroup === 'operator')
 const isCsTask = computed(() => props.taskGroup === 'cs')
 const showStatusTimeline = computed(() => !['hall', 'score-review'].includes(currentContext.value))
@@ -285,6 +332,7 @@ const summaryItems = computed(() => {
 })
 const workImageLabel = computed(() => {
   if (currentContext.value === 'hall') return '附件图片'
+  if (isCsTask.value) return '首次上传'
   if (isOperatorTask.value) return '完成凭证图片'
   if (currentContext.value === 'review') return '已提交作品图片'
   return '作品图片'
@@ -293,6 +341,7 @@ const refImageLabel = computed(() => currentContext.value === 'source-task' ? '�
 const refAttachmentLabel = computed(() => currentContext.value === 'source-task' ? '参考文件' : '参考附件')
 const workAttachmentLabel = computed(() => {
   if (currentContext.value === 'hall') return '附件'
+  if (isCsTask.value) return '首次上传附件'
   if (isOperatorTask.value) return '完成凭证附件'
   if (currentContext.value === 'review') return '已提交作品附件'
   return '作品附件'

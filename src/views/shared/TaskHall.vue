@@ -61,7 +61,7 @@
                 :src="getFileUrl(getStyleImages(row.files)[0])"
                 :preview-src-list="getStyleImages(row.files).map(getFileUrl)"
                 preview-teleported
-                fit="cover"
+                fit="contain"
               />
               <span>{{ getStyleImages(row.files).length }}张</span>
             </div>

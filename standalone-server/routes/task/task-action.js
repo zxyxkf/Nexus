@@ -26,6 +26,36 @@ function parseIdArray(value, fieldName) {
   return [...new Set(parsed.map(Number).filter(id => Number.isInteger(id) && id > 0))];
 }
 
+function createOriginalUploadMiddleware() {
+  const tmpDir = path.join(os.tmpdir(), 'd-design-tmp');
+  try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
+
+  const storage = multer.diskStorage({
+    destination: (req, file, cb) => cb(null, tmpDir),
+    filename: (req, file, cb) => {
+      file.originalname = fixFilenameEncoding(file.originalname);
+      cb(null, `${uuidv4().replace(/-/g, '')}${path.extname(file.originalname).toLowerCase()}`);
+    }
+  });
+  const fileFilter = (req, file, cb) => {
+    if (file.originalname.includes('..') || file.originalname.includes('/') || file.originalname.includes('\\')) {
+      return cb(new Error('Invalid file name'), false);
+    }
+    cb(null, true);
+  };
+  return multer({
+    storage,
+    fileFilter,
+    limits: { fileSize: getMaxFileSizeMB() * 1024 * 1024, files: getMaxFileCount() }
+  });
+}
+
+function cleanupTempFiles(files) {
+  for (const file of files || []) {
+    try { if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch (_) {}
+  }
+}
+
 // ==================== 接单 ====================
 
 router.post('/accept', requireAnyPermission(['designer.hall.design', 'basic.hall.cs', 'assistant.hall.operator'], 'designer', 'basic_designer', 'operator_assistant'), async (req, res, next) => {
@@ -36,6 +66,31 @@ router.post('/accept', requireAnyPermission(['designer.hall.design', 'basic.hall
 });
 
 // ==================== 上传文件 ====================
+
+router.post('/upload-original', requireAnyPermission(['task.upload.work'], 'basic_designer'), (req, res, next) => {
+  createOriginalUploadMiddleware().array('files', getMaxFileCount())(req, res, async (err) => {
+    if (err) {
+      cleanupTempFiles(req.files);
+      return res.json({ code: 400, msg: err.message });
+    }
+    try {
+      const result = await taskService.uploadOriginalFiles(Number(req.body.taskId), req.files || [], req.user);
+      res.json({ code: 0, ...result });
+    } catch (error) {
+      cleanupTempFiles(req.files);
+      next(error);
+    }
+  });
+});
+
+router.post('/complete-original-upload', requireAnyPermission(['task.upload.work'], 'basic_designer'), async (req, res, next) => {
+  try {
+    const result = await taskService.completeOriginalUpload(Number(req.body.taskId), req.user);
+    res.json({ code: 0, ...result });
+  } catch (error) {
+    next(error);
+  }
+});
 
 router.post('/upload-files', requireAnyPermission(['task.upload.work', 'task.create.design', 'task.create.operator', 'task.create.cs'], 'designer', 'basic_designer', 'operator', 'cs_agent', 'operator_assistant'), (req, res, next) => {
   const tmpDir = path.join(os.tmpdir(), 'd-design-tmp');

@@ -892,6 +892,107 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
   return { msg: saveOnly ? `已保存(${files.length}个文件)，请确认后提交` : `上传成功(${files.length}个文件)` };
 }
 
+async function uploadOriginalFiles(taskId, files, user) {
+  if (!taskId) throw new AppError(400, '浠诲姟ID涓嶈兘涓虹┖');
+  files = files || [];
+  if (!files.length) throw new AppError(400, '璇烽€夋嫨鍘熷浘鏂囦欢');
+
+  const storedPaths = [];
+  try {
+    await executeTransaction(async (conn) => {
+      const task = await taskDao.getTaskForUpdate(conn, taskId);
+      if (!task || task.task_group !== 'cs') throw new AppError(400, 'CS task original upload is not supported');
+      if (task.status !== 'pending_original') throw new AppError(400, 'Task is not waiting for original files');
+      if (user.role !== 'basic_designer' || Number(task.designer_id) !== Number(user.id)) {
+        throw new AppError(403, 'You cannot upload original files for this task');
+      }
+
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      for (const file of files) {
+        file.originalname = fixFilenameEncoding(file.originalname);
+        const ext = path.extname(file.originalname).toLowerCase();
+        const fileType = IMAGE_EXTS.includes(ext) ? 'image' : 'attachment';
+        const filePath = fileType === 'image'
+          ? saveImage('cs', dateStr, path.basename(file.path), fs.readFileSync(file.path))
+          : saveAttachment('cs', dateStr, path.basename(file.path), file.path);
+        storedPaths.push(filePath);
+        await taskDao.insertFileRecord(conn, {
+          taskId,
+          fileName: file.originalname,
+          filePath,
+          fileSize: file.size,
+          fileType,
+          mimeType: file.mimetype || '',
+          uploaderId: user.id,
+          fileCategory: 'original',
+          rejectRecordId: null
+        });
+        try { fs.unlinkSync(file.path); } catch (_) {}
+      }
+    });
+  } catch (error) {
+    for (const storedPath of storedPaths) {
+      try {
+        const absolutePath = resolvePath(storedPath);
+        if (absolutePath && fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
+      } catch (_) {}
+    }
+    for (const file of files) {
+      try { if (file.path && fs.existsSync(file.path)) fs.unlinkSync(file.path); } catch (_) {}
+    }
+    throw error;
+  }
+
+  const brief = await taskDao.getTaskBrief(taskId);
+  if (brief) {
+    socketEmit(`user:${brief.publisher_id}`);
+    socketEmit('group:cs');
+  }
+  return { msg: `Original files uploaded (${files.length})` };
+}
+
+async function completeOriginalUpload(taskId, user) {
+  if (!taskId) throw new AppError(400, '浠诲姟ID涓嶈兘涓虹┖');
+
+  return withLock(`original-upload:${taskId}`, async () => {
+    let taskBrief = null;
+    await executeTransaction(async (conn) => {
+      const task = await taskDao.getTaskForUpdate(conn, taskId);
+      if (!task || task.task_group !== 'cs') throw new AppError(400, 'CS task original completion is not supported');
+      if (user.role !== 'basic_designer' || Number(task.designer_id) !== Number(user.id)) {
+        throw new AppError(403, 'You cannot complete original upload for this task');
+      }
+      if (task.status === 'finished') return;
+      if (task.status !== 'pending_original') throw new AppError(400, '褰撳墠浠诲姟涓嶈兘瀹屾垚鍘熷浘涓婁紶');
+
+      const [files] = await conn.execute(
+        `SELECT id FROM task_file WHERE task_id = ? AND file_category = 'original' LIMIT 1`,
+        [taskId]
+      );
+      if (!files.length) throw new AppError(400, 'Upload at least one original file first');
+
+      const finalScore = Number(task.applied_score) > 0 ? Number(task.applied_score) : 1;
+      await taskDao.updateTaskStatus(conn, taskId, 'finished', {
+        finish_time: new Date(),
+        urge_time: null,
+        score: 1,
+        score_review_status: finalScore > 1 ? 'pending' : '',
+        score_review_reason: '',
+        score_review_time: null,
+        score_review_score: 0
+      });
+      taskBrief = { ...task, id: taskId, status: 'finished' };
+    });
+
+    if (taskBrief) {
+      await notifyTaskEvent('task_review_pass', taskBrief, user);
+      socketEmit(`user:${taskBrief.publisher_id}`);
+      socketEmit('group:cs');
+    }
+    return { msg: 'Original upload completed; task is finished' };
+  });
+}
+
 async function completeCsModification(taskId, recordId, reply, appliedScore, retainedFileIds, files, user) {
   if (!taskId || !recordId) throw new AppError(400, '任务或修改记录ID不能为空');
   const normalizedReply = String(reply || '').trim();
@@ -1199,8 +1300,10 @@ async function reviewTask(taskId, action, rejectReason, user) {
   return withLock(`review:${taskId}`, async () => {
     let rejectRecord = null;
     let alreadyFinished = false;
+    let reviewedTaskGroup = '';
     await executeTransaction(async (conn) => {
       const task = await taskDao.getTaskForUpdate(conn, taskId);
+      reviewedTaskGroup = task?.task_group || 'design';
       if (!task) throw new AppError(400, '任务不存在');
 
       // 业务权限：非管理员只能审核自己发布的任务
@@ -1224,14 +1327,14 @@ async function reviewTask(taskId, action, rejectReason, user) {
           if (await taskDao.countIncompleteRejectRecords(conn, taskId)) {
             throw new AppError(400, '当前仍有待处理的修改，不能通过');
           }
-          const finalScore = Number(task.applied_score) > 0 ? Number(task.applied_score) : 1;
+          extra.finish_time = null;
           extra.score = 1;
-          extra.score_review_status = finalScore > 1 ? 'pending' : '';
+          extra.score_review_status = '';
           extra.score_review_reason = '';
           extra.score_review_time = null;
           extra.score_review_score = 0;
         }
-        await taskDao.updateTaskStatus(conn, taskId, 'finished', extra);
+        await taskDao.updateTaskStatus(conn, taskId, task.task_group === 'cs' ? 'pending_original' : 'finished', extra);
       } else {
         const extra = { reject_reason: normalizedRejectReason };
         if (task.task_group === 'cs') {
@@ -1262,10 +1365,14 @@ async function reviewTask(taskId, action, rejectReason, user) {
       userId: user.id, taskId, action, rejectReason: normalizedRejectReason || null
     });
 
-    return {
+    const reviewResult = {
       msg: action === 'pass' ? '审核通过，任务已完成' : '已驳回',
       data: rejectRecord ? { rejectRecordId: rejectRecord.id, rejectIndex: rejectRecord.rejectIndex } : undefined
     };
+    if (action === 'pass' && reviewedTaskGroup === 'cs') {
+      reviewResult.msg = '审核通过，等待上传原图';
+    }
+    return reviewResult;
   });
 }
 
@@ -1302,20 +1409,19 @@ async function batchReview(taskIds, user) {
     const vPlaceholders = validIds.map(() => '?').join(',');
     await conn.execute(
       `UPDATE task_info
-       SET status = 'finished',
+       SET status = CASE WHEN task_group = 'cs' THEN 'pending_original' ELSE 'finished' END,
             score = CASE
               WHEN task_group = 'cs' THEN 1
               ELSE score
             END,
-           score_review_status = CASE
-             WHEN task_group = 'cs' AND COALESCE(applied_score, 0) > 1 THEN 'pending'
-             WHEN task_group = 'cs' THEN ''
+            score_review_status = CASE
+              WHEN task_group = 'cs' THEN ''
              ELSE score_review_status
            END,
            score_review_reason = CASE WHEN task_group = 'cs' THEN '' ELSE score_review_reason END,
            score_review_time = CASE WHEN task_group = 'cs' THEN NULL ELSE score_review_time END,
            score_review_score = CASE WHEN task_group = 'cs' THEN 0 ELSE score_review_score END,
-           finish_time = NOW(),
+           finish_time = CASE WHEN task_group = 'cs' THEN NULL ELSE NOW() END,
            urge_time = NULL,
            update_time = NOW()
        WHERE id IN (${vPlaceholders})`,
@@ -1856,7 +1962,7 @@ async function getAdminDetailStats(user = null) {
 module.exports = {
   createTask, snapshotMaterialImages, getTaskDetail, deleteTask, updateTask, reopenFinishedCsTask, updateCsTaskNo, batchDelete, batchReassign,
   getMyPublished, getMyAccepted, getTaskHall, getAllTasks, getAllTasksForUser, searchTasks,
-  acceptTask, uploadFiles, completeCsModification, transferTask, finishTask, reviewTask, requestCsModification, batchReview,
+  acceptTask, uploadFiles, uploadOriginalFiles, completeOriginalUpload, completeCsModification, transferTask, finishTask, reviewTask, requestCsModification, batchReview,
   withdrawTask, undoSubmit,
   getMyStats, getDashboardStats, getAdminDetailStats
 };

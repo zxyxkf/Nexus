@@ -94,6 +94,20 @@ export const completeCsModificationApi = ({
     timeout: 120000
   }))
 }
+
+export const uploadOriginalFilesApi = (taskId, files, extraData = {}) => {
+  const formData = new FormData()
+  formData.append('taskId', taskId)
+  ;(files || []).forEach(file => formData.append('files', file))
+  return taskMutation(request.post('/api/task/upload-original', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+    timeout: 120000,
+    onUploadProgress: extraData.onUploadProgress
+  }))
+}
+export const completeOriginalUploadApi = (taskId) => taskMutation(
+  request.post('/api/task/complete-original-upload', { taskId })
+)
 export const getAllTasksApi = (params) => request.get('/api/task/all', { params })
 export const getTaskDetailApi = (params) => request.get('/api/task/detail', { params })
 export const getMyStatsApi = () => request.get('/api/task/stats/my')

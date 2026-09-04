@@ -431,7 +431,7 @@ const pageCases = [
     name: 'basic my tasks',
     path: '/basic/tasks',
     user: users.basic,
-    expected: ['我的任务', '搜索旺旺ID/款号', '发布人筛选', '旺旺ID', '作品预览', '转移', 'T-DOING']
+    expected: ['我的任务', '搜索旺旺ID/款号', '发布人筛选', '旺旺ID', '效果图', '转移', 'T-DOING']
   },
   {
     name: 'operator assistant my tasks',
@@ -455,7 +455,7 @@ const pageCases = [
     name: 'shared review',
     path: '/operator/review',
     user: users.operator,
-    expected: ['作品审核', '批量审核通过', '任务编号', '作品预览', '查看作品', '通过', '驳回']
+    expected: ['作品审核', '批量审核通过', '任务编号', '效果图', '查看作品', '通过', '驳回']
   },
   {
     name: 'task hall',
@@ -1055,7 +1055,7 @@ test('withdrawn first submission keeps its existing work and score in the upload
   await page.goto('/#/basic/tasks')
 
   const row = page.locator('.el-table__body tr').filter({ hasText: 'T-CS-ACCEPTED' })
-  await row.getByRole('button', { name: '上传作品', exact: true }).click()
+  await row.getByRole('button', { name: '上传', exact: true }).click()
   const dialog = page.getByRole('dialog', { name: '上传作品' })
   await expect(dialog.getByText('撤回后保留的首次作品.png', { exact: true })).toBeVisible()
   await expect(dialog.locator('.el-input-number input')).toHaveValue('2.5')

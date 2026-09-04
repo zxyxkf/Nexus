@@ -54,6 +54,26 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
+        <el-table-column label="效果图" width="120" align="center">
+          <template #default="{ row }">
+            <div
+              v-if="getEffectImages(row.files).length"
+              class="media-thumb-cell"
+              draggable="true"
+              @dragstart="setupFileDrag($event, getEffectImages(row.files)[0])"
+              @mouseenter="preloadFilesForDrag(getEffectImages(row.files))"
+            >
+              <el-image
+                :src="getFileUrl(getEffectImages(row.files)[0])"
+                :preview-src-list="getEffectImages(row.files).map(getFileUrl)"
+                preview-teleported
+                fit="contain"
+              />
+              <span>{{ getEffectImages(row.files).length }}张</span>
+            </div>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="style_number" label="款号" min-width="130" show-overflow-tooltip>
           <template #default="{ row }">{{ row.style_number || '-' }}</template>
         </el-table-column>
@@ -129,6 +149,7 @@ import { useUserStore } from '@/store'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useTaskDetail } from '@/composables/useTaskDetail'
+import { useFileHelpers } from '@/composables/useFileHelpers'
 import Pagination from '@/components/Pagination.vue'
 import TaskDetail from '@/components/TaskDetail.vue'
 
@@ -187,6 +208,11 @@ function statusLabel(status) {
 
 function getStyleImages(files) {
   return (files || []).filter(file => file.file_category === 'style' && file.file_type === 'image')
+}
+
+const { getEffectFiles } = useFileHelpers()
+function getEffectImages(files) {
+  return getEffectFiles(files).filter(file => file.file_type === 'image')
 }
 
 function statusType(status) {
@@ -253,7 +279,7 @@ async function claimTask(task) {
   margin-top: 16px;
 }
 
-.style-thumb-cell {
+.style-thumb-cell, .media-thumb-cell {
   display: inline-flex;
   align-items: center;
   gap: 5px;
@@ -261,7 +287,7 @@ async function claimTask(task) {
   font-size: 11px;
 }
 
-.style-thumb-cell .el-image {
+.style-thumb-cell .el-image, .media-thumb-cell .el-image {
   width: 42px;
   height: 42px;
   border: 1px solid var(--dd-border-light, #e4e7ed);

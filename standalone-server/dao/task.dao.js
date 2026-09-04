@@ -783,7 +783,7 @@ async function getPublisherSummary(userId) {
             SUM(CASE WHEN status = 'doing' THEN 1 ELSE 0 END) as doing_count,
             SUM(CASE WHEN status = 'finished' THEN 1 ELSE 0 END) as finished_count,
             SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected_count,
-            SUM(CASE WHEN status IN ('wait','accepted','doing') THEN 1 ELSE 0 END) as unfinished_count
+            SUM(CASE WHEN status IN ('wait','accepted','doing','pending_original') THEN 1 ELSE 0 END) as unfinished_count
      FROM task_info WHERE publisher_id = ?`, [userId]
   );
   return rows[0];
@@ -824,7 +824,7 @@ async function getMonthlyRawData(publisherId, taskGroup, year) {
             MONTH(t.create_time) as month,
             COUNT(*) as published,
             SUM(CASE WHEN t.status = 'finished' THEN 1 ELSE 0 END) as finished,
-            SUM(CASE WHEN t.status IN ('accepted','doing') THEN 1 ELSE 0 END) as unsubmitted
+            SUM(CASE WHEN t.status IN ('accepted','doing','pending_original') THEN 1 ELSE 0 END) as unsubmitted
      FROM task_info t
      WHERE t.publisher_id = ? AND t.task_group = ? AND YEAR(t.create_time) = ?
      GROUP BY t.designer_id, MONTH(t.create_time)`,
@@ -841,7 +841,7 @@ async function getPublisherMonthlyRaw(publisherId, taskGroup, year) {
             SUM(CASE WHEN status = 'finished' THEN 1 ELSE 0 END) as finished,
             SUM(CASE WHEN status IN ('accepted','doing') THEN 1 ELSE 0 END) as doing,
             SUM(CASE WHEN status = 'wait' THEN 1 ELSE 0 END) as wait,
-            SUM(CASE WHEN status IN ('wait','accepted','doing') THEN 1 ELSE 0 END) as unfinished
+            SUM(CASE WHEN status IN ('wait','accepted','doing','pending_original') THEN 1 ELSE 0 END) as unfinished
      FROM task_info
      WHERE publisher_id = ? AND task_group = ? AND YEAR(create_time) = ?
      GROUP BY MONTH(create_time)`,
@@ -967,7 +967,7 @@ async function getSidebarBadgeStats(userId, allReview = false) {
   const [rows] = await pool.execute(
     `SELECT
        SUM(CASE WHEN designer_id = ? AND COALESCE(NULLIF(task_group, ''), 'design') = 'design' AND status IN ('accepted', 'rejected') THEN 1 ELSE 0 END) as design_todo_count,
-       SUM(CASE WHEN designer_id = ? AND task_group = 'cs' AND status IN ('accepted', 'rejected') THEN 1 ELSE 0 END) as basic_todo_count,
+       SUM(CASE WHEN designer_id = ? AND task_group = 'cs' AND status IN ('accepted', 'rejected', 'pending_original') THEN 1 ELSE 0 END) as basic_todo_count,
        SUM(CASE WHEN designer_id = ? AND task_group = 'operator' AND status IN ('accepted', 'rejected') THEN 1 ELSE 0 END) as assistant_todo_count,
        SUM(CASE WHEN COALESCE(task_group, 'design') IN ('design', '') AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as design_review_count,
        SUM(CASE WHEN task_group = 'operator' AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as operator_review_count,

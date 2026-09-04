@@ -36,7 +36,7 @@
         <el-table-column v-if="isCsAgent" label="款式图" width="120" align="center">
           <template #default="{ row }">
             <div v-if="getStyleImages(row.files).length" class="style-thumb-cell" draggable="true" @dragstart="setupFileDrag($event, getStyleImages(row.files)[0])">
-              <el-image :src="getFileUrl(getStyleImages(row.files)[0])" :preview-src-list="getStyleImages(row.files).map(getFileUrl)" preview-teleported fit="cover" />
+              <el-image :src="getFileUrl(getStyleImages(row.files)[0])" :preview-src-list="getStyleImages(row.files).map(getFileUrl)" preview-teleported fit="contain" />
               <span>{{ getStyleImages(row.files).length }}张</span>
             </div><span v-else>-</span>
           </template>
@@ -71,18 +71,19 @@
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="作品预览" width="190" align="center">
+        <el-table-column label="效果图" width="190" align="center">
           <template #default="{ row }">
             <div
-              v-if="getFirstImage(row.files)"
+              v-if="getEffectImages(row.files).length"
+              class="media-thumb-cell"
               draggable="true"
-              @dragstart="setupFileDrag($event, getFirstImage(row.files))"
+              @dragstart="setupFileDrag($event, getEffectImages(row.files)[0])"
               style="display:inline-block;"
             >
               <el-image
-                :src="getFileUrl(getFirstImage(row.files))"
-                fit="cover"
-                :preview-src-list="getImageSrcList(row.files)"
+                :src="getFileUrl(getEffectImages(row.files)[0])"
+                fit="contain"
+                :preview-src-list="getEffectImages(row.files).map(getFileUrl)"
                 :initial-index="0"
                 preview-teleported
                 style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
@@ -101,6 +102,32 @@
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
           </template>
         </el-table-column>
+        <el-table-column v-if="isCsAgent" label="原图" width="150" align="center">
+          <template #default="{ row }">
+            <div
+              v-if="getOriginalImages(row.files).length"
+              class="media-thumb-cell"
+              draggable="true"
+              @dragstart="setupFileDrag($event, getOriginalImages(row.files)[0])"
+              @mouseenter="preloadFilesForDrag(getOriginalImages(row.files))"
+            >
+              <el-image
+                :src="getFileUrl(getOriginalImages(row.files)[0])"
+                fit="contain"
+                :preview-src-list="getOriginalImages(row.files).map(getFileUrl)"
+                preview-teleported
+              />
+              <span>{{ getOriginalImages(row.files).length }}张</span>
+            </div>
+            <el-tooltip v-else-if="getOriginalFiles(row.files).length" :content="getOriginalFiles(row.files).map(f => f.file_name).join('\n')" placement="top">
+              <div class="file-badge" draggable="true" @dragstart="setupFileDrag($event, getOriginalFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getOriginalFiles(row.files))">
+                <el-icon :size="18"><Document /></el-icon>
+                <span>{{ getOriginalFiles(row.files).length }}个文件</span>
+              </div>
+            </el-tooltip>
+            <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="状态">
           <template #default="{ row }">
             <el-tag :type="row.status === 'doing' ? 'primary' : 'success'" size="small">
@@ -114,6 +141,13 @@
         <el-table-column label="操作" :width="canOpenPayment ? 260 : 180" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">查看作品</el-button>
+            <el-button
+              v-if="isCsAgent && row.status === 'doing' && row.allowedActions?.review"
+              type="warning"
+              link
+              size="small"
+              @click="openModification(row)"
+            >修改</el-button>
             <el-button
               v-if="canOpenPayment && row.allowedActions?.openPayment"
               type="warning"
@@ -158,6 +192,7 @@
       @close="detailVisible = false"
     >
       <template #actions>
+        <el-button v-if="currentTask.status === 'doing' && currentTask.allowedActions?.review" type="warning" size="small" @click="openModificationFromDetail">修改</el-button>
         <el-button v-if="currentTask.status === 'doing' && currentTask.allowedActions?.review" type="success" size="small" @click="doReview('pass')" :loading="reviewLoading">通过</el-button>
         <el-button v-if="!isCsAgent && currentTask.status === 'doing' && currentTask.allowedActions?.review" type="danger" size="small" @click="doReview('reject')" :loading="reviewLoading">驳回</el-button>
         <el-button
@@ -172,6 +207,7 @@
       <template #modifications>
         <CsModificationRecords
           v-if="isCsAgent"
+          ref="modificationRef"
           :task="currentTask"
           mode="customer"
           :submit-customer="submitCustomerModification"
@@ -183,7 +219,7 @@
 </template>
 
 <script setup>
-import { ref, computed, watch } from 'vue'
+import { ref, computed, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
@@ -256,6 +292,7 @@ const pageSize = ref(15)
 const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
   onError: error => console.error('[Review] 加载任务详情失败:', error)
 })
+const modificationRef = ref(null)
 const reviewLoading = ref(false)
 const selectedRows = ref([])
 const reviewableSelected = computed(() => selectedRows.value.filter(row => (
@@ -271,11 +308,26 @@ const batchPaymentOpening = ref(false)
 
 function onSelectChange(rows) { selectedRows.value = rows }
 
-const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList } = useFileHelpers()
+async function openModification(row) {
+  if (!isCsAgent.value || row?.status !== 'doing') return
+  await viewDetail(row)
+  await nextTick()
+  modificationRef.value?.openNewModification?.()
+}
+
+async function openModificationFromDetail() {
+  if (!currentTask.value || !isCsAgent.value) return
+  await nextTick()
+  modificationRef.value?.openNewModification?.()
+}
+
+const { getRefImages, getRefAttachments, getWorkFiles, getEffectFiles, getOriginalFiles, getRefImageSrcList } = useFileHelpers()
 function getWorkImages(files) {
-  return getWorkFiles(files).filter(file => file.file_category !== 'style' && file.file_type === 'image')
+  return getEffectFiles(files).filter(file => file.file_type === 'image')
 }
 function getStyleImages(files) { return (files || []).filter(file => file.file_category === 'style' && file.file_type === 'image') }
+function getEffectImages(files) { return getEffectFiles(files).filter(file => file.file_type === 'image') }
+function getOriginalImages(files) { return getOriginalFiles(files).filter(file => file.file_type === 'image') }
 async function handleBatchReview() {
   if (!reviewableSelected.value.length) return
   try {
@@ -458,8 +510,8 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || reviewLo
 }
 .file-badge:hover { color: var(--dd-primary); }
 .file-badge span { font-size: 10px; }
-.style-thumb-cell { display:inline-flex; align-items:center; gap:5px; color:var(--dd-text-secondary); font-size:11px; }
-.style-thumb-cell .el-image { width:42px; height:42px; border-radius:5px; border:1px solid var(--dd-border-light); cursor:pointer; }
+.style-thumb-cell, .media-thumb-cell { display:inline-flex; align-items:center; gap:5px; color:var(--dd-text-secondary); font-size:11px; }
+.style-thumb-cell .el-image, .media-thumb-cell .el-image { width:42px; height:42px; border-radius:5px; border:1px solid var(--dd-border-light); cursor:pointer; }
 .review-ref-attach {
   display: flex; align-items: center; gap: 10px;
   padding: 8px 12px; margin-bottom: 6px;

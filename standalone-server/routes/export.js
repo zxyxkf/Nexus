@@ -206,7 +206,7 @@ router.get('/tasks', async (req, res) => {
       { header: '完成时间', key: 'finish_time', width: 20 }
     ];
 
-    const statusMap = { wait: '待接单', accepted: '已接单', doing: '作图中', finished: '已完成', rejected: '已驳回' };
+    const statusMap = { wait: '待接单', accepted: '已接单', doing: '作图中', pending_original: '待上传原图', finished: '已完成', rejected: '已驳回' };
 
     rows.forEach(row => {
       sheet.addRow({
@@ -223,7 +223,7 @@ router.get('/tasks', async (req, res) => {
     });
 
     // 状态列着色
-    const statusColors = { wait: 'FFE0E0E0', accepted: 'FFFFF3CD', doing: 'FFCCE5FF', finished: 'FFD4EDDA', rejected: 'FFF8D7DA' };
+    const statusColors = { wait: 'FFE0E0E0', accepted: 'FFFFF3CD', doing: 'FFCCE5FF', pending_original: 'FFFFE0B2', finished: 'FFD4EDDA', rejected: 'FFF8D7DA' };
     sheet.eachRow((row, rowIdx) => {
       if (rowIdx > 1) {
         const statusCell = row.getCell(5);

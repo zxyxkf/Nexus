@@ -15,6 +15,7 @@
           <el-option label="待接单" value="wait" />
           <el-option label="已接单" value="accepted" />
           <el-option label="作图中" value="doing" />
+          <el-option label="待上传原图" value="pending_original" />
           <el-option label="已完成" value="finished" />
           <el-option label="已驳回" value="rejected" />
         </el-select>
@@ -47,8 +48,8 @@
         </template>
         <el-table-column type="selection" width="45" />
         <el-table-column prop="task_no" label="任务编号" min-width="140" />
-        <el-table-column prop="title" label="工作项目" min-width="140" show-overflow-tooltip />
-        <el-table-column label="分值" align="center">
+        <el-table-column v-if="taskGroup !== 'cs'" prop="title" label="工作项目" min-width="140" show-overflow-tooltip />
+        <el-table-column v-if="taskGroup !== 'cs'" label="分值" align="center">
           <template #default="{ row }">{{ row.score || '-' }}</template>
         </el-table-column>
         <el-table-column label="状态">
@@ -58,6 +59,33 @@
         </el-table-column>
         <el-table-column prop="publisher_name" :label="publisherLabel" />
         <el-table-column prop="designer_name" :label="designerLabel" />
+        <el-table-column v-if="taskGroup === 'cs'" label="款式图" width="120" align="center">
+          <template #default="{ row }">
+            <div v-if="getStyleImages(row.files).length" class="style-thumb-cell" draggable="true" @dragstart="setupFileDrag($event, getStyleImages(row.files)[0])" @mouseenter="preloadFilesForDrag(getStyleImages(row.files))">
+              <el-image :src="getFileUrl(getStyleImages(row.files)[0])" fit="contain" :preview-src-list="getStyleImages(row.files).map(getFileUrl)" preview-teleported />
+              <span>{{ getStyleImages(row.files).length }}张</span>
+            </div>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="taskGroup === 'cs'" label="效果图" width="120" align="center">
+          <template #default="{ row }">
+            <div v-if="getEffectImages(row.files).length" class="media-thumb-cell" draggable="true" @dragstart="setupFileDrag($event, getEffectImages(row.files)[0])" @mouseenter="preloadFilesForDrag(getEffectImages(row.files))">
+              <el-image :src="getFileUrl(getEffectImages(row.files)[0])" fit="contain" :preview-src-list="getEffectImages(row.files).map(getFileUrl)" preview-teleported />
+              <span>{{ getEffectImages(row.files).length }}张</span>
+            </div>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="taskGroup === 'cs'" label="原图" width="120" align="center">
+          <template #default="{ row }">
+            <div v-if="getOriginalImages(row.files).length" class="media-thumb-cell" draggable="true" @dragstart="setupFileDrag($event, getOriginalImages(row.files)[0])" @mouseenter="preloadFilesForDrag(getOriginalImages(row.files))">
+              <el-image :src="getFileUrl(getOriginalImages(row.files)[0])" fit="contain" :preview-src-list="getOriginalImages(row.files).map(getFileUrl)" preview-teleported />
+              <span>{{ getOriginalImages(row.files).length }}张</span>
+            </div>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column v-if="taskGroup === 'design'" label="参考图" width="120" align="center">
           <template #default="{ row }">
             <div
@@ -189,7 +217,16 @@ const pageTitle = computed(() => `${route.meta.title || '全量任务'}管理`)
 const filterPlaceholder = computed(() => taskGroup.value === 'design' ? '搜索编号/标题/款号' : '搜索编号/标题')
 const publisherLabel = computed(() => '发布人')
 const designerLabel = computed(() => taskGroup.value === 'cs' ? '基础美工' : taskGroup.value === 'operator' ? '运营助理' : '美工')
-const { getRefImages, getFirstImage, getRefImageSrcList, getImageSrcList } = useFileHelpers()
+const { getRefImages, getFirstImage, getEffectFiles, getOriginalFiles, getRefImageSrcList, getImageSrcList } = useFileHelpers()
+function getStyleImages(files) {
+  return (files || []).filter(file => file.file_category === 'style' && file.file_type === 'image')
+}
+function getEffectImages(files) {
+  return getEffectFiles(files).filter(file => file.file_type === 'image')
+}
+function getOriginalImages(files) {
+  return getOriginalFiles(files).filter(file => file.file_type === 'image')
+}
 
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
@@ -465,5 +502,7 @@ onMounted(() => {
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
 .file-card-size { font-size: 11px; color: var(--dd-text-secondary); }
+.style-thumb-cell, .media-thumb-cell { display:inline-flex; align-items:center; gap:5px; color:var(--dd-text-secondary); font-size:11px; }
+.style-thumb-cell .el-image, .media-thumb-cell .el-image { width:42px; height:42px; border-radius:5px; border:1px solid var(--dd-border-light); cursor:pointer; }
 .file-download-btn { position: absolute; right: 12px; bottom: 12px; background: rgba(255, 255, 255, 0.9); border-radius: 4px; }
 </style>

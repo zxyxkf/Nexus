@@ -64,6 +64,7 @@
               <el-option label="待接单" value="wait" />
               <el-option label="已接单" value="accepted" />
               <el-option label="作图中" value="doing" />
+              <el-option label="待上传原图" value="pending_original" />
               <el-option label="已完成" value="finished" />
               <el-option label="已驳回" value="rejected" />
               <el-option label="草稿" value="draft" />
@@ -162,34 +163,50 @@
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="作品预览" width="200" align="center">
+        <el-table-column :label="isCsAgent ? '效果图' : '作品预览'" width="200" align="center">
           <template #default="{ row }">
             <div
-              v-if="getFirstImage(row.files)"
+              v-if="getTaskWorkImages(row.files).length"
+              class="media-thumb-cell"
               draggable="true"
-              @dragstart="setupFileDrag($event, getFirstImage(row.files))"
+              @dragstart="setupFileDrag($event, getTaskWorkImages(row.files)[0])"
               style="display:inline-block;"
             >
               <el-image
-                :src="getFileUrl(getFirstImage(row.files))"
-                fit="cover"
-                :preview-src-list="getImageSrcList(row.files)"
+                :src="getFileUrl(getTaskWorkImages(row.files)[0])"
+                fit="contain"
+                :preview-src-list="getTaskWorkImages(row.files).map(getFileUrl)"
                 :initial-index="0"
                 preview-teleported
                 style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
               />
             </div>
             <el-tooltip
-              v-else-if="getWorkFiles(row.files).length"
-              :content="getWorkFiles(row.files).map(f => f.file_name).join('\n')"
+              v-else-if="getTaskWorkFiles(row.files).length"
+              :content="getTaskWorkFiles(row.files).map(f => f.file_name).join('\n')"
               placement="top"
             >
-              <div class="file-badge" @click="viewDetail(row)" draggable="true" @dragstart="setupFileDrag($event, getWorkFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getWorkFiles(row.files))">
+              <div class="file-badge" @click="viewDetail(row)" draggable="true" @dragstart="setupFileDrag($event, getTaskWorkFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getTaskWorkFiles(row.files))">
                 <el-icon :size="18"><Document /></el-icon>
-                <span>{{ getWorkFiles(row.files).length }}个附件</span>
+                <span>{{ getTaskWorkFiles(row.files).length }}个附件</span>
               </div>
             </el-tooltip>
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="isCsAgent" label="原图" width="160" align="center">
+          <template #default="{ row }">
+            <div v-if="getOriginalImages(row.files).length" class="media-thumb-cell" draggable="true" @dragstart="setupFileDrag($event, getOriginalImages(row.files)[0])" @mouseenter="preloadFilesForDrag(getOriginalImages(row.files))">
+              <el-image :src="getFileUrl(getOriginalImages(row.files)[0])" fit="contain" :preview-src-list="getOriginalImages(row.files).map(getFileUrl)" preview-teleported />
+              <span>{{ getOriginalImages(row.files).length }}张</span>
+            </div>
+            <el-tooltip v-else-if="getOriginalFiles(row.files).length" :content="getOriginalFiles(row.files).map(f => f.file_name).join('\n')" placement="top">
+              <div class="file-badge" draggable="true" @dragstart="setupFileDrag($event, getOriginalFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getOriginalFiles(row.files))">
+                <el-icon :size="18"><Document /></el-icon>
+                <span>{{ getOriginalFiles(row.files).length }}个文件</span>
+              </div>
+            </el-tooltip>
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column prop="create_time" label="发布时间" width="170" align="center" sortable="custom" show-overflow-tooltip>
@@ -405,10 +422,19 @@ const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
 function statusLabel(s) { return STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
 
-const progressSteps = { wait: '20%', accepted: '40%', doing: '60%', finished: '100%', rejected: '60%', draft: '0%' }
+const progressSteps = { wait: '20%', accepted: '40%', doing: '60%', pending_original: '80%', finished: '100%', rejected: '60%', draft: '0%' }
 function progressWidth(s) { return progressSteps[s] || '0%' }
 
-const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList, getImagePreviewIndex } = useFileHelpers()
+const { getRefImages, getRefAttachments, getWorkFiles, getEffectFiles, getOriginalFiles, getRefImageSrcList, getImagePreviewIndex } = useFileHelpers()
+function getTaskWorkFiles(files) {
+  return isCsAgent.value ? getEffectFiles(files) : getWorkFiles(files)
+}
+function getTaskWorkImages(files) {
+  return getTaskWorkFiles(files).filter(file => file.file_type === 'image')
+}
+function getOriginalImages(files) {
+  return getOriginalFiles(files).filter(file => file.file_type === 'image')
+}
 function isPaymentOpened(value) {
   return value === true || value === 1 || value === '1'
 }
@@ -847,8 +873,8 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || editVisi
 }
 .file-badge:hover { color: var(--dd-primary); }
 .file-badge span { font-size: 10px; }
-.style-thumb-cell { display:inline-flex; align-items:center; gap:5px; color:var(--dd-text-secondary); font-size:11px; }
-.style-thumb-cell .el-image { width:42px; height:42px; border-radius:5px; border:1px solid var(--dd-border-light); cursor:pointer; }
+.style-thumb-cell, .media-thumb-cell { display:inline-flex; align-items:center; gap:5px; color:var(--dd-text-secondary); font-size:11px; }
+.style-thumb-cell .el-image, .media-thumb-cell .el-image { width:42px; height:42px; border-radius:5px; border:1px solid var(--dd-border-light); cursor:pointer; }
 
 .file-grid { display: flex; flex-wrap: wrap; gap: 12px; }
 .file-item { text-align: center; }

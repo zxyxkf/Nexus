@@ -8,6 +8,7 @@ const STATUS_MAP = {
   wait: '待接单',
   accepted: '已接单',
   doing: '作图中',
+  pending_original: '待上传原图',
   submitted: '待审核',
   finished: '已完成',
   rejected: '已驳回'
@@ -18,6 +19,7 @@ const STATUS_TAG_TYPE = {
   wait: 'warning',
   accepted: 'primary',
   doing: '',
+  pending_original: 'warning',
   submitted: 'info',
   finished: 'success',
   rejected: 'danger'
@@ -28,6 +30,7 @@ const PROGRESS_STEPS = {
   wait: '15%',
   accepted: '35%',
   doing: '65%',
+  pending_original: '80%',
   submitted: '85%',
   finished: '100%',
   rejected: '65%'
@@ -38,6 +41,7 @@ const VALID_TRANSITIONS = {
   accepted: ['doing', 'draft'],
   doing: ['submitted', 'accepted'],
   submitted: ['finished', 'rejected'],
+  pending_original: ['finished'],
   rejected: ['submitted']
 }
 

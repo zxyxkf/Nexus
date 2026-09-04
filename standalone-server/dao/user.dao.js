@@ -143,7 +143,7 @@ async function getUsersByRole(role) {
            JSON_OBJECT('id', t.id, 'title', t.title, 'task_no', t.task_no, 'status', t.status)
          )
          FROM task_info t
-         WHERE t.designer_id = u.id AND t.status IN ('accepted','rejected')
+         WHERE t.designer_id = u.id AND t.status IN ('accepted','rejected','pending_original')
         ), JSON_ARRAY()
       ) AS active_tasks
      FROM sys_user u

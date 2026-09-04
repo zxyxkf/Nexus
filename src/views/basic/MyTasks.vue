@@ -45,6 +45,7 @@
               <el-option label="全部" value="" />
               <el-option label="已接单" value="accepted" />
               <el-option label="作图中" value="doing" />
+              <el-option label="待上传原图" value="pending_original" />
               <el-option label="已完成" value="finished" />
               <el-option label="修改中" value="rejected" />
             </el-select>
@@ -121,34 +122,50 @@
           </template>
         </el-table-column>
         <el-table-column prop="publisher_name" label="发布人" width="130" />
-        <el-table-column label="作品预览" min-width="150" align="center">
+        <el-table-column label="效果图" min-width="150" align="center">
           <template #default="{ row }">
             <div
-              v-if="getFirstImage(row.files)"
+              v-if="getEffectImages(row.files).length"
+              class="media-thumb-cell"
               draggable="true"
-              @dragstart="setupFileDrag($event, getFirstImage(row.files))"
+              @dragstart="setupFileDrag($event, getEffectImages(row.files)[0])"
               style="display:inline-block;"
             >
               <el-image
-                :src="getFileUrl(getFirstImage(row.files))"
-                fit="cover"
-                :preview-src-list="getImageSrcList(row.files)"
+                :src="getFileUrl(getEffectImages(row.files)[0])"
+                fit="contain"
+                :preview-src-list="getEffectImages(row.files).map(getFileUrl)"
                 :initial-index="0"
                 preview-teleported
                 style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
               />
             </div>
             <el-tooltip
-              v-else-if="getWorkFiles(row.files).length"
-              :content="getWorkFiles(row.files).map(f => f.file_name).join('\n')"
+              v-else-if="getEffectFilesForTask(row.files).length"
+              :content="getEffectFilesForTask(row.files).map(f => f.file_name).join('\n')"
               placement="top"
             >
-              <div class="file-badge" @click="viewDetail(row)" draggable="true" @dragstart="setupFileDrag($event, getWorkFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getWorkFiles(row.files))">
+              <div class="file-badge" @click="viewDetail(row)" draggable="true" @dragstart="setupFileDrag($event, getEffectFilesForTask(row.files)[0])" @mouseenter="preloadFilesForDrag(getEffectFilesForTask(row.files))">
                 <el-icon :size="18"><Document /></el-icon>
-                <span>{{ getWorkFiles(row.files).length }}个附件</span>
+                <span>{{ getEffectFilesForTask(row.files).length }}个附件</span>
               </div>
             </el-tooltip>
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="原图" min-width="150" align="center">
+          <template #default="{ row }">
+            <div v-if="getOriginalImages(row.files).length" class="media-thumb-cell" draggable="true" @dragstart="setupFileDrag($event, getOriginalImages(row.files)[0])" @mouseenter="preloadFilesForDrag(getOriginalImages(row.files))">
+              <el-image :src="getFileUrl(getOriginalImages(row.files)[0])" fit="contain" :preview-src-list="getOriginalImages(row.files).map(getFileUrl)" preview-teleported />
+              <span>{{ getOriginalImages(row.files).length }}张</span>
+            </div>
+            <el-tooltip v-else-if="getOriginalFiles(row.files).length" :content="getOriginalFiles(row.files).map(f => f.file_name).join('\n')" placement="top">
+              <div class="file-badge" draggable="true" @dragstart="setupFileDrag($event, getOriginalFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getOriginalFiles(row.files))">
+                <el-icon :size="18"><Document /></el-icon>
+                <span>{{ getOriginalFiles(row.files).length }}个文件</span>
+              </div>
+            </el-tooltip>
+            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column prop="create_time" label="发布时间" width="170" sortable="custom" show-overflow-tooltip>
@@ -162,7 +179,13 @@
               type="warning"
               link size="small"
               @click="openUpload(row)"
-            >上传作品</el-button>
+            >上传</el-button>
+            <el-button
+              v-if="row.status === 'pending_original'"
+              type="warning"
+              link size="small"
+              @click="viewDetail(row)"
+            >上传原图</el-button>
             <el-button
               v-if="row.status === 'rejected'"
               type="warning"
@@ -203,7 +226,11 @@
         :task="currentTask"
         task-group="cs"
         detail-context="cs-assignee"
+        :max-file-count="maxFileCount"
+        :max-file-size-m-b="maxFileSizeMB"
         @close="detailVisible = false"
+        @original-uploaded="refreshCurrentTask"
+        @original-completed="handleOriginalCompleted"
       >
         <template #actions>
           <el-button
@@ -333,7 +360,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Document, Search, UploadFilled } from '@element-plus/icons-vue'
-import { completeCsModificationApi, getMyAcceptedApi, uploadFilesApi, finishTaskApi, transferTaskApi, undoSubmitApi, getBasicDesignerListApi, getPublisherListApi, getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { completeCsModificationApi, getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, transferTaskApi, undoSubmitApi, getBasicDesignerListApi, getPublisherListApi, getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, scoreReviewTagType } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
@@ -427,7 +454,16 @@ function handleSortChange({ prop, order }) {
 
 function statusLabel(s) { return s === 'rejected' ? '修改中' : STATUS_MAP[s] || s }
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
-const { getRefImages, getRefAttachments, getWorkFiles, getRefImageSrcList, getFirstImage, getImageSrcList, downloadFile } = useFileHelpers()
+const { getRefImages, getRefAttachments, getEffectFiles, getOriginalFiles, getRefImageSrcList } = useFileHelpers()
+function getEffectImages(files) {
+  return getEffectFiles(files).filter(file => file.file_type === 'image')
+}
+function getEffectFilesForTask(files) {
+  return getEffectFiles(files)
+}
+function getOriginalImages(files) {
+  return getOriginalFiles(files).filter(file => file.file_type === 'image')
+}
 const detailRefImages = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type === 'image')
@@ -619,6 +655,20 @@ async function submitDesignerModification(payload) {
   }
 }
 
+async function refreshCurrentTask(taskId) {
+  try {
+    const response = await getTaskDetailApi({ taskId })
+    if (response.code === 0) currentTask.value = response.data
+  } catch (error) {
+    console.error('[MyTasks] 刷新原图列表失败:', error)
+  }
+}
+
+async function handleOriginalCompleted() {
+  detailVisible.value = false
+  await loadData()
+}
+
 async function openTransfer(row) {
   transferTask.value = row
   transferDesignerId.value = null
@@ -733,8 +783,8 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVi
 }
 .file-badge:hover { color: var(--dd-primary); }
 .file-badge span { font-size: 10px; }
-.style-thumb-cell { display:inline-flex; align-items:center; gap:5px; color:var(--dd-text-secondary); font-size:11px; }
-.style-thumb-cell .el-image { width:42px; height:42px; border-radius:5px; border:1px solid var(--dd-border-light); cursor:pointer; }
+.style-thumb-cell, .media-thumb-cell { display:inline-flex; align-items:center; gap:5px; color:var(--dd-text-secondary); font-size:11px; }
+.style-thumb-cell .el-image, .media-thumb-cell .el-image { width:42px; height:42px; border-radius:5px; border:1px solid var(--dd-border-light); cursor:pointer; }
 .retained-work-list { margin-bottom: 12px; border: 1px solid var(--dd-border-light); border-radius: 6px; overflow: hidden; }
 .retained-work-title { padding: 8px 10px; background: var(--dd-bg-secondary); color: var(--dd-text-regular); font-size: 12px; font-weight: 700; }
 .retained-work-file { display: flex; align-items: center; gap: 8px; min-height: 42px; padding: 5px 8px; border-top: 1px solid var(--dd-border-light); }

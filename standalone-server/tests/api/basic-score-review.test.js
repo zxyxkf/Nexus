@@ -169,6 +169,18 @@ describe('基础美工申请分以客服最终通过为审核起点', () => {
       .send({ taskId, action: 'pass' });
     expect(pass.body.code).toBe(0);
 
+    await request(app)
+      .post('/api/task/upload-original')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(taskId))
+      .attach('files', Buffer.from('final original'), 'final-original.txt')
+      .expect(200);
+    await request(app)
+      .post('/api/task/complete-original-upload')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .send({ taskId })
+      .expect(200);
+
     reviewList = await request(app)
       .get('/api/score/review/list?pageSize=50')
       .set('Authorization', `Bearer ${leadToken}`);
@@ -224,6 +236,18 @@ describe('基础美工申请分以客服最终通过为审核起点', () => {
       .set('Authorization', `Bearer ${csToken}`)
       .send({ taskId: finishedPendingTaskId, action: 'pass' });
     expect(pass.body.code).toBe(0);
+
+    await request(app)
+      .post('/api/task/upload-original')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(finishedPendingTaskId))
+      .attach('files', Buffer.from('final original'), 'final-original.txt')
+      .expect(200);
+    await request(app)
+      .post('/api/task/complete-original-upload')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .send({ taskId: finishedPendingTaskId })
+      .expect(200);
 
     const leadStatsBefore = await request(app)
       .get('/api/task/stats/my')
@@ -282,6 +306,18 @@ describe('客服已完成基础美工任务编号修改', () => {
       .set('Authorization', `Bearer ${csToken}`)
       .send({ taskId, action: 'pass' });
     expect(pass.body.code).toBe(0);
+
+    await request(app)
+      .post('/api/task/upload-original')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(taskId))
+      .attach('files', Buffer.from(`${title} original`), `${title}-original.txt`)
+      .expect(200);
+    await request(app)
+      .post('/api/task/complete-original-upload')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .send({ taskId })
+      .expect(200);
 
     const detail = await request(app)
       .get(`/api/task/detail?taskId=${taskId}`)
@@ -346,6 +382,18 @@ describe('客服已完成基础美工任务编号修改', () => {
       .set('Authorization', `Bearer ${operatorToken}`)
       .send({ taskId, action: 'pass' });
     expect(pass.body.code).toBe(0);
+
+    await request(app)
+      .post('/api/task/upload-original')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(taskId))
+      .attach('files', Buffer.from('operator cs original'), 'operator-cs-original.txt')
+      .expect(200);
+    await request(app)
+      .post('/api/task/complete-original-upload')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .send({ taskId })
+      .expect(200);
 
     const denied = await request(app)
       .put('/api/task/cs-task-no')
