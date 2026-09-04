@@ -64,8 +64,25 @@
         <el-table-column label="款号" width="150" show-overflow-tooltip>
           <template #default="{ row }">{{ row.style_number || '-' }}</template>
         </el-table-column>
-        <el-table-column label="指定颜色" width="120" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.specified_color || '-' }}</template>
+        <el-table-column label="款式图" width="120" align="center">
+          <template #default="{ row }">
+            <div
+              v-if="getStyleImages(row.files).length"
+              class="style-thumb-cell"
+              draggable="true"
+              @dragstart="setupFileDrag($event, getStyleImages(row.files)[0])"
+              @mouseenter="preloadFilesForDrag(getStyleImages(row.files))"
+            >
+              <el-image
+                :src="getFileUrl(getStyleImages(row.files)[0])"
+                :preview-src-list="getStyleImages(row.files).map(getFileUrl)"
+                preview-teleported
+                fit="cover"
+              />
+              <span>{{ getStyleImages(row.files).length }}张</span>
+            </div>
+            <span v-else>-</span>
+          </template>
         </el-table-column>
         <el-table-column label="参考图" min-width="160" align="center">
           <template #default="{ row }">
@@ -412,6 +429,10 @@ const workAttachFiles = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category !== 'reference' && f.file_category !== 'reject' && f.file_type !== 'image')
 })
+
+function getStyleImages(files) {
+  return (files || []).filter(file => file.file_category === 'style' && file.file_type === 'image')
+}
 const detailRefAttachments = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type !== 'image')
@@ -669,6 +690,8 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVi
 }
 .file-badge:hover { color: var(--dd-primary); }
 .file-badge span { font-size: 10px; }
+.style-thumb-cell { display:inline-flex; align-items:center; gap:5px; color:var(--dd-text-secondary); font-size:11px; }
+.style-thumb-cell .el-image { width:42px; height:42px; border-radius:5px; border:1px solid var(--dd-border-light); cursor:pointer; }
 
 .file-card {
   display: flex; align-items: center; gap: 10px;

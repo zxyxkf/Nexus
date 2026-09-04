@@ -34,7 +34,26 @@
         <el-table-column prop="wangwang_id" label="旺旺ID" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">{{ row.wangwang_id || '-' }}</template>
         </el-table-column>
-        <el-table-column prop="title" label="工作项目" min-width="170" show-overflow-tooltip />
+        <el-table-column label="款式图" width="120" align="center">
+          <template #default="{ row }">
+            <div
+              v-if="getStyleImages(row.files).length"
+              class="style-thumb-cell"
+              draggable="true"
+              @dragstart="setupFileDrag($event, getStyleImages(row.files)[0])"
+              @mouseenter="preloadFilesForDrag(getStyleImages(row.files))"
+            >
+              <el-image
+                :src="getFileUrl(getStyleImages(row.files)[0])"
+                :preview-src-list="getStyleImages(row.files).map(getFileUrl)"
+                preview-teleported
+                fit="cover"
+              />
+              <span>{{ getStyleImages(row.files).length }}张</span>
+            </div>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
         <el-table-column prop="style_number" label="款号" min-width="130" show-overflow-tooltip>
           <template #default="{ row }">{{ row.style_number || '-' }}</template>
         </el-table-column>
@@ -83,7 +102,7 @@
       :visible="detailVisible"
       :task="currentTask"
       task-group="cs"
-      detail-context="published"
+      detail-context="handoff"
       @close="closeDetail"
     >
       <template #actions>
@@ -105,7 +124,7 @@
 import { computed, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Search, UserFilled, View } from '@element-plus/icons-vue'
-import { claimCsHandoffTaskApi, getCsHandoffTasksApi } from '@/api'
+import { claimCsHandoffTaskApi, getCsHandoffTasksApi, getFileUrl, preloadFilesForDrag, setupFileDrag } from '@/api'
 import { useUserStore } from '@/store'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
@@ -121,7 +140,7 @@ const filters = reactive({ keyword: '', status: '', page: 1, pageSize: 15 })
 const statusOptions = [
   { label: '已接单', value: 'accepted' },
   { label: '待审核', value: 'doing' },
-  { label: '已驳回', value: 'rejected' },
+  { label: '修改中', value: 'rejected' },
   { label: '草稿', value: 'draft' }
 ]
 
@@ -163,7 +182,11 @@ function handlePageSizeChange() {
 }
 
 function statusLabel(status) {
-  return STATUS_MAP[status] || status || '-'
+  return status === 'rejected' ? '修改中' : STATUS_MAP[status] || status || '-'
+}
+
+function getStyleImages(files) {
+  return (files || []).filter(file => file.file_category === 'style' && file.file_type === 'image')
 }
 
 function statusType(status) {
@@ -228,6 +251,22 @@ async function claimTask(task) {
   display: flex;
   justify-content: flex-end;
   margin-top: 16px;
+}
+
+.style-thumb-cell {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  color: var(--dd-text-secondary, #606266);
+  font-size: 11px;
+}
+
+.style-thumb-cell .el-image {
+  width: 42px;
+  height: 42px;
+  border: 1px solid var(--dd-border-light, #e4e7ed);
+  border-radius: 5px;
+  cursor: pointer;
 }
 
 @media (max-width: 760px) {

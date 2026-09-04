@@ -216,6 +216,7 @@ const detailTitle = computed(() => {
 const showSummaryStatus = computed(() => [
   'source-task',
   'published',
+  'handoff',
   'design-assignee',
   'cs-assignee',
   'operator-published',
@@ -243,6 +244,9 @@ const summaryItems = computed(() => {
     addHeaderTime()
   } else if (context === 'published') {
     if (isCsTask.value && task.task_no) addTaskNumber()
+    addHeaderTime()
+  } else if (context === 'handoff') {
+    if (task.task_no) addTaskNumber()
     addHeaderTime()
   } else if (context === 'design-assignee' || context === 'operator-published') {
     addHeaderTime()
@@ -344,6 +348,14 @@ const detailFields = computed(() => {
     if (props.taskGroup !== 'design') {
       add('任务标题', task.title || '-', { span: 3 })
     }
+  } else if (currentContext.value === 'handoff') {
+    add('发布人', '暂存')
+    add('基础美工', task.designer_name || '未接单')
+    add('工作项目', task.title)
+    add('分值', task.score || '-')
+    add('款号', task.style_number || '无')
+    add('旺旺ID', task.wangwang_id || task.ref_path || '无')
+    addScoreReview()
   } else if (currentContext.value === 'published') {
     addPeople('我', props.taskGroup === 'cs' ? '基础美工' : '美工', '未接单')
     add('工作项目', task.title)

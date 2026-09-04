@@ -52,7 +52,9 @@ const files = [
   { id: 102, file_name: 'brief.pdf', file_type: 'file', file_category: 'reference', file_size: 2048 },
   { id: 103, file_name: 'work.png', file_type: 'image', file_category: 'work', file_size: 4096 },
   { id: 104, file_name: 'work.zip', file_type: 'file', file_category: 'work', file_size: 8192 },
-  { id: 105, file_name: 'rejected-version.zip', file_type: 'file', file_category: 'reject', file_size: 16384 }
+  { id: 105, file_name: 'rejected-version.zip', file_type: 'file', file_category: 'reject', file_size: 16384 },
+  { id: 106, file_name: 'style-a.png', file_type: 'image', file_category: 'style', file_size: 2048 },
+  { id: 107, file_name: 'style-b.png', file_type: 'image', file_category: 'style', file_size: 3072 }
 ]
 
 const taskRows = [
@@ -308,6 +310,23 @@ const taskRows = [
         files: []
       }
     ],
+    files
+  },
+  {
+    id: 211,
+    task_no: 'T-CS-WAIT',
+    title: '客服大厅任务',
+    score_item_name: '客服大厅任务',
+    score: 1,
+    status: 'wait',
+    task_group: 'cs',
+    publisher_id: 6,
+    publisher_name: '客服A',
+    designer_id: null,
+    designer_name: '',
+    style_number: 'SN-011',
+    wangwang_id: 'ww-011',
+    create_time: '2026-06-06 10:00:00',
     files
   }
 ]
@@ -844,6 +863,39 @@ test('basic designer sees customer service rejection as modification and can rep
   const dialog = page.getByRole('dialog', { name: '重新上传作品' })
   await expect(dialog.getByText('本次修改回复', { exact: true })).toBeVisible()
   await expect(dialog.getByPlaceholder('可填写本次修改内容')).toBeVisible()
+})
+
+test('customer service and basic designer task lists show style images without changing designer columns', async ({ page, browser }) => {
+  await loginAs(page, users.cs)
+  await page.goto('/#/cs/handoff-tasks')
+  await expect(page.getByRole('columnheader', { name: '款式图', exact: true })).toBeVisible()
+  await expect(page.getByRole('columnheader', { name: '工作项目', exact: true })).toHaveCount(0)
+  const handoffRow = page.locator('.el-table__body tr').filter({ hasText: 'T-DOING' })
+  await expect(handoffRow.getByText('2张', { exact: true })).toBeVisible()
+  expectBrowserDragData(await dispatchDragStart(handoffRow.locator('.style-thumb-cell')))
+  await handoffRow.getByRole('button', { name: '查看', exact: true }).click()
+  const overlay = page.locator('.task-detail-overlay')
+  await expect(overlay.getByText('暂存', { exact: true })).toBeVisible()
+  await overlay.getByRole('button', { name: '关闭', exact: true }).click()
+
+  const basicPage = await browser.newPage()
+  await mockApis(basicPage)
+  await loginAs(basicPage, users.basic)
+  for (const path of ['/basic/hall', '/basic/tasks', '/basic/tasks/todo', '/basic/tasks/pending']) {
+    await basicPage.goto(`/#${path}`)
+    await expect(basicPage.getByRole('columnheader', { name: '款式图', exact: true })).toBeVisible()
+    await expect(basicPage.getByRole('columnheader', { name: '指定颜色', exact: true })).toHaveCount(0)
+    await expect(basicPage.locator('.style-thumb-cell').first()).toContainText('2张')
+  }
+  await basicPage.close()
+
+  const designerPage = await browser.newPage()
+  await mockApis(designerPage)
+  await loginAs(designerPage, users.designer)
+  await designerPage.goto('/#/designer/hall')
+  await expect(designerPage.getByRole('columnheader', { name: '指定颜色', exact: true })).toBeVisible()
+  await expect(designerPage.getByRole('columnheader', { name: '款式图', exact: true })).toHaveCount(0)
+  await designerPage.close()
 })
 
 test('table and detail file drag writes browser download data', async ({ page }) => {

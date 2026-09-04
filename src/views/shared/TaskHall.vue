@@ -48,7 +48,27 @@
         <el-table-column v-if="isBasicDesigner" label="任务描述" min-width="120" show-overflow-tooltip>
           <template #default="{ row }">{{ row.description || '-' }}</template>
         </el-table-column>
-        <el-table-column v-if="!isOperatorAssistant" label="指定颜色" min-width="100" show-overflow-tooltip>
+        <el-table-column v-if="isBasicDesigner" label="款式图" width="120" align="center">
+          <template #default="{ row }">
+            <div
+              v-if="getStyleImages(row.files).length"
+              class="style-thumb-cell"
+              draggable="true"
+              @dragstart="setupFileDrag($event, getStyleImages(row.files)[0])"
+              @mouseenter="preloadFilesForDrag(getStyleImages(row.files))"
+            >
+              <el-image
+                :src="getFileUrl(getStyleImages(row.files)[0])"
+                :preview-src-list="getStyleImages(row.files).map(getFileUrl)"
+                preview-teleported
+                fit="cover"
+              />
+              <span>{{ getStyleImages(row.files).length }}张</span>
+            </div>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-if="!isBasicDesigner && !isOperatorAssistant" label="指定颜色" min-width="100" show-overflow-tooltip>
           <template #default="{ row }">{{ row.specified_color || '-' }}</template>
         </el-table-column>
         <el-table-column v-if="!isBasicDesigner && !isOperatorAssistant" label="参考路径" min-width="100" show-overflow-tooltip>
@@ -180,6 +200,10 @@ const { detailVisible, currentTask, openDetail: openTaskDetail } = useTaskDetail
 const { getRefImages, getRefAttachments, getRefImageSrcList, downloadFile } = useFileHelpers()
 const formatSize = formatFileSize
 
+function getStyleImages(files) {
+  return (files || []).filter(file => file.file_category === 'style' && file.file_type === 'image')
+}
+
 const detailRefImages = computed(() => {
   if (!currentTask.value?.files) return []
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type === 'image')
@@ -282,4 +306,6 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value })
 }
 .file-card-size { font-size: 12px; color: var(--dd-text-muted); }
 .multiline-value { white-space: pre-wrap; word-break: break-word; }
+.style-thumb-cell { display:inline-flex; align-items:center; gap:5px; color:var(--dd-text-secondary); font-size:11px; }
+.style-thumb-cell .el-image { width:42px; height:42px; border-radius:5px; border:1px solid var(--dd-border-light); cursor:pointer; }
 </style>
