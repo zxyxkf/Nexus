@@ -3,7 +3,7 @@
     <div class="original-upload-head">
       <div>
         <h3>原图上传</h3>
-        <p>原图可以分批上传，全部完成后再提交任务</p>
+        <p>{{ autoComplete ? '选择原图后点击完成上传即可提交任务' : '原图可以分批上传，全部完成后再提交任务' }}</p>
       </div>
       <el-tag type="warning" effect="plain">待上传原图</el-tag>
     </div>
@@ -56,8 +56,8 @@
 
     <el-progress v-if="uploading" :percentage="progress" :status="progress === 100 ? 'success' : undefined" />
     <div class="original-upload-actions">
-      <el-button type="primary" :loading="uploading" :disabled="!rawFiles.length" @click="uploadSelected">上传所选原图</el-button>
-      <el-button type="success" :loading="completing" :disabled="!existingFiles.length && !hasUploadedBatch" @click="completeUpload">完成上传</el-button>
+      <el-button v-if="!autoComplete" type="primary" :loading="uploading" :disabled="!rawFiles.length" @click="uploadSelected">上传所选原图</el-button>
+      <el-button type="success" :loading="completing" :disabled="!canComplete" @click="completeUpload">完成上传</el-button>
     </div>
   </section>
 </template>
@@ -72,7 +72,8 @@ import { formatFileSize } from '@/utils/format'
 const props = defineProps({
   task: { type: Object, required: true },
   maxFileCount: { type: Number, default: 100 },
-  maxFileSizeMB: { type: Number, default: 50 }
+  maxFileSizeMB: { type: Number, default: 50 },
+  autoComplete: { type: Boolean, default: false }
 })
 const emit = defineEmits(['completed', 'uploaded'])
 
@@ -85,6 +86,10 @@ const hasUploadedBatch = ref(false)
 const existingFiles = computed(() => (props.task.files || []).filter(file => file.file_category === 'original'))
 const existingImages = computed(() => existingFiles.value.filter(file => file.file_type === 'image').map(file => file._previewSrc || getFileUrl(file)))
 const rawFiles = computed(() => selectedFiles.value.map(item => item.raw).filter(Boolean))
+const canComplete = computed(() => {
+  const hasPersistedFiles = existingFiles.value.length > 0 || hasUploadedBatch.value
+  return props.autoComplete ? hasPersistedFiles || rawFiles.value.length > 0 : hasPersistedFiles
+})
 
 watch(() => props.task.id, () => {
   selectedFiles.value = []
@@ -113,7 +118,7 @@ function removeSelected(item) {
   selectedFiles.value = selectedFiles.value.filter(file => file.uid !== item.uid)
 }
 
-async function uploadSelected() {
+async function uploadFilesInternal({ notify = true } = {}) {
   if (!rawFiles.value.length || uploading.value) return
   uploading.value = true
   progress.value = 0
@@ -127,20 +132,30 @@ async function uploadSelected() {
     progress.value = 100
     hasUploadedBatch.value = true
     selectedFiles.value = []
-    ElMessage.success(response.msg || '原图上传成功')
+    if (notify) ElMessage.success(response.msg || '原图上传成功')
     emit('uploaded', props.task.id)
+    return true
   } catch (error) {
     ElMessage.error(error.response?.data?.msg || error.message || '原图上传失败')
+    return false
   } finally {
     uploading.value = false
     setTimeout(() => { progress.value = 0 }, 500)
   }
 }
 
+async function uploadSelected() {
+  await uploadFilesInternal()
+}
+
 async function completeUpload() {
-  if (completing.value) return
+  if (completing.value || uploading.value || !canComplete.value) return
   completing.value = true
   try {
+    if (props.autoComplete && rawFiles.value.length) {
+      const uploaded = await uploadFilesInternal({ notify: false })
+      if (!uploaded) return
+    }
     const response = await completeOriginalUploadApi(props.task.id)
     if (response.code !== 0) throw new Error(response.msg || '完成原图上传失败')
     ElMessage.success(response.msg || '原图上传已完成')

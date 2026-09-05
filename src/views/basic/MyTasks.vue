@@ -78,7 +78,7 @@
                 :src="getFileUrl(getStyleImages(row.files)[0])"
                 :preview-src-list="getStyleImages(row.files).map(getFileUrl)"
                 preview-teleported
-                fit="cover"
+                fit="contain"
               />
               <span>{{ getStyleImages(row.files).length }}张</span>
             </div>
@@ -184,7 +184,7 @@
               v-if="row.status === 'pending_original'"
               type="warning"
               link size="small"
-              @click="viewDetail(row)"
+              @click="openOriginalUpload(row)"
             >上传原图</el-button>
             <el-button
               v-if="row.status === 'rejected'"
@@ -248,6 +248,29 @@
         </template>
       </TaskDetail>
     </el-card>
+
+    <!-- 待上传原图的独立上传窗口，避免进入详情页后重复操作 -->
+    <el-dialog
+      v-model="originalUploadVisible"
+      title="上传原图"
+      width="620px"
+      top="8vh"
+      append-to-body
+      destroy-on-close
+      class="standalone-original-upload-dialog"
+      :close-on-click-modal="false"
+      @closed="originalUploadTask = null"
+    >
+      <el-skeleton v-if="originalUploadLoading" :rows="5" animated />
+      <OriginalUploadPanel
+        v-else-if="originalUploadTask"
+        :task="originalUploadTask"
+        :auto-complete="true"
+        :max-file-count="maxFileCount"
+        :max-file-size-m-b="maxFileSizeMB"
+        @completed="handleStandaloneOriginalCompleted"
+      />
+    </el-dialog>
 
     <!-- 上传作品对话框 -->
     <el-dialog
@@ -372,6 +395,7 @@ import { useTaskDetail } from '@/composables/useTaskDetail'
 import { getUser } from '@/utils/auth'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import TaskDetail from '@/components/TaskDetail.vue'
+import OriginalUploadPanel from '@/components/task/OriginalUploadPanel.vue'
 import CsModificationRecords from '@/components/task/CsModificationRecords.vue'
 
 const route = useRoute()
@@ -415,6 +439,10 @@ const transferTask = ref(null)
 const transferDesignerId = ref(null)
 const transferDesignerList = ref([])
 const transferReason = ref('')
+
+const originalUploadVisible = ref(false)
+const originalUploadLoading = ref(false)
+const originalUploadTask = ref(null)
 
 const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
   onError: error => console.error('[MyTasks] 加载任务详情失败:', error)
@@ -497,7 +525,7 @@ async function loadData(options = {}) {
     const res = await getMyAcceptedApi({
       page: page.value,
       pageSize: pageSize.value,
-      status: fixedStatus.value === 'accepted' ? 'accepted,rejected' : (fixedStatus.value || statusFilter.value || undefined),
+      status: fixedStatus.value === 'accepted' ? 'accepted,rejected,pending_original' : (fixedStatus.value || statusFilter.value || undefined),
       taskGroup: 'cs',
       keyword: keyword.value || undefined,
       publisherId: publisherFilter.value || undefined,
@@ -669,6 +697,29 @@ async function handleOriginalCompleted() {
   await loadData()
 }
 
+async function openOriginalUpload(row) {
+  if (!row?.id || row.status !== 'pending_original') return
+  originalUploadTask.value = null
+  originalUploadLoading.value = true
+  originalUploadVisible.value = true
+  try {
+    const response = await getTaskDetailApi({ taskId: row.id })
+    if (response.code !== 0) throw new Error(response.msg || '加载任务详情失败')
+    originalUploadTask.value = response.data || row
+  } catch (error) {
+    originalUploadVisible.value = false
+    ElMessage.error(error.response?.data?.msg || error.message || '加载任务详情失败')
+  } finally {
+    originalUploadLoading.value = false
+  }
+}
+
+async function handleStandaloneOriginalCompleted() {
+  originalUploadVisible.value = false
+  originalUploadTask.value = null
+  await loadData({ silent: true })
+}
+
 async function openTransfer(row) {
   transferTask.value = row
   transferDesignerId.value = null
@@ -772,7 +823,7 @@ const { getInt } = useConfig()
 const maxFileCount = computed(() => getInt('upload.max_file_count', 10))
 const maxFileSizeMB = computed(() => getInt('upload.max_file_size_mb', 50))
 const formatSize = formatFileSize
-useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVisible.value || transferVisible.value })
+useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVisible.value || originalUploadVisible.value || transferVisible.value })
 </script>
 
 <style scoped>
@@ -791,6 +842,16 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVi
 .retained-work-file .el-image { width: 32px; height: 32px; flex: 0 0 auto; border-radius: 4px; }
 .retained-work-file > span { flex: 1; min-width: 0; overflow: hidden; font-size: 12px; text-overflow: ellipsis; white-space: nowrap; }
 .retained-work-file > small { color: var(--dd-text-muted); font-size: 11px; }
+.standalone-original-upload-dialog :deep(.el-dialog__body) {
+  max-height: calc(100vh - 180px);
+  overflow-y: auto;
+  padding-top: 8px;
+}
+.standalone-original-upload-dialog :deep(.original-upload-panel) {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
 
 .file-card {
   display: flex; align-items: center; gap: 10px;
