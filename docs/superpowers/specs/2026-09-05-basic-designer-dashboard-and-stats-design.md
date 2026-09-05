@@ -109,6 +109,14 @@
 - 后端接收可选类别参数并按任务分组校验允许值：客服组允许 `reference/style/work/original`，设计组允许 `reference/work`；参数为空时不增加类别条件，维持原下载结果。
 - ZIP 目录结构和文件名继续沿用现有规则，默认下载与现有功能一致。
 
+### 9. 运营任务参考图上传稳定性
+
+运营角色发布任务时，参考图上传必须由浏览器/Axios 自动生成 multipart boundary，不在上传 API 中手动固定 `Content-Type: multipart/form-data`。这样可避免 Busboy 报 `Malformed part header` 或 `Multipart: Boundary not found`。
+
+- 任务创建成功后，参考图仍通过现有 `/api/task/upload-files` 接口上传。
+- 只调整请求头生成方式，不改变文件分类、存储路径、文件名、权限和任务状态流转。
+- 其他使用同一上传 API 的角色同步获得同样的 boundary 稳定性。
+
 ## 数据流与错误处理
 
 - DAO 提供按用户和时间范围统计 `work`/`original` 文件的查询，服务层计算本月、上月和日边界并组装仪表盘返回结构。
@@ -123,4 +131,5 @@
 3. 基础美工待做任务空筛选保持原有待做范围，选择筛选后结果正确。
 4. 基础美工个人统计显示“当月效果图”和“当月原图”，不再显示累计分值和总接单量。
 5. 全量任务下载未选择类别时与现有结果一致，选择类别时只包含允许的对应文件。
-6. Node 语法检查、针对性测试和 `git diff --check` 通过，且无任务流转回归。
+6. 运营任务发布参考图时 multipart 请求包含有效 boundary，后端成功保存文件，不再出现 `Malformed part header` 或 `Boundary not found`。
+7. Node 语法检查、针对性测试和 `git diff --check` 通过，且无任务流转回归。
