@@ -88,7 +88,7 @@ The existing `sanitizeDragFileName()` remains the final Windows filename sanitiz
 
 - [ ] **Step 2: Thread the desired name through preloading**
 
-Change `prepareFileDragCache(file)` and `preloadFilesForDrag(files, options)` so each IPC item sends the resolved output name as `fileName`, while `downloadPath` remains the existing API path. Key the in-flight preload set by `file.id + fileName` so switching between original/task naming cannot suppress a needed cache refresh.
+Change `prepareFileDragCache(file)` and `preloadFilesForDrag(files, options)` so each IPC item sends the resolved output name as `fileName`, while `downloadPath` remains the existing API path. Key the in-flight preload set by `file.id + fileName` so switching between original/task naming cannot suppress a needed cache refresh. For task-number mode, keep a renderer-side map keyed by `task_no + file.id`; the first file gets `task_no`, subsequent files get `task_no_1`, `task_no_2`, and so on, regardless of extension. This makes names stable across repeated drags while preserving each file's extension.
 
 - [ ] **Step 3: Use the resolved name in native drag readiness checks**
 
