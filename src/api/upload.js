@@ -1,7 +1,7 @@
 /**
  * 文件工具 — URL 拼接 + Electron IPC 预览/下载 + 拖拽到桌面
  */
-import { getToken } from '@/utils/auth'
+import { getToken, getUser } from '@/utils/auth'
 import { getServerBase as resolveServerBase } from '@/utils/server-base'
 
 // ==================== URL 工具 ====================
@@ -19,8 +19,12 @@ function appendToken(url) {
 }
 
 const dragFileByUrl = new Map()
-const preloadingDragFileIds = new Set()
+const dragPreloadRequests = new Map()
+const taskDragNames = new Map()
+const taskDragNextIndexes = new Map()
 let imageDragBridgeReady = false
+
+const TASK_NUMBER_ROLES = new Set(['cs_agent', 'basic_designer'])
 
 function normalizeDragUrl(url) {
   if (!url || url.startsWith('data:') || url.startsWith('blob:')) return url || ''
@@ -59,20 +63,15 @@ function getFileDownloadPath(file) {
   return `/api/task/download/${encodeURIComponent(file.id)}`
 }
 
-function isPublicMaterialDownloadPath(filePath) {
-  return /^\/api\/material-library\/images\/\d+\/download$/.test(filePath)
-}
-
 function getFileDownloadUrl(file) {
   if (!file?.id || !file.file_name) return ''
 
   const downloadPath = getFileDownloadPath(file)
-  const publicMaterialDownload = isPublicMaterialDownloadPath(downloadPath)
   const token = getToken()
-  if (!publicMaterialDownload && !token) return ''
+  if (!token) return ''
 
   const serverBase = getServerBase()
-  const path = publicMaterialDownload ? downloadPath : appendToken(downloadPath)
+  const path = appendToken(downloadPath)
   try {
     return new URL(`${serverBase}${path}`, window.location?.href || undefined).href
   } catch (_) {
@@ -104,6 +103,37 @@ function sanitizeDragFileName(fileName, fileId) {
   return safeName
 }
 
+function getDragNamingMode(options = {}) {
+  if (options.namingMode === 'task' || options.namingMode === 'original') {
+    return options.namingMode
+  }
+  return TASK_NUMBER_ROLES.has(getUser()?.role) ? 'task' : 'original'
+}
+
+function getFileExtension(fileName = '') {
+  const match = String(fileName).match(/(\.[^./\\]+)$/)
+  return match ? match[1] : ''
+}
+
+function getDragFileName(file, options = {}) {
+  const originalName = file?.file_name || `file-${file?.id || 'download'}`
+  if (getDragNamingMode(options) !== 'task') return originalName
+
+  const taskNo = String(options.taskNo || file?.task_no || file?.taskNo || '').trim()
+  if (!taskNo) return originalName
+
+  const fileKey = `${taskNo}:${String(file.id || '')}`
+  const existingName = taskDragNames.get(fileKey)
+  if (existingName) return existingName
+
+  const nextIndex = taskDragNextIndexes.get(taskNo) || 0
+  const baseName = nextIndex === 0 ? taskNo : `${taskNo}_${nextIndex}`
+  const dragName = `${baseName}${getFileExtension(originalName)}`
+  taskDragNames.set(fileKey, dragName)
+  taskDragNextIndexes.set(taskNo, nextIndex + 1)
+  return dragName
+}
+
 function applyFileDragData(event, file) {
   if (!event?.dataTransfer) return ''
 
@@ -120,32 +150,74 @@ function applyFileDragData(event, file) {
   return downloadUrl
 }
 
-function prepareFileDragCache(file) {
+function getDragPreloadKey(file, options = {}) {
+  if (!file?.id || !file.file_name) return ''
+  return `${String(file.id)}:${getDragFileName(file, options)}:${getFileDownloadPath(file)}`
+}
+
+function dispatchDragPreload(entry) {
+  if (!entry || entry.dispatched) return entry?.promise
+  entry.dispatched = true
+  entry.promise = Promise.resolve(preloadFilesForDrag([entry.file], {
+    ...entry.options,
+    priority: entry.priority
+  })).finally(() => {
+    if (dragPreloadRequests.get(entry.key) === entry) {
+      dragPreloadRequests.delete(entry.key)
+    }
+  })
+  return entry.promise
+}
+
+function prepareFileDragCache(file, options = {}) {
   if (!file?.id || !file.file_name) return
   if (!window.electronAPI?.prepareFileDrags) return
 
-  const fileId = String(file.id)
-  if (preloadingDragFileIds.has(fileId)) return
-  preloadingDragFileIds.add(fileId)
+  const key = getDragPreloadKey(file, options)
+  const priority = options.priority === 'high' ? 'high' : 'normal'
+  const existing = dragPreloadRequests.get(key)
+  if (existing) {
+    if (priority === 'high' && existing.priority !== 'high') {
+      existing.priority = 'high'
+      existing.promotionPromise = Promise.resolve(preloadFilesForDrag([existing.file], {
+        ...existing.options,
+        priority: 'high'
+      })).finally(() => {
+        existing.promotionPromise = null
+      })
+    }
+    return existing.promotionPromise || existing.promise
+  }
 
-  Promise.resolve(preloadFilesForDrag([file])).finally(() => {
-    preloadingDragFileIds.delete(fileId)
-  })
+  const entry = {
+    key,
+    file,
+    options: { ...options },
+    priority,
+    dispatched: false,
+    promise: null,
+    promotionPromise: null
+  }
+  dragPreloadRequests.set(key, entry)
+  return dispatchDragPreload(entry)
 }
 
-function tryElectronFileDrag(file) {
+function tryElectronFileDrag(file, options = {}) {
   if (!file?.id || !file.file_name || !window.electronAPI) return false
+  const fileName = getDragFileName(file, options)
+  const downloadPath = getFileDownloadPath(file)
+  const token = getToken()
 
   try {
-    if (window.electronAPI.isFileCached?.({ fileId: file.id, fileName: file.file_name })) {
-      const dragged = window.electronAPI.doFileDrag?.(file.id)
+    if (window.electronAPI.isFileCached?.({ fileId: file.id, fileName, downloadPath, token })) {
+      const dragged = window.electronAPI.doFileDrag?.({ fileId: file.id, fileName, downloadPath, token })
       if (dragged) return true
     }
   } catch (e) {
     console.warn('[API] Electron 原生拖拽触发失败:', e.message)
   }
 
-  prepareFileDragCache(file)
+  prepareFileDragCache(file, { ...options, priority: 'high' })
   return false
 }
 
@@ -178,6 +250,11 @@ function ensureImageDragBridge() {
     primeImageDragTarget(event.target, file)
     if (!isPreviewImage(event.target)) return
     event.stopImmediatePropagation()
+  }, true)
+
+  document.addEventListener('pointerover', event => {
+    const file = getImageDragFile(event.target)
+    if (file) prepareFileDragCache(file)
   }, true)
 
   document.addEventListener('dragstart', event => {
@@ -226,7 +303,7 @@ export async function fetchImageDataUrl(file) {
       if (!token) return getFileUrl(file)
       const previewUrl = await window.electronAPI.previewImage({
         fileId, token,
-        fileName: file.file_name || undefined
+        fileName: getDragFileName(file)
       })
       registerDragFileUrl(previewUrl, file)
       registerDragFileUrl(getFileUrl(file), file)
@@ -265,18 +342,24 @@ export async function saveFileToDisk(file) {
 
 // ==================== 文件拖拽到桌面 ====================
 
-export function setupFileDrag(event, file) {
+export function setupFileDrag(event, file, options = {}) {
   if (event?.__nexusFileDragHandled) return ''
   if (event) event.__nexusFileDragHandled = true
 
-  const downloadUrl = applyFileDragData(event, file)
-  if (tryElectronFileDrag(file)) {
+  if (window.electronAPI?.doFileDrag) {
+    if (tryElectronFileDrag(file, options)) {
+      event?.preventDefault?.()
+      return ''
+    }
     event?.preventDefault?.()
+    window.dispatchEvent(new CustomEvent('nexus:file-drag-pending'))
+    return ''
   }
-  return downloadUrl
+
+  return applyFileDragData(event, file)
 }
 
-export async function preloadFilesForDrag(files) {
+export async function preloadFilesForDrag(files, options = {}) {
   if (!files || files.length === 0) return false
   if (!window.electronAPI?.prepareFileDrags) return false
 
@@ -285,7 +368,12 @@ export async function preloadFilesForDrag(files) {
 
   const items = files
     .filter(f => f.id && f.file_name)
-    .map(f => ({ fileId: f.id, fileName: f.file_name, downloadPath: getFileDownloadPath(f) }))
+    .map(f => ({
+      fileId: f.id,
+      fileName: getDragFileName(f, options),
+      downloadPath: getFileDownloadPath(f),
+      priority: options.priority === 'high' ? 'high' : 'normal'
+    }))
 
   if (items.length === 0) return false
 

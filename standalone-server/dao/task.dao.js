@@ -77,8 +77,9 @@ async function attachFilesToTasks(taskIds) {
   const pool = getPool();
   const placeholders = taskIds.map(() => '?').join(',');
   const [files] = await pool.execute(
-    `SELECT tf.*, tr.reject_index
+    `SELECT tf.*, t.task_no, tr.reject_index
      FROM task_file tf
+     INNER JOIN task_info t ON t.id = tf.task_id
      LEFT JOIN task_reject_record tr ON tr.id = tf.reject_record_id
      WHERE tf.task_id IN (${placeholders})
      ORDER BY tf.create_time ASC, tf.id ASC`,
@@ -145,8 +146,9 @@ async function getTaskDetail(taskId) {
 async function getTaskFiles(taskId) {
   const pool = getPool();
   const [files] = await pool.execute(
-    `SELECT tf.*, tr.reject_index
+    `SELECT tf.*, t.task_no, tr.reject_index
      FROM task_file tf
+     INNER JOIN task_info t ON t.id = tf.task_id
      LEFT JOIN task_reject_record tr ON tr.id = tf.reject_record_id
      WHERE tf.task_id = ?
      ORDER BY tf.create_time ASC, tf.id ASC`,
@@ -187,10 +189,11 @@ async function getTaskRejectRecords(taskId) {
   const ids = rows.map(r => r.id);
   const placeholders = ids.map(() => '?').join(',');
   const [files] = await pool.execute(
-    `SELECT *
-     FROM task_file
-     WHERE reject_record_id IN (${placeholders})
-     ORDER BY create_time ASC, id ASC`,
+    `SELECT tf.*, t.task_no
+     FROM task_file tf
+     INNER JOIN task_info t ON t.id = tf.task_id
+     WHERE tf.reject_record_id IN (${placeholders})
+     ORDER BY tf.create_time ASC, tf.id ASC`,
     ids
   );
   const filesByReject = {};
@@ -540,12 +543,16 @@ async function queryMyPublished({ userId, role, store, permissions = [], filterG
   return result;
 }
 
-async function queryPooledCsTasks({ keyword, status, page, pageSize }) {
+async function queryPooledCsTasks({ keyword, status, designerId, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = "WHERE t.task_group = 'cs' AND t.handoff_status = 'pooled'";
   const params = [];
 
   where = appendStatusFilter(where, params, status);
+  if (designerId) {
+    where += ' AND t.designer_id = ?';
+    params.push(designerId);
+  }
   if (keyword) {
     const value = `%${keyword}%`;
     where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ? OR t.title LIKE ? OR t.task_no LIKE ? OR t.designer_name LIKE ?)';
@@ -674,6 +681,9 @@ async function queryAllTasks({ status, keyword, publisherId, designerId, startDa
     if (taskGroup === 'design') {
       where += ' AND (t.title LIKE ? OR t.task_no LIKE ? OR t.style_number LIKE ?)';
       params.push(like, like, like);
+    } else if (taskGroup === 'cs') {
+      where += ' AND (t.title LIKE ? OR t.task_no LIKE ? OR t.style_number LIKE ? OR t.wangwang_id LIKE ?)';
+      params.push(like, like, like, like);
     } else {
       where += ' AND (t.title LIKE ? OR t.task_no LIKE ?)';
       params.push(like, like);
@@ -874,6 +884,37 @@ async function getDesignerDetailRows(userId) {
   return rows;
 }
 
+/** 基础美工效果图/原图上传统计。file_category 是业务分类，不能按 file_type 限制。 */
+async function getBasicDesignerFileStats({ start, end, userId } = {}) {
+  const pool = getPool();
+  let where = `u.role = 'basic_designer'
+      AND u.status = 1
+      AND tf.file_category IN ('work', 'original')`;
+  const params = [];
+  if (start) {
+    where += ' AND tf.create_time >= ?';
+    params.push(start);
+  }
+  if (end) {
+    where += ' AND tf.create_time < ?';
+    params.push(end);
+  }
+  if (userId !== undefined && userId !== null && userId !== '') {
+    where += ' AND tf.uploader_id = ?';
+    params.push(userId);
+  }
+  const [rows] = await pool.execute(
+    `SELECT tf.uploader_id, u.real_name AS name, u.username,
+            tf.file_category, tf.create_time
+       FROM task_file tf
+       INNER JOIN sys_user u ON u.id = tf.uploader_id
+      WHERE ${where}
+      ORDER BY tf.create_time ASC, tf.id ASC`,
+    params
+  );
+  return rows;
+}
+
 async function getGroupStats() {
   const pool = getPool();
   const [rows] = await pool.execute(
@@ -972,10 +1013,11 @@ async function getSidebarBadgeStats(userId, allReview = false) {
        SUM(CASE WHEN COALESCE(task_group, 'design') IN ('design', '') AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as design_review_count,
        SUM(CASE WHEN task_group = 'operator' AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as operator_review_count,
        SUM(CASE WHEN task_group = 'cs' AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as cs_review_count,
+       SUM(CASE WHEN task_group = 'cs' AND status = 'rejected' AND publisher_id = ? AND COALESCE(handoff_status, '') <> 'pooled' THEN 1 ELSE 0 END) as cs_modification_count,
        SUM(CASE WHEN task_group = 'cs' AND score_review_status = 'pending' AND status IN ('doing', 'finished') THEN 1 ELSE 0 END) as score_review_count,
        SUM(CASE WHEN task_group = 'cs' AND handoff_status = 'pooled' THEN 1 ELSE 0 END) as cs_handoff_count
      FROM task_info`,
-    params
+    [...params, userId]
   );
   return rows[0] || {};
 }
@@ -1047,6 +1089,7 @@ module.exports = {
   getPublisherMonthlyRaw,
   getDesignerSummary,
   getDesignerDetailRows,
+  getBasicDesignerFileStats,
   getGroupStats,
   getFinishedDesignerScores,
   getDesignerRank,

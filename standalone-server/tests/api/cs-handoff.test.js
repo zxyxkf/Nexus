@@ -244,6 +244,23 @@ test('pool list and sidebar badge expose only pooled tasks', async () => {
   expect(stats.body.data.sidebar_badges['/cs/handoff-tasks']).toBe(1);
 });
 
+test('pool list can filter by assigned basic designer', async () => {
+  const pooledTaskId = await createTask('doing', { publisherId: null, handoffStatus: 'pooled' });
+
+  const matching = await request(app)
+    .get(`/api/task/cs-handoff?pageSize=20&designerId=${basicId}`)
+    .set('Authorization', `Bearer ${csBToken}`);
+  expect(matching.body.code).toBe(0);
+  expect(matching.body.data.list.map(task => Number(task.id))).toContain(pooledTaskId);
+
+  const nonMatching = await request(app)
+    .get('/api/task/cs-handoff?pageSize=20&designerId=999999999')
+    .set('Authorization', `Bearer ${csBToken}`);
+  expect(nonMatching.body.code).toBe(0);
+  expect(nonMatching.body.data.list).toHaveLength(0);
+  expect(nonMatching.body.data.total).toBe(0);
+});
+
 test('login and refresh return the current customer service shift state', async () => {
   const initial = await login(users.csA);
   expect(initial.user.csShiftStatus).toBe('online');

@@ -14,10 +14,10 @@
           <el-option label="全部" value="" />
           <el-option label="待接单" value="wait" />
           <el-option label="已接单" value="accepted" />
-          <el-option label="作图中" value="doing" />
-          <el-option label="待上传原图" value="pending_original" />
+          <el-option :label="taskGroup === 'cs' ? '审核中' : '作图中'" value="doing" />
+          <el-option v-if="taskGroup === 'cs'" label="待上传原图" value="pending_original" />
           <el-option label="已完成" value="finished" />
-          <el-option label="已驳回" value="rejected" />
+          <el-option :label="taskGroup === 'cs' ? '修改中' : '已驳回'" value="rejected" />
         </el-select>
         <el-select v-model="filter.publisherId" :placeholder="publisherLabel" clearable filterable style="width:150px;" @change="loadData">
           <el-option label="全部" value="" />
@@ -34,9 +34,20 @@
         <el-button :disabled="selectedRows.length === 0" @click="exportSelectedTasks">
           导出选中({{ selectedRows.length }})
         </el-button>
-        <el-button :disabled="selectedRows.length === 0" @click="downloadSelectedFiles">
-          下载文件({{ selectedRows.length }})
-        </el-button>
+        <el-dropdown :disabled="selectedRows.length === 0" trigger="click" @command="downloadSelectedFiles">
+          <el-button :disabled="selectedRows.length === 0">
+            下载文件({{ selectedRows.length }})
+          </el-button>
+          <template #dropdown>
+            <el-dropdown-menu>
+              <el-dropdown-item command="">全部文件</el-dropdown-item>
+              <el-dropdown-item command="reference">仅下载参考图</el-dropdown-item>
+              <el-dropdown-item v-if="taskGroup === 'cs'" command="style">仅下载款式图</el-dropdown-item>
+              <el-dropdown-item command="work">仅下载作品</el-dropdown-item>
+              <el-dropdown-item v-if="taskGroup === 'cs'" command="original">仅下载原图</el-dropdown-item>
+            </el-dropdown-menu>
+          </template>
+        </el-dropdown>
         <el-button type="danger" :disabled="selectedRows.length === 0" @click="batchDeleteSelected">
           批量删除({{ selectedRows.length }})
         </el-button>
@@ -214,7 +225,11 @@ const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
 
 const taskGroup = computed(() => route.meta.taskGroup || 'design')
 const pageTitle = computed(() => `${route.meta.title || '全量任务'}管理`)
-const filterPlaceholder = computed(() => taskGroup.value === 'design' ? '搜索编号/标题/款号' : '搜索编号/标题')
+const filterPlaceholder = computed(() => {
+  if (taskGroup.value === 'cs') return '搜索编号/标题/款号/旺旺ID'
+  if (taskGroup.value === 'design') return '搜索编号/标题/款号'
+  return '搜索编号/标题'
+})
 const publisherLabel = computed(() => '发布人')
 const designerLabel = computed(() => taskGroup.value === 'cs' ? '基础美工' : taskGroup.value === 'operator' ? '运营助理' : '美工')
 const { getRefImages, getFirstImage, getEffectFiles, getOriginalFiles, getRefImageSrcList, getImageSrcList } = useFileHelpers()
@@ -228,7 +243,13 @@ function getOriginalImages(files) {
   return getOriginalFiles(files).filter(file => file.file_type === 'image')
 }
 
-function statusLabel(s) { return STATUS_MAP[s] || s }
+function statusLabel(s) {
+  if (taskGroup.value === 'cs') {
+    if (s === 'doing') return '审核中'
+    if (s === 'rejected') return '修改中'
+  }
+  return STATUS_MAP[s] || s
+}
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
 function onSelectionChange(rows) { selectedRows.value = rows }
 
@@ -315,10 +336,11 @@ async function exportSelectedTasks() {
   URL.revokeObjectURL(url)
 }
 
-async function downloadSelectedFiles() {
+async function downloadSelectedFiles(fileCategories = '') {
   if (!selectedRows.value.length) return
   const blob = await batchDownloadFilesApi({
-    taskIds: selectedRows.value.map(r => r.id).join(',')
+    taskIds: selectedRows.value.map(r => r.id).join(','),
+    ...(fileCategories ? { fileCategories } : {})
   })
   const url = URL.createObjectURL(blob)
   const a = document.createElement('a')

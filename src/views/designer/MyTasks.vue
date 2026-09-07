@@ -18,7 +18,7 @@
             <el-select v-if="!fixedStatus" v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
               <el-option label="全部" value="" />
               <el-option label="已接单" value="accepted" />
-              <el-option label="作图中" value="doing" />
+              <el-option label="待审核" value="doing" />
               <el-option label="已完成" value="finished" />
               <el-option label="已驳回" value="rejected" />
             </el-select>

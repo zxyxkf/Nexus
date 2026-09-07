@@ -279,11 +279,35 @@
 
       <!-- 统计卡片 -->
       <el-row :gutter="20">
-        <el-col :xs="12" :sm="8" :md="4" v-for="item in statCards" :key="item.key">
+        <el-col :xs="12" :sm="8" :md="4" v-for="item in basicStatCards" :key="item.key">
           <el-card shadow="never" class="stat-card">
             <div class="stat-value" :style="{ color: item.color }">{{ csStats[item.key] ?? 0 }}</div>
             <div class="stat-label">{{ item.label }}</div>
             <div class="stat-icon-bg" :style="{ background: item.color }"></div>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <!-- 基础美工本月效果图/原图数量 -->
+      <el-row :gutter="20" class="chart-row">
+        <el-col :span="24">
+          <el-card shadow="never" class="chart-card">
+            <template #header>
+              <div class="card-header"><span class="card-title">基础美工本月效果图&原图数量</span></div>
+            </template>
+            <div ref="basicImageCurrentMonthRef" style="height:300px;"></div>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <!-- 基础美工上月效果图/原图数量 -->
+      <el-row :gutter="20" class="chart-row">
+        <el-col :span="24">
+          <el-card shadow="never" class="chart-card">
+            <template #header>
+              <div class="card-header"><span class="card-title">基础美工上月效果图&原图数量</span></div>
+            </template>
+            <div ref="basicImageLastMonthRef" style="height:300px;"></div>
           </el-card>
         </el-col>
       </el-row>
@@ -362,6 +386,21 @@
         </el-col>
       </el-row>
 
+      <!-- 基础美工效果图/原图日统计 -->
+      <el-row :gutter="20" class="chart-row" v-if="basicDesignerImageDailyData.length > 0">
+        <el-col :span="24">
+          <el-card shadow="never" class="chart-card">
+            <template #header>
+              <div class="card-header"><span class="card-title">基础美工效果图&原图日统计（{{ currentMonthTitle }}）</span></div>
+            </template>
+            <el-table :data="basicDesignerImageDailyData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
+              <el-table-column prop="name" label="基础美工" fixed="left" min-width="90" />
+              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center" />
+            </el-table>
+          </el-card>
+        </el-col>
+      </el-row>
+
       <!-- 发布人统计（按月） -->
       <el-row :gutter="20" class="chart-row" v-if="csMonthlyData.length > 0">
         <el-col :span="24">
@@ -409,6 +448,8 @@ const designerCurrentMonthRef = ref(null)
 const designerLastMonthRef = ref(null)
 const basicCurrentMonthRef = ref(null)
 const basicLastMonthRef = ref(null)
+const basicImageCurrentMonthRef = ref(null)
+const basicImageLastMonthRef = ref(null)
 const opAssistantCurrentMonthRef = ref(null)
 const opAssistantLastMonthRef = ref(null)
 
@@ -416,18 +457,22 @@ let designerCurrentMonthChart = null
 let designerLastMonthChart = null
 let basicCurrentMonthChart = null
 let basicLastMonthChart = null
+let basicImageCurrentMonthChart = null
+let basicImageLastMonthChart = null
 let opAssistantCurrentMonthChart = null
 let opAssistantLastMonthChart = null
 let refreshTimer = null
 
 function disposeCharts() {
-  ;[designerCurrentMonthChart, designerLastMonthChart, basicCurrentMonthChart, basicLastMonthChart, opAssistantCurrentMonthChart, opAssistantLastMonthChart].forEach(chart => {
+  ;[designerCurrentMonthChart, designerLastMonthChart, basicCurrentMonthChart, basicLastMonthChart, basicImageCurrentMonthChart, basicImageLastMonthChart, opAssistantCurrentMonthChart, opAssistantLastMonthChart].forEach(chart => {
     chart?.dispose()
   })
   designerCurrentMonthChart = null
   designerLastMonthChart = null
   basicCurrentMonthChart = null
   basicLastMonthChart = null
+  basicImageCurrentMonthChart = null
+  basicImageLastMonthChart = null
   opAssistantCurrentMonthChart = null
   opAssistantLastMonthChart = null
 }
@@ -455,6 +500,15 @@ const statCards = [
   { key: 'wait_count', label: '待接单', color: '#7b8ba3' },
   { key: 'accepted_count', label: '已接单', color: '#f7931a' },
   { key: 'doing_count', label: '待审核', color: '#4361ee' },
+  { key: 'finished_count', label: '已完成', color: '#2ec4b6' }
+]
+
+const basicStatCards = [
+  { key: 'total', label: '任务总量', color: '#e63946' },
+  { key: 'wait_count', label: '待接单', color: '#7b8ba3' },
+  { key: 'accepted_count', label: '已接单', color: '#f7931a' },
+  { key: 'doing_count', label: '待审核', color: '#4361ee' },
+  { key: 'rejected_count', label: '修改中', color: '#f56c6c' },
   { key: 'finished_count', label: '已完成', color: '#2ec4b6' }
 ]
 
@@ -595,6 +649,23 @@ function buildDailyRows(source, nameKey = 'name') {
 const designerDailyData = computed(() => buildDailyRows(detailStats.value.designerDailyStats))
 const operatorAssistantDailyData = computed(() => buildDailyRows(detailStats.value.operatorAssistantDailyStats))
 const basicDesignerDailyData = computed(() => buildDailyRows(detailStats.value.basicDesignerDailyStats))
+
+function buildBasicDesignerImageDailyRows(source) {
+  if (!source?.length) return []
+  return source.map(item => {
+    const row = {
+      id: item.user_id || item.id,
+      name: item.name || item.username || '-'
+    }
+    for (const day of monthDays.value) row[day.key] = '0 / 0'
+    for (const stat of item.daily_stats || []) {
+      row[`d${stat.day}`] = `${Number(stat.effect_count || 0)} / ${Number(stat.original_count || 0)}`
+    }
+    return row
+  })
+}
+
+const basicDesignerImageDailyData = computed(() => buildBasicDesignerImageDailyRows(detailStats.value.basicDesignerImageDailyStats))
 
 async function exportDashboardReport() {
   const blob = await exportDashboardApi({ groups: allowedGroups.value.join(',') })
@@ -843,6 +914,59 @@ function initCharts(data) {
   })
 }
 
+function initBasicDesignerImageCharts() {
+  nextTick(() => {
+    const monthly = detailStats.value.basicDesignerImageMonthlyStats || { current: [], last: [] }
+    const render = (element, chart, rows, title) => {
+      if (!element) return chart
+      const instance = chart || echarts.init(element)
+      const entries = rows || []
+      instance.setOption({
+        tooltip: { trigger: 'axis' },
+        legend: { data: ['效果图', '原图'] },
+        grid: { left: '3%', right: '4%', bottom: '10%', containLabel: true },
+        xAxis: {
+          type: 'category',
+          data: entries.map(item => item.name || item.username || '-'),
+          axisLabel: { fontSize: 11 }
+        },
+        yAxis: { type: 'value', minInterval: 1 },
+        series: [
+          {
+            type: 'bar',
+            name: '效果图',
+            data: entries.map(item => Number(item.effect_count || 0)),
+            itemStyle: { color: '#e63946', borderRadius: [4, 4, 0, 0] },
+            barMaxWidth: 28
+          },
+          {
+            type: 'bar',
+            name: '原图',
+            data: entries.map(item => Number(item.original_count || 0)),
+            itemStyle: { color: '#4361ee', borderRadius: [4, 4, 0, 0] },
+            barMaxWidth: 28
+          }
+        ],
+        title: { text: title, show: false }
+      }, true)
+      return instance
+    }
+
+    basicImageCurrentMonthChart = render(
+      basicImageCurrentMonthRef.value,
+      basicImageCurrentMonthChart,
+      monthly.current,
+      '基础美工本月效果图&原图数量'
+    )
+    basicImageLastMonthChart = render(
+      basicImageLastMonthRef.value,
+      basicImageLastMonthChart,
+      monthly.last,
+      '基础美工上月效果图&原图数量'
+    )
+  })
+}
+
 async function loadData(options = {}) {
   if (!options.silent) loading.value = true
   try {
@@ -861,14 +985,17 @@ async function loadData(options = {}) {
 async function loadDetailStats() {
   try {
     const res = await getAdminDetailStatsApi()
-    if (res.code === 0) detailStats.value = res.data
+    if (res.code === 0) {
+      detailStats.value = res.data
+      initBasicDesignerImageCharts()
+    }
   } catch (e) {
     console.warn('[Dashboard] 加载综合统计失败:', e.message)
   }
 }
 
 function handleResize() {
-  [designerCurrentMonthChart, designerLastMonthChart, basicCurrentMonthChart, basicLastMonthChart, opAssistantCurrentMonthChart, opAssistantLastMonthChart].forEach(chart => {
+  [designerCurrentMonthChart, designerLastMonthChart, basicCurrentMonthChart, basicLastMonthChart, basicImageCurrentMonthChart, basicImageLastMonthChart, opAssistantCurrentMonthChart, opAssistantLastMonthChart].forEach(chart => {
     chart?.resize()
   })
 }

@@ -79,6 +79,7 @@
         :record-id="record.id"
         :version="record.version"
         :images="record.images"
+        :source-task-no="record.sourceTaskNo"
         category="potential_judgment"
         label="图片上传区"
         :readonly="readonly"

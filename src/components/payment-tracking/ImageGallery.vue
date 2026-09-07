@@ -109,6 +109,7 @@ const props = defineProps({
   recordId: { type: [Number, String], required: true },
   version: { type: Number, required: true },
   images: { type: Array, default: () => [] },
+  sourceTaskNo: { type: String, default: '' },
   category: { type: String, required: true },
   label: { type: String, required: true },
   ownerId: { type: [Number, String], default: null },
@@ -142,7 +143,11 @@ const previewUrls = computed(() => categoryImages.value.map(image => {
 
 function sourceTaskFile(image) {
   if (!image?.sourceTaskFileId || !image?.originalName) return null
-  return { id: image.sourceTaskFileId, file_name: image.originalName }
+  return {
+    id: image.sourceTaskFileId,
+    file_name: image.originalName,
+    task_no: props.sourceTaskNo || image.sourceTaskNo || ''
+  }
 }
 
 function dragSourceTaskImage(event, image) {

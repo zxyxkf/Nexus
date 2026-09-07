@@ -192,3 +192,54 @@ test('rolls back records and disk files when one manifest item fails', async () 
   const after = fs.existsSync(csImageDir) ? fs.readdirSync(csImageDir, { recursive: true }).sort() : [];
   expect(after).toEqual(before);
 });
+
+test('publishes a task and its reference and style files as one operation', async () => {
+  const title = `原子发布成功-${Date.now()}`;
+  const response = await request(app)
+    .post('/api/task/publish')
+    .set('Authorization', `Bearer ${csToken}`)
+    .field('taskPayload', JSON.stringify({ title, taskGroup: 'cs', score: 1 }))
+    .field('referenceOriginalNames', JSON.stringify(['参考图.png']))
+    .field('materialStyleId', String(styleId))
+    .field('styleManifest', JSON.stringify([
+      { materialImageId: styleImages[0].id, position: 0, editedField: '' }
+    ]))
+    .attach('references', PNG, { filename: 'nexus-upload-1.png', contentType: 'image/png' });
+
+  expect(response.body.code).toBe(0);
+  const [tasks] = await execute('SELECT id, status FROM task_info WHERE title = ?', [title]);
+  expect(tasks).toHaveLength(1);
+  const [files] = await execute(
+    'SELECT file_name, file_category FROM task_file WHERE task_id = ? ORDER BY id',
+    [tasks[0].id]
+  );
+  expect(files).toEqual([
+    expect.objectContaining({ file_name: '参考图.png', file_category: 'reference' }),
+    expect.objectContaining({ file_category: 'style' })
+  ]);
+});
+
+test('does not leave a task or files when atomic publish cannot copy a material image', async () => {
+  const title = `原子发布回滚-${Date.now()}`;
+  const { getStorageDir } = require('../../utils/share');
+  const csImageDir = getStorageDir('cs', 'images');
+  const before = fs.existsSync(csImageDir) ? fs.readdirSync(csImageDir, { recursive: true }).sort() : [];
+
+  const response = await request(app)
+    .post('/api/task/publish')
+    .set('Authorization', `Bearer ${csToken}`)
+    .field('taskPayload', JSON.stringify({ title, taskGroup: 'cs', score: 1 }))
+    .field('referenceOriginalNames', JSON.stringify(['失败前参考图.png']))
+    .field('materialStyleId', String(styleId))
+    .field('styleManifest', JSON.stringify([
+      { materialImageId: styleImages[0].id, position: 0, editedField: '' },
+      { materialImageId: missingSourceImage.id, position: 1, editedField: '' }
+    ]))
+    .attach('references', PNG, { filename: 'nexus-upload-1.png', contentType: 'image/png' });
+
+  expect(response.body.code).toBe(404);
+  const [tasks] = await execute('SELECT id FROM task_info WHERE title = ?', [title]);
+  expect(tasks).toHaveLength(0);
+  const after = fs.existsSync(csImageDir) ? fs.readdirSync(csImageDir, { recursive: true }).sort() : [];
+  expect(after).toEqual(before);
+});

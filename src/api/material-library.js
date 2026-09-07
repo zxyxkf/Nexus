@@ -11,14 +11,22 @@ export const createMaterialStyleApi = (productId, data) => unwrap(request.post(`
 export const renameMaterialStyleApi = (id, data) => unwrap(request.put(`/api/material-library/styles/${id}`, data))
 export const deleteMaterialStyleApi = id => unwrap(request.delete(`/api/material-library/styles/${id}`))
 export const getMaterialImagesApi = (styleId, params = {}) => unwrap(request.get(`/api/material-library/styles/${styleId}/images`, { params }))
+
+function transportFilename(file, index) {
+  const name = String(file?.name || '')
+  const extension = name.match(/\.[A-Za-z0-9]{1,10}$/)?.[0].toLowerCase() || '.bin'
+  return `material-upload-${index + 1}${extension}`
+}
+
 export const uploadMaterialImagesApi = (styleId, files, onUploadProgress) => {
   const form = new FormData()
-  files.forEach(file => form.append('files', file))
+  const list = Array.from(files || [])
+  // Chromium may replace non-ASCII multipart filename parameters with '?'.
+  // Send an ASCII transport name and carry the original names as UTF-8 data.
+  list.forEach((file, index) => form.append('files', file, transportFilename(file, index)))
+  form.append('originalNames', JSON.stringify(list.map(file => String(file?.name || ''))))
   return unwrap(request.post(`/api/material-library/styles/${styleId}/images`, form, {
-    // Clear the JSON default so the browser can set multipart/form-data with a
-    // boundary. A hard-coded multipart header is not parseable by busboy.
-    headers: { 'Content-Type': undefined },
-    timeout: 120000, onUploadProgress
+    timeout: 600000, onUploadProgress
   }))
 }
 export const renameMaterialImageApi = (id, data) => unwrap(request.put(`/api/material-library/images/${id}`, data))

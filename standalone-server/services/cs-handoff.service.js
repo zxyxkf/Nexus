@@ -79,6 +79,7 @@ async function listPooledTasks(query, user) {
   return taskDao.queryPooledCsTasks({
     keyword: query.keyword,
     status: query.status,
+    designerId: query.designerId,
     page: parseInt(query.page, 10) || 1,
     pageSize: Math.min(Math.max(parseInt(query.pageSize, 10) || 15, 1), 100)
   });

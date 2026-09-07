@@ -206,7 +206,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Plus, Delete, Document } from '@element-plus/icons-vue'
 import PersonSelect from '@/components/PersonSelect.vue'
-import { createTaskApi, saveStyleSnapshotsApi, uploadFilesApi, getScoreItemsApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi } from '@/api'
+import { publishTaskApi, getScoreItemsApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi } from '@/api'
 import { useConfig } from '@/composables/useConfig'
 import { appendClipboardImages, syncRawFiles } from '@/utils/clipboard-upload'
 import StylePicker from '@/components/material-library/StylePicker.vue'
@@ -511,36 +511,24 @@ async function handlePublish() {
           taskGroup: taskGroup.value
         }
 
-      const res = await createTaskApi(payload)
+    const rawFiles = refRawFiles.value.length
+      ? refRawFiles.value
+      : refImages.value.map(file => file.raw).filter(Boolean)
+    const styleImages = isCsAgent.value && materialStyleId.value
+      ? selectedMaterialImages.value.map((image, position) => ({
+          image,
+          position,
+          edited: editedMaterialImages.get(image.id)
+        }))
+      : []
+    const res = await publishTaskApi({
+      task: payload,
+      referenceFiles: rawFiles,
+      materialStyleId: materialStyleId.value,
+      images: styleImages
+    })
 
     if (res.code === 0) {
-      const taskId = res.data?.id
-      if (taskId && refImages.value.length) {
-        try {
-          const rawFiles = refRawFiles.value.length ? refRawFiles.value : refImages.value.map(f => f.raw).filter(Boolean)
-          if (rawFiles.length) {
-            const uploadRes = await uploadFilesApi(taskId, rawFiles, 'reference')
-            if (uploadRes.code !== 0) {
-              ElMessage.error('参考图上传失败: ' + (uploadRes.msg || '未知错误'))
-            }
-          }
-        } catch (e) {
-          console.error('[Publish] 参考图上传失败:', e)
-          ElMessage.error('参考图上传失败: ' + (e.response?.data?.msg || e.message || '网络异常'))
-        }
-      }
-      if (taskId && isCsAgent.value && materialStyleId.value && selectedMaterialImageIds.value.length) {
-        const snapshotRes = await saveStyleSnapshotsApi({
-          taskId,
-          materialStyleId: materialStyleId.value,
-          images: selectedMaterialImages.value.map((image, position) => ({
-            image,
-            position,
-            edited: editedMaterialImages.get(image.id)
-          }))
-        })
-        if (snapshotRes.code !== 0) ElMessage.error(snapshotRes.msg || '款式素材保存失败')
-      }
       ElMessage.success(res.msg || '任务发布成功')
       hasUnsavedData.value = false
       resetForm()
@@ -591,7 +579,7 @@ function resetForm() {
 .cs-material-grid { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 10px; max-height: calc(100vh - 210px); overflow-y: auto; padding-right: 3px; }
 .cs-material-image { position: relative; aspect-ratio: 1; padding: 0; overflow: hidden; border: 2px solid transparent; border-radius: 6px; cursor: pointer; background: var(--el-fill-color-light); }
 .cs-material-image.selected { border-color: var(--el-color-primary); }
-.cs-material-image img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.cs-material-image img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .cs-material-check { position: absolute; right: 4px; top: 4px; width: 20px; height: 20px; border-radius: 50%; background: var(--el-color-primary); color: #fff; text-align: center; line-height: 20px; font-size: 12px; }
 .cs-image-fields { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 14px; width: 100%; }
 .cs-sub-label { margin-bottom: 8px; font-size: 13px; color: var(--dd-text-secondary); font-weight: 600; }
@@ -599,7 +587,7 @@ function resetForm() {
 .cs-style-field { min-width: 0; }
 .cs-selected-image-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; max-height: 180px; overflow-y: auto; }
 .cs-selected-image { min-width: 0; aspect-ratio: 1; overflow: hidden; border: 1px solid var(--el-border-color-lighter); border-radius: 4px; cursor: zoom-in; }
-.cs-selected-image img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.cs-selected-image img { display: block; width: 100%; height: 100%; object-fit: contain; }
 .cs-selected-image { position: relative; }
 .cs-edited-badge { position: absolute; left: 4px; bottom: 4px; padding: 2px 5px; border-radius: 3px; background: rgba(48, 49, 51, 0.82); color: #fff; font-size: 10px; line-height: 1.3; }
 .cs-image-count { color: var(--el-color-primary); font-size: 12px; font-weight: 500; }

@@ -31,8 +31,8 @@ describe('GET /api/config/list', () => {
     expect(Array.isArray(res.body.data)).toBe(true);
     expect(res.body.data.length).toBeGreaterThan(0);
 
-    // 记录一个可编辑的配置项用于后续测试
-    const editable = res.body.data.find(c => c.editable === 1);
+    // 目录配置仅允许超级管理员修改；通用权限测试使用普通数值配置。
+    const editable = res.body.data.find(c => c.config_key === 'upload.max_file_count');
     if (editable) editableConfigId = editable.id;
   });
 
@@ -104,7 +104,7 @@ describe('PUT /api/config/update', () => {
     const res = await request(app)
       .put('/api/config/update')
       .set('Authorization', `Bearer ${adminToken}`)
-      .send({ id: editableConfigId, configValue: 'test-value' });
+      .send({ id: editableConfigId, configValue: '10' });
     expect(res.body.code).toBe(0);
   });
 
@@ -189,7 +189,7 @@ describe('POST /api/config/delete', () => {
     const res = await request(app)
       .put('/api/config/update')
       .set('Authorization', `Bearer ${token}`)
-      .send({ id: editableConfigId, configValue: 'permission-test-value' });
+      .send({ id: editableConfigId, configValue: '10' });
     expect(res.body.code).toBe(0);
   });
 });

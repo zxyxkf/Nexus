@@ -12,13 +12,57 @@ function taskMutation(promise) {
 }
 
 export const createTaskApi = (data) => taskMutation(request.post('/api/task/create', data))
+export const publishTaskApi = ({ task, referenceFiles = [], materialStyleId = '', images = [] }) => {
+  const formData = new FormData()
+  formData.append('taskPayload', JSON.stringify(task || {}))
+  const references = Array.from(referenceFiles || [])
+  formData.append('referenceOriginalNames', JSON.stringify(references.map(file => String(file?.name || ''))))
+  references.forEach((file, index) => {
+    formData.append('references', file, safeMultipartFilename(file?.name, index))
+  })
+
+  const manifest = images.map(({ image, position, edited }) => {
+    const editedField = edited?.file ? `edited-${image.id}` : ''
+    if (editedField) formData.append(editedField, edited.file, safeMultipartFilename(edited.file.name, position))
+    return {
+      materialImageId: image.id,
+      position,
+      editedField,
+      editedOriginalName: edited?.file?.name || ''
+    }
+  })
+  formData.append('materialStyleId', materialStyleId || '')
+  formData.append('styleManifest', JSON.stringify(manifest))
+  return taskMutation(request.post('/api/task/publish', formData, { timeout: 600000 }))
+}
 export const snapshotMaterialImagesApi = (data) => taskMutation(request.post('/api/task/material-snapshot', data))
+
+function safeMultipartFilename(name, index) {
+  const rawName = String(name || '')
+  const extension = rawName.match(/\.[A-Za-z0-9]{1,10}$/)?.[0].toLowerCase() || '.bin'
+  return `nexus-upload-${index + 1}${extension}`
+}
+
+function appendSafeFiles(formData, files, fieldName = 'files') {
+  const list = Array.from(files || [])
+  formData.append('originalFileNames', JSON.stringify(list.map(file => String(file?.name || ''))))
+  list.forEach((file, index) => {
+    formData.append(fieldName, file, safeMultipartFilename(file?.name, index))
+  })
+  return list
+}
+
 export const saveStyleSnapshotsApi = ({ taskId, materialStyleId, images = [] }) => {
   const formData = new FormData()
   const manifest = images.map(({ image, position, edited }) => {
     const editedField = edited?.file ? `edited-${image.id}` : ''
-    if (editedField) formData.append(editedField, edited.file, edited.file.name)
-    return { materialImageId: image.id, position, editedField }
+    if (editedField) formData.append(editedField, edited.file, safeMultipartFilename(edited.file.name, position))
+    return {
+      materialImageId: image.id,
+      position,
+      editedField,
+      editedOriginalName: edited?.file?.name || ''
+    }
   })
   formData.append('taskId', taskId)
   formData.append('materialStyleId', materialStyleId)
@@ -34,6 +78,7 @@ export const getMyAcceptedApi = (params) => request.get('/api/task/my-accepted',
 export const getTaskHallApi = (params) => request.get('/api/task/hall', { params })
 export const searchTasksApi = (params) => request.get('/api/task/search', { params })
 export const acceptTaskApi = (data) => taskMutation(request.post('/api/task/accept', data))
+
 export const uploadFilesApi = (taskId, files, fileCategory = 'work', extraData = {}) => {
   const formData = new FormData()
   formData.append('taskId', taskId)
@@ -54,9 +99,8 @@ export const uploadFilesApi = (taskId, files, fileCategory = 'work', extraData =
   if (Object.prototype.hasOwnProperty.call(extraData, 'retainedFileIds')) {
     formData.append('retainedFileIds', JSON.stringify(extraData.retainedFileIds || []))
   }
-  files.forEach(file => formData.append('files', file))
+  appendSafeFiles(formData, files)
   return taskMutation(request.post('/api/task/upload-files', formData, {
-    headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000,
     onUploadProgress: extraData.onUploadProgress
   }))
@@ -68,7 +112,7 @@ export const requestCsModificationApi = ({ taskId, note = '', files = [] }) => {
   const formData = new FormData()
   formData.append('taskId', taskId)
   formData.append('note', note)
-  files.forEach(file => formData.append('files', file))
+  appendSafeFiles(formData, files)
   return taskMutation(request.post('/api/task/request-modification', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000
@@ -88,7 +132,7 @@ export const completeCsModificationApi = ({
   formData.append('reply', reply)
   formData.append('appliedScore', appliedScore)
   formData.append('retainedFileIds', JSON.stringify(retainedFileIds))
-  files.forEach(file => formData.append('files', file))
+  appendSafeFiles(formData, files)
   return taskMutation(request.post('/api/task/complete-modification', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000
@@ -98,7 +142,7 @@ export const completeCsModificationApi = ({
 export const uploadOriginalFilesApi = (taskId, files, extraData = {}) => {
   const formData = new FormData()
   formData.append('taskId', taskId)
-  ;(files || []).forEach(file => formData.append('files', file))
+  appendSafeFiles(formData, files)
   return taskMutation(request.post('/api/task/upload-original', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
     timeout: 120000,

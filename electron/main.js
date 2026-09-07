@@ -9,6 +9,7 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 const fs = require('fs');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 const { autoUpdater } = require('electron-updater');
 
@@ -296,23 +297,61 @@ function httpGetBuffer(url, token) {
       path: parsed.pathname + parsed.search,
       headers: { 'Authorization': `Bearer ${token}` }
     };
-    mod.get(opts, (res) => {
+    const request = mod.get(opts, (res) => {
       if (res.statusCode >= 400) {
+        res.resume();
         return reject(new Error(`HTTP ${res.statusCode}`));
       }
       const chunks = [];
       res.on('data', (c) => chunks.push(c));
+      res.on('error', reject);
+      res.on('aborted', () => reject(new Error('拖拽文件下载中断')));
       res.on('end', () => resolve({
         buffer: Buffer.concat(chunks),
         contentType: res.headers['content-type'] || 'application/octet-stream'
       }));
-    }).on('error', reject);
+    });
+    request.setTimeout(120000, () => {
+      request.destroy(new Error('拖拽文件下载超时'));
+    });
+    request.on('error', reject);
   });
 }
 
-// ===== 文件拖拽缓存 =====
-const dragFileCache = new Map(); // fileId → tempPath
-const dragFileNameCache = new Map(); // fileId → sanitized fileName
+// ===== 图片预览（同时缓存文件用于拖拽） =====
+
+// Persistent cache metadata and bounded preparation queue.
+const dragFileCache = new Map(); // fileId:fileName -> tempPath
+const dragFileNameCache = new Map(); // fileId:fileName -> sanitized fileName
+const dragFileMetaCache = new Map();
+const dragCacheTtlMs = 60 * 60 * 1000;
+const dragReservedPaths = new Set();
+const dragPreparePending = [];
+const dragPrepareJobs = new Map();
+let dragPrepareActive = 0;
+let dragPrepareNormalActive = 0;
+
+function getDragCacheDir() {
+  return path.join(app.getPath('temp'), 'nexus-drag');
+}
+
+function getDragIconPath() {
+  const candidates = [
+    path.join(process.resourcesPath || '', 'drag-icon.ico'),
+    path.join(process.resourcesPath || '', 'icon.ico'),
+    path.join(__dirname, 'drag-icon.ico'),
+    path.join(__dirname, '../build/icon.ico')
+  ];
+  return candidates.find(candidate => candidate && fs.existsSync(candidate)) || '';
+}
+
+function getDragManifestPath() {
+  return path.join(getDragCacheDir(), 'manifest.json');
+}
+
+function normalizeDragFileId(fileId) {
+  return String(fileId ?? '');
+}
 
 function sanitizeDragFileName(fileName, fileId) {
   const fallback = `file-${String(fileId || 'download').replace(/[^a-zA-Z0-9_-]/g, '_')}`;
@@ -324,54 +363,326 @@ function sanitizeDragFileName(fileName, fileId) {
   return safeName;
 }
 
-function cacheDragFile(fileId, fileName, buffer) {
-  const tempDir = path.join(app.getPath('temp'), 'nexus-drag');
-  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
-  const safeFileName = sanitizeDragFileName(fileName, fileId);
+function normalizeDragServerUrl(serverUrl = getServerConfig().serverUrl) {
+  return String(serverUrl || '').replace(/\/+$/, '');
+}
 
-  // 处理重名
-  let tempPath = path.join(tempDir, safeFileName);
-  if (fs.existsSync(tempPath)) {
-    const ext = path.extname(safeFileName);
-    const base = path.basename(safeFileName, ext);
-    let counter = 1;
-    while (fs.existsSync(tempPath)) {
-      tempPath = path.join(tempDir, `${base}_(${counter})${ext}`);
-      counter++;
+function getDragAuthScope(token) {
+  if (!token) return '';
+  const parts = String(token).split('.');
+  if (parts.length === 3) {
+    try {
+      const payload = JSON.parse(Buffer.from(parts[1], 'base64url').toString('utf8'));
+      const stableIdentity = payload.sub ?? payload.user_id ?? payload.userId ?? payload.id ?? payload.username;
+      if (stableIdentity != null && String(stableIdentity).trim()) return `user:${String(stableIdentity).trim()}`;
+    } catch (_) {}
+  }
+  return crypto.createHash('sha256').update(String(token)).digest('hex');
+}
+
+function normalizeDragCacheKey(fileId, fileName = '', downloadPath = '', serverUrl = getServerConfig().serverUrl, authScope = '') {
+  const id = normalizeDragFileId(fileId);
+  const server = normalizeDragServerUrl(serverUrl);
+  if (!fileName) return `${server}:${authScope}:${id}`;
+  const resolvedDownloadPath = downloadPath ? resolveDragDownloadPath(id, downloadPath) : '';
+  return `${server}:${authScope}:${id}:${sanitizeDragFileName(fileName, id)}:${resolvedDownloadPath}`;
+}
+
+function isDragCachePath(pathName) {
+  const root = path.resolve(getDragCacheDir()) + path.sep;
+  return path.resolve(pathName).startsWith(root);
+}
+
+function findCachedDragEntry(fileId, fileName = '', downloadPath = '', token = '') {
+  const authScope = getDragAuthScope(token);
+  if (!authScope) return '';
+  const id = normalizeDragFileId(fileId);
+  const serverUrl = normalizeDragServerUrl();
+  const safeFileName = fileName ? sanitizeDragFileName(fileName, id) : '';
+  const resolvedDownloadPath = downloadPath ? resolveDragDownloadPath(id, downloadPath) : '';
+
+  if (fileName && downloadPath) {
+    const exactKey = normalizeDragCacheKey(id, fileName, resolvedDownloadPath, serverUrl, authScope);
+    const exactMetadata = dragFileMetaCache.get(exactKey);
+    const exactPath = dragFileCache.get(exactKey);
+    if (exactMetadata && exactPath && fs.existsSync(exactPath)) {
+      return { key: exactKey, metadata: exactMetadata, tempPath: exactPath };
     }
   }
 
-  fs.writeFileSync(tempPath, buffer);
-  dragFileCache.set(fileId, tempPath);
-  dragFileNameCache.set(fileId, safeFileName);
+  const candidates = [];
+  for (const [key, metadata] of dragFileMetaCache) {
+    if (metadata.serverUrl !== serverUrl || metadata.authScope !== authScope || metadata.fileId !== id) continue;
+    if (resolvedDownloadPath && metadata.downloadPath !== resolvedDownloadPath) continue;
+    if (safeFileName && metadata.fileName !== safeFileName) candidates.push({ key, metadata, tempPath: dragFileCache.get(key) });
+    else candidates.unshift({ key, metadata, tempPath: dragFileCache.get(key) });
+  }
+  return candidates.find(entry => entry.tempPath && fs.existsSync(entry.tempPath)) || '';
 }
 
-// 清理过期缓存文件（1小时后删除）
-function cleanExpiredCache() {
-  const tempDir = path.join(app.getPath('temp'), 'nexus-drag');
+function getCachedDragPath(fileId, fileName = '', downloadPath = '', token = '') {
+  return findCachedDragEntry(fileId, fileName, downloadPath, token)?.tempPath || '';
+}
+
+function persistDragManifest() {
+  const tempDir = getDragCacheDir();
+  try {
+    if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+    const manifestPath = getDragManifestPath();
+    const tempManifestPath = `${manifestPath}.tmp`;
+    fs.writeFileSync(tempManifestPath, JSON.stringify({
+      version: 1,
+      entries: Array.from(dragFileMetaCache.values())
+    }, null, 2), 'utf8');
+    try {
+      fs.renameSync(tempManifestPath, manifestPath);
+    } catch (_) {
+      fs.rmSync(manifestPath, { force: true });
+      fs.renameSync(tempManifestPath, manifestPath);
+    }
+  } catch (err) {
+    startupLog(`拖拽缓存清单写入失败: ${err.message}`);
+  }
+}
+
+function loadDragManifest() {
+  try {
+    const manifestPath = getDragManifestPath();
+    if (!fs.existsSync(manifestPath)) return { entries: [], corrupted: false };
+    const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
+    if (parsed?.version !== 1 || !Array.isArray(parsed.entries)) {
+      return { entries: [], corrupted: true };
+    }
+    return { entries: parsed.entries, corrupted: false };
+  } catch (err) {
+    startupLog(`拖拽缓存清单读取失败: ${err.message}`);
+    return { entries: [], corrupted: true };
+  }
+}
+
+function restoreDragCache() {
+  const tempDir = getDragCacheDir();
   if (!fs.existsSync(tempDir)) return;
   const now = Date.now();
-  const oneHour = 60 * 60 * 1000;
+  const currentServerUrl = normalizeDragServerUrl();
+  const manifest = loadDragManifest();
+  let changed = manifest.corrupted;
+  dragFileCache.clear();
+  dragFileNameCache.clear();
+  dragFileMetaCache.clear();
+  for (const entry of manifest.entries) {
+    const fileId = normalizeDragFileId(entry?.fileId);
+    const safeFileName = sanitizeDragFileName(entry?.fileName, fileId);
+    const tempPath = path.resolve(String(entry?.tempPath || ''));
+    const updatedAt = Number(entry?.updatedAt || 0);
+    const serverUrl = typeof entry?.serverUrl === 'string' ? normalizeDragServerUrl(entry.serverUrl) : '';
+    const authScope = typeof entry?.authScope === 'string' ? entry.authScope : '';
+    const valid = fileId && entry?.fileName && authScope && serverUrl === currentServerUrl && isDragCachePath(tempPath) &&
+      fs.existsSync(tempPath) && updatedAt > 0 && now - updatedAt <= dragCacheTtlMs;
+    if (!valid) {
+      if (tempPath && isDragCachePath(tempPath) && fs.existsSync(tempPath)) {
+        try { fs.unlinkSync(tempPath); } catch (_) {}
+      }
+      changed = true;
+      continue;
+    }
+    let stat;
+    try {
+      stat = fs.statSync(tempPath);
+    } catch (_) {
+      changed = true;
+      continue;
+    }
+    if (entry.size != null && Number(entry.size) !== stat.size) {
+      try { fs.unlinkSync(tempPath); } catch (_) {}
+      changed = true;
+      continue;
+    }
+    const downloadPath = resolveDragDownloadPath(fileId, entry.downloadPath);
+    const cacheKey = normalizeDragCacheKey(fileId, safeFileName, downloadPath, serverUrl, authScope);
+    dragFileCache.set(cacheKey, tempPath);
+    dragFileNameCache.set(cacheKey, safeFileName);
+    dragFileMetaCache.set(cacheKey, {
+      fileId,
+      fileName: safeFileName,
+      downloadPath,
+      serverUrl,
+      authScope,
+      tempPath,
+      size: stat.size,
+      updatedAt
+    });
+  }
+  if (changed) persistDragManifest();
+}
+
+function chooseDragTempPath(cacheKey, safeFileName) {
+  const existingPath = dragFileCache.get(cacheKey);
+  if (existingPath && isDragCachePath(existingPath)) return existingPath;
+  const tempDir = getDragCacheDir();
+  let tempPath = path.join(tempDir, safeFileName);
+  const usedPaths = () => Array.from(dragFileCache.values()).includes(tempPath) || dragReservedPaths.has(tempPath);
+  if (fs.existsSync(tempPath) || usedPaths()) {
+    const ext = path.extname(safeFileName);
+    const base = path.basename(safeFileName, ext);
+    let counter = 1;
+    while (fs.existsSync(tempPath) || usedPaths()) {
+      tempPath = path.join(tempDir, `${base}_(${counter})${ext}`);
+      counter += 1;
+    }
+  }
+  dragReservedPaths.add(tempPath);
+  return tempPath;
+}
+
+function cacheDragFile(fileId, fileName, buffer, downloadPath = '', token = '') {
+  const tempDir = getDragCacheDir();
+  if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
+  const safeFileName = sanitizeDragFileName(fileName, fileId);
+  const resolvedDownloadPath = resolveDragDownloadPath(fileId, downloadPath);
+  const serverUrl = normalizeDragServerUrl();
+  const authScope = getDragAuthScope(token);
+  if (!authScope) return;
+  const cacheKey = normalizeDragCacheKey(fileId, safeFileName, resolvedDownloadPath, serverUrl, authScope);
+  const tempPath = chooseDragTempPath(cacheKey, safeFileName);
+  try {
+    fs.writeFileSync(tempPath, buffer);
+  } catch (err) {
+    try { fs.rmSync(tempPath, { force: true }); } catch (_) {}
+    throw err;
+  } finally {
+    dragReservedPaths.delete(tempPath);
+  }
+  dragFileCache.set(cacheKey, tempPath);
+  dragFileNameCache.set(cacheKey, safeFileName);
+  dragFileMetaCache.set(cacheKey, {
+    fileId: normalizeDragFileId(fileId),
+    fileName: safeFileName,
+    downloadPath: resolvedDownloadPath,
+    serverUrl,
+    authScope,
+    tempPath,
+    size: buffer.length,
+    updatedAt: Date.now()
+  });
+  persistDragManifest();
+}
+
+function removeCachedDragFile(fileId, fileName = '', downloadPath = '', cacheServerUrl = getServerConfig().serverUrl, cacheAuthScope = '', shouldPersist = true) {
+  const id = normalizeDragFileId(fileId);
+  const serverUrl = normalizeDragServerUrl(cacheServerUrl);
+  const requestedKey = fileName && downloadPath && cacheAuthScope
+    ? normalizeDragCacheKey(id, fileName, downloadPath, serverUrl, cacheAuthScope)
+    : '';
+  const safeFileName = fileName ? sanitizeDragFileName(fileName, id) : '';
+  const keys = Array.from(dragFileMetaCache.entries()).filter(([key, metadata]) => {
+    if (requestedKey) return key === requestedKey;
+    if (metadata.serverUrl !== serverUrl || metadata.authScope !== cacheAuthScope || metadata.fileId !== id) return false;
+    return !safeFileName || metadata.fileName === safeFileName;
+  }).map(([key]) => key);
+  for (const cacheKey of keys) {
+    const cachedPath = dragFileCache.get(cacheKey);
+    if (cachedPath && fs.existsSync(cachedPath)) {
+      try { fs.unlinkSync(cachedPath); } catch (_) {}
+    }
+    dragFileCache.delete(cacheKey);
+    dragFileNameCache.delete(cacheKey);
+    dragFileMetaCache.delete(cacheKey);
+  }
+  if (keys.length && shouldPersist) persistDragManifest();
+}
+
+function cleanExpiredCache() {
+  const tempDir = getDragCacheDir();
+  if (!fs.existsSync(tempDir)) return;
+  const now = Date.now();
+  let changed = false;
+  for (const metadata of Array.from(dragFileMetaCache.values())) {
+    if (now - Number(metadata.updatedAt || 0) <= dragCacheTtlMs && fs.existsSync(metadata.tempPath)) continue;
+    removeCachedDragFile(metadata.fileId, metadata.fileName, metadata.downloadPath, metadata.serverUrl, metadata.authScope, false);
+    changed = true;
+  }
   try {
     for (const name of fs.readdirSync(tempDir)) {
-      const p = path.join(tempDir, name);
-      const stat = fs.statSync(p);
-      if (now - stat.mtimeMs > oneHour) {
-        fs.unlinkSync(p);
-        // 清理对应的 cache entry
-        for (const [k, v] of dragFileCache) {
-          if (v === p) {
-            dragFileCache.delete(k);
-            dragFileNameCache.delete(k);
-          }
-        }
+      if (name === 'manifest.json') continue;
+      const filePath = path.join(tempDir, name);
+      const stat = fs.statSync(filePath);
+      if (name === 'manifest.json.tmp') {
+        if (now - stat.mtimeMs > 60 * 1000) fs.unlinkSync(filePath);
+        continue;
+      }
+      if (stat.isFile() && now - stat.mtimeMs > dragCacheTtlMs && !Array.from(dragFileCache.values()).includes(filePath)) {
+        fs.unlinkSync(filePath);
+        changed = true;
       }
     }
   } catch (_) {}
+  if (changed) persistDragManifest();
 }
-setInterval(cleanExpiredCache, 30 * 60 * 1000); // 每30分钟清理一次
+setInterval(cleanExpiredCache, 30 * 60 * 1000);
 
-// ===== 图片预览（同时缓存文件用于拖拽） =====
+function isDragFileCached(fileId, fileName = '', downloadPath = '', token = '') {
+  const entry = findCachedDragEntry(fileId, fileName, downloadPath, token);
+  if (!entry || Date.now() - Number(entry.metadata.updatedAt || 0) > dragCacheTtlMs) return false;
+  return true;
+}
+
+function drainDragPrepareQueue() {
+  dragPreparePending.sort((a, b) => (a.priority === b.priority ? a.order - b.order : a.priority === 'high' ? -1 : 1));
+  while (dragPrepareActive < 3 && dragPreparePending.length) {
+    const highPriorityIndex = dragPreparePending.findIndex(job => job.priority === 'high');
+    const nextIndex = highPriorityIndex >= 0 ? highPriorityIndex : 0;
+    if (highPriorityIndex < 0 && dragPrepareNormalActive >= 2) break;
+    const job = dragPreparePending.splice(nextIndex, 1)[0];
+    dragPrepareActive += 1;
+    if (job.priority !== 'high') dragPrepareNormalActive += 1;
+    Promise.resolve().then(async () => {
+      if (isDragFileCached(job.fileId, job.fileName, job.downloadPath, job.token)) return true;
+      removeCachedDragFile(job.fileId, job.fileName, job.downloadPath, getServerConfig().serverUrl, job.authScope);
+      const config = getServerConfig();
+      const url = `${config.serverUrl}${resolveDragDownloadPath(job.fileId, job.downloadPath)}`;
+      const { buffer } = await httpGetBuffer(url, job.token);
+      cacheDragFile(job.fileId, job.fileName, buffer, job.downloadPath, job.token);
+      return true;
+    }).catch(() => false).then(result => job.resolve(result)).finally(() => {
+      dragPrepareActive -= 1;
+      if (job.priority !== 'high') dragPrepareNormalActive -= 1;
+      if (dragPrepareJobs.get(job.key) === job) dragPrepareJobs.delete(job.key);
+      drainDragPrepareQueue();
+    });
+  }
+}
+
+function enqueueDragPreparation(item, token) {
+  const fileId = normalizeDragFileId(item.fileId);
+  const fileName = sanitizeDragFileName(item.fileName, fileId);
+  const downloadPath = resolveDragDownloadPath(fileId, item.downloadPath);
+  const authScope = getDragAuthScope(token);
+  if (!authScope) return Promise.resolve(false);
+  const key = normalizeDragCacheKey(fileId, fileName, downloadPath, getServerConfig().serverUrl, authScope);
+  if (isDragFileCached(fileId, fileName, downloadPath, token)) return Promise.resolve(true);
+  const existing = dragPrepareJobs.get(key);
+  if (existing) {
+    if (item.priority === 'high') existing.priority = 'high';
+    drainDragPrepareQueue();
+    return existing.promise;
+  }
+  let resolveJob;
+  const promise = new Promise(resolve => { resolveJob = resolve; });
+  const job = {
+    key, fileId, fileName,
+    downloadPath,
+    token, authScope,
+    priority: item.priority === 'high' ? 'high' : 'normal',
+    order: Date.now() + Math.random(),
+    promise,
+    resolve: resolveJob
+  };
+  dragPrepareJobs.set(key, job);
+  dragPreparePending.push(job);
+  drainDragPrepareQueue();
+  return promise;
+}
 
 ipcMain.handle('preview-image', async (event, { fileId, token, fileName }) => {
   const config = getServerConfig();
@@ -380,7 +691,7 @@ ipcMain.handle('preview-image', async (event, { fileId, token, fileName }) => {
 
   // 如果传了 fileName，写入临时目录供拖拽使用
   if (fileName) {
-    cacheDragFile(fileId, fileName, buffer);
+    cacheDragFile(fileId, fileName, buffer, `/api/task/download/${encodeURIComponent(fileId)}`, token);
   }
 
   const base64 = buffer.toString('base64');
@@ -415,22 +726,23 @@ function resolveDragDownloadPath(fileId, downloadPath) {
   return `/api/task/download/${encodeURIComponent(fileId)}`;
 }
 
-ipcMain.handle('prepare-file-drags', async (event, { items, token }) => {
-  const config = getServerConfig();
-  for (const { fileId, fileName, downloadPath } of items) {
-    const cachedPath = dragFileCache.get(fileId);
-    const safeFileName = sanitizeDragFileName(fileName, fileId);
-    if (cachedPath && fs.existsSync(cachedPath) && dragFileNameCache.get(fileId) === safeFileName) continue;
-    dragFileCache.delete(fileId);
-    dragFileNameCache.delete(fileId);
-    try {
-      const url = `${config.serverUrl}${resolveDragDownloadPath(fileId, downloadPath)}`;
-      const { buffer } = await httpGetBuffer(url, token);
-      cacheDragFile(fileId, fileName, buffer);
-    } catch (e) {
-      // 单个失败不影响其他
+ipcMain.handle('prepare-file-drags', async (event, { items = [], token }) => {
+  const uniqueItems = new Map();
+  for (const item of Array.isArray(items) ? items : []) {
+    if (!item?.fileId || !item?.fileName) continue;
+    const key = normalizeDragCacheKey(
+      item.fileId,
+      item.fileName,
+      item.downloadPath,
+      getServerConfig().serverUrl,
+      getDragAuthScope(token)
+    );
+    const previous = uniqueItems.get(key);
+    if (!previous || item.priority === 'high') {
+      uniqueItems.set(key, { ...item, priority: item.priority || 'normal' });
     }
   }
+  await Promise.all(Array.from(uniqueItems.values()).map(item => enqueueDragPreparation(item, token)));
   return { success: true };
 });
 
@@ -438,30 +750,32 @@ ipcMain.handle('prepare-file-drags', async (event, { items, token }) => {
 ipcMain.on('is-file-cached', (event, request) => {
   const fileId = request && typeof request === 'object' ? request.fileId : request;
   const fileName = request && typeof request === 'object' ? request.fileName : '';
-  const tempPath = dragFileCache.get(fileId);
-  const expectedName = fileName ? sanitizeDragFileName(fileName, fileId) : '';
-  event.returnValue = !!(
-    tempPath &&
-    fs.existsSync(tempPath) &&
-    (!expectedName || dragFileNameCache.get(fileId) === expectedName)
-  );
+  const downloadPath = request && typeof request === 'object' ? request.downloadPath : '';
+  const token = request && typeof request === 'object' ? request.token : '';
+  event.returnValue = isDragFileCached(fileId, fileName, downloadPath, token);
 });
 
 // 同步触发原生文件拖拽（必须在文件已缓存后调用）
-ipcMain.on('do-file-drag', (event, fileId) => {
-  const tempPath = dragFileCache.get(fileId);
+ipcMain.on('do-file-drag', (event, request) => {
+  const fileId = request && typeof request === 'object' ? request.fileId : request;
+  const fileName = request && typeof request === 'object' ? request.fileName : '';
+  const downloadPath = request && typeof request === 'object' ? request.downloadPath : '';
+  const token = request && typeof request === 'object' ? request.token : '';
+  const tempPath = getCachedDragPath(fileId, fileName, downloadPath, token);
   if (!tempPath || !fs.existsSync(tempPath)) {
+    startupLog(`拖拽缓存未命中: fileId=${fileId} fileName=${fileName} downloadPath=${downloadPath}`);
     event.returnValue = false;
     return;
   }
   try {
-    mainWindow.webContents.startDrag({
-      file: tempPath,
-      icon: path.join(__dirname, '../build/icon.ico')
-    });
+    const dragItem = { file: tempPath };
+    const iconPath = getDragIconPath();
+    if (iconPath) dragItem.icon = iconPath;
+    mainWindow.webContents.startDrag(dragItem);
     event.returnValue = true;
   } catch (err) {
     console.error('[Drag] startDrag 失败:', err.message);
+    startupLog(`拖拽启动失败: ${err.message}`);
     event.returnValue = false;
   }
 });
@@ -641,6 +955,7 @@ function setupAutoUpdater() {
 
 // ===== 应用生命周期 =====
 app.whenReady().then(() => {
+  restoreDragCache();
   createMenu();
   createWindow();
   createToastWindow();

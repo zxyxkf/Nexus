@@ -46,6 +46,7 @@
           :record-id="record.id"
           :version="record.version"
           :images="record.images"
+          :source-task-no="record.sourceTaskNo"
           category="adjustment_feedback"
           label="数据反馈"
           :owner-id="item.id"

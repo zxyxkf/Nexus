@@ -14,6 +14,7 @@
           :record-id="record.id"
           :version="record.version"
           :images="record.images"
+          :source-task-no="record.sourceTaskNo"
           category="link_optimization"
           label="图片上传区"
           :readonly="readonly"

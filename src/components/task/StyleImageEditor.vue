@@ -103,28 +103,10 @@
 
             <div class="image-color-tools">
               <span class="property-title">图片换色</span>
-              <el-radio-group v-model="recolorMode" size="small">
-                <el-radio-button value="solid">整体单色</el-radio-button>
-                <el-radio-button value="matching">指定颜色</el-radio-button>
-              </el-radio-group>
-              <div v-if="recolorMode === 'matching'" class="property-row">
-                <span>原颜色</span>
-                <div class="color-pick-row">
-                  <span class="color-swatch" :style="{ backgroundColor: sourceColor }" />
-                  <el-button
-                    size="small"
-                    :type="eyedropperActive ? 'primary' : undefined"
-                    @click="toggleEyedropper"
-                  >{{ eyedropperActive ? '点击图片取色' : '吸管取色' }}</el-button>
-                </div>
-              </div>
+              <div class="recolor-mode-label">整体单色</div>
               <label class="property-row">
                 <span>目标颜色</span>
                 <el-color-picker v-model="targetColor" />
-              </label>
-              <label v-if="recolorMode === 'matching'" class="property-column">
-                <span>颜色容差</span>
-                <el-slider v-model="colorTolerance" :min="1" :max="255" :show-input="true" />
               </label>
               <div class="tool-row">
                 <el-button type="primary" :loading="processingImage" @click="applyImageRecolor">应用换色</el-button>
@@ -205,14 +187,11 @@ import {
   Point,
   Polygon,
   Rect,
-  Triangle,
-  util
+  Triangle
 } from 'fabric'
 import {
-  recolorMatching,
   recolorSolid,
-  removeBackground,
-  samplePixel
+  removeBackground
 } from '@/utils/background-removal'
 
 const props = defineProps({
@@ -251,11 +230,7 @@ const textColor = ref('#111111')
 const textBackground = ref('rgba(255,255,255,0)')
 const backgroundTolerance = ref(42)
 const edgeCleanup = ref(55)
-const recolorMode = ref('solid')
-const sourceColor = ref('#000000')
 const targetColor = ref('#ff3b30')
-const colorTolerance = ref(36)
-const eyedropperActive = ref(false)
 const canUndo = ref(false)
 const canRedo = ref(false)
 const panMode = ref(false)
@@ -388,7 +363,6 @@ function bindCanvasEvents() {
   canvas.on('object:modified', scheduleHistory)
   canvas.on('object:removed', scheduleHistory)
   canvas.on('text:changed', scheduleHistory)
-  canvas.on('mouse:down', handleEyedropperPick)
   canvas.on('mouse:wheel', event => {
     event.e.preventDefault()
     event.e.stopPropagation()
@@ -463,7 +437,6 @@ function stopPanning(event) {
 
 function setPanMode(enabled) {
   panMode.value = Boolean(enabled)
-  eyedropperActive.value = false
   isPanning = false
   if (!canvas) return
   canvas.selection = !panMode.value
@@ -487,7 +460,10 @@ function resizeCanvasDisplay() {
   if (!canvas || !viewportRef.value) return
   const availableWidth = Math.max(280, viewportRef.value.clientWidth - 24)
   const availableHeight = Math.max(280, viewportRef.value.clientHeight - 24)
-  const ratio = Math.min(availableWidth / canvas.getWidth(), availableHeight / canvas.getHeight(), 1)
+  // The canvas dimensions stay at the source resolution; only its CSS size is
+  // adjusted here. Allow small source images to grow to the available workspace
+  // so the editor is usable, while keeping export resolution unchanged.
+  const ratio = Math.min(availableWidth / canvas.getWidth(), availableHeight / canvas.getHeight())
   canvas.setDimensions({
     width: Math.round(canvas.getWidth() * ratio),
     height: Math.round(canvas.getHeight() * ratio)
@@ -507,10 +483,8 @@ function syncSelectedObject(object) {
   selectedObject.value = object?.nexusType === 'base-image' ? null : (object || null)
   const selected = selectedObject.value
   if (!selected) {
-    eyedropperActive.value = false
     return
   }
-  if (selected.nexusType !== 'uploaded-image') eyedropperActive.value = false
 
   strokeColor.value = selected.nexusType === 'shape'
     ? (selected.stroke || selected.getObjects?.()[0]?.stroke || '#ff3b30')
@@ -721,50 +695,10 @@ async function removeImageBackground() {
 }
 
 async function applyImageRecolor() {
-  if (recolorMode.value === 'matching' && !sourceColor.value) {
-    ElMessage.warning('请先使用吸管选择原颜色')
-    return
-  }
   await transformUploadedImage(
-    imageData => recolorMode.value === 'solid'
-      ? recolorSolid(imageData, targetColor.value)
-      : recolorMatching(imageData, sourceColor.value, targetColor.value, colorTolerance.value),
+    imageData => recolorSolid(imageData, targetColor.value),
     '图片换色失败'
   )
-}
-
-function colorToHex(color) {
-  return `#${[color.r, color.g, color.b]
-    .map(channel => Number(channel).toString(16).padStart(2, '0'))
-    .join('')}`
-}
-
-function toggleEyedropper() {
-  eyedropperActive.value = !eyedropperActive.value
-  if (canvas) {
-    canvas.defaultCursor = eyedropperActive.value ? 'crosshair' : 'default'
-    canvas.hoverCursor = eyedropperActive.value ? 'crosshair' : 'move'
-    canvas.requestRenderAll()
-  }
-}
-
-function handleEyedropperPick(event) {
-  const object = selectedObject.value
-  if (!eyedropperActive.value || !object?.uploadedLayer || !canvas) return
-  try {
-    const scenePoint = canvas.getScenePoint(event.e)
-    const localPoint = util.transformPoint(scenePoint, util.invertTransform(object.calcTransformMatrix()))
-    const { imageData } = imageDataForObject(object)
-    const pixelX = ((localPoint.x / Math.max(1, Number(object.width))) + 0.5) * imageData.width
-    const pixelY = ((localPoint.y / Math.max(1, Number(object.height))) + 0.5) * imageData.height
-    sourceColor.value = colorToHex(samplePixel(imageData, pixelX, pixelY))
-    eyedropperActive.value = false
-    canvas.defaultCursor = 'default'
-    canvas.hoverCursor = 'move'
-    canvas.requestRenderAll()
-  } catch (error) {
-    ElMessage.error(error.message || '取色失败')
-  }
 }
 
 async function restoreUploadedImage() {
@@ -955,7 +889,6 @@ function disposeEditor() {
   zoom.value = 1
   viewportX.value = 0
   viewportY.value = 0
-  eyedropperActive.value = false
 }
 
 function handleResize() {
@@ -1054,15 +987,6 @@ onBeforeUnmount(() => {
   color: var(--el-text-color-primary);
   font-size: 13px;
   font-weight: 700;
-}
-.color-pick-row { display: flex; align-items: center; gap: 8px; }
-.color-swatch {
-  width: 26px;
-  height: 26px;
-  flex: 0 0 auto;
-  border: 1px solid var(--el-border-color);
-  border-radius: 4px;
-  box-shadow: inset 0 0 0 2px var(--el-bg-color);
 }
 .layer-actions { display: flex; gap: 8px; margin-top: 16px; }
 .layer-actions .el-button + .el-button { margin-left: 0; }

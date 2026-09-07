@@ -39,14 +39,14 @@
               value-format="YYYY-MM-DD"
               clearable
               style="width:150px;"
-              @change="loadData"
+              @change="handleDateFilterChange"
             />
-            <el-select v-if="!fixedStatus" v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
+            <el-select v-if="!fixedStatus || isTodoRoute" v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
               <el-option label="全部" value="" />
               <el-option label="已接单" value="accepted" />
-              <el-option label="作图中" value="doing" />
+              <el-option v-if="!isTodoRoute" label="审核中" value="doing" />
               <el-option label="待上传原图" value="pending_original" />
-              <el-option label="已完成" value="finished" />
+              <el-option v-if="!isTodoRoute" label="已完成" value="finished" />
               <el-option label="修改中" value="rejected" />
             </el-select>
           </div>
@@ -414,11 +414,24 @@ const statusFilter = ref('')
 const keyword = ref('')
 const publisherFilter = ref('')
 const dateFilter = ref('')
-usePersistedFilters('basic_my_tasks', { statusFilter, keyword, publisherFilter, dateFilter })
+usePersistedFilters(
+  () => `basic_my_tasks_${String(route.name || route.path)}`,
+  { statusFilter, keyword, publisherFilter, dateFilter }
+)
 const dateField = ref('')
 const publisherList = ref([])
 const fixedStatus = computed(() => route.meta.fixedStatus || '')
+const isTodoRoute = computed(() => fixedStatus.value === 'accepted' && route.path.endsWith('/tasks/todo'))
 const pageTitle = computed(() => route.meta.title || '我的任务')
+
+function sanitizeStatusFilter() {
+  const allowed = !fixedStatus.value
+    ? new Set(['accepted', 'doing', 'pending_original', 'finished', 'rejected'])
+    : isTodoRoute.value
+      ? new Set(['accepted', 'pending_original', 'rejected'])
+      : new Set()
+  if (!allowed.has(statusFilter.value)) statusFilter.value = ''
+}
 
 const uploadVisible = ref(false)
 const uploadLoading = ref(false)
@@ -480,7 +493,11 @@ function handleSortChange({ prop, order }) {
   sortOrder.value = order || ''
 }
 
-function statusLabel(s) { return s === 'rejected' ? '修改中' : STATUS_MAP[s] || s }
+function statusLabel(s) {
+  if (s === 'doing') return '审核中'
+  if (s === 'rejected') return '修改中'
+  return STATUS_MAP[s] || s
+}
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
 const { getRefImages, getRefAttachments, getEffectFiles, getOriginalFiles, getRefImageSrcList } = useFileHelpers()
 function getEffectImages(files) {
@@ -519,13 +536,22 @@ const detailRefAttachments = computed(() => {
   return currentTask.value.files.filter(f => f.file_category === 'reference' && f.file_type !== 'image')
 })
 
+function handleDateFilterChange(value) {
+  dateFilter.value = value || ''
+  page.value = 1
+  loadData()
+}
+
 async function loadData(options = {}) {
-  if (!options.silent) loading.value = true
+  const runOptions = options && typeof options === 'object' && !Array.isArray(options) ? options : {}
+  if (!runOptions.silent) loading.value = true
   try {
     const res = await getMyAcceptedApi({
       page: page.value,
       pageSize: pageSize.value,
-      status: fixedStatus.value === 'accepted' ? 'accepted,rejected,pending_original' : (fixedStatus.value || statusFilter.value || undefined),
+      status: isTodoRoute.value
+        ? (statusFilter.value || 'accepted,rejected,pending_original')
+        : (fixedStatus.value || statusFilter.value || undefined),
       taskGroup: 'cs',
       keyword: keyword.value || undefined,
       publisherId: publisherFilter.value || undefined,
@@ -545,7 +571,7 @@ async function loadData(options = {}) {
   } catch (e) {
     console.error('[MyTasks] 加载接单列表失败:', e)
   } finally {
-    if (!options.silent) loading.value = false
+    if (!runOptions.silent) loading.value = false
   }
 }
 
@@ -564,7 +590,7 @@ function queryValue(key) {
 function applyDashboardQueryFilters() {
   const status = queryValue('status')
   const dateFieldQuery = queryValue('dateField')
-  if (status && !fixedStatus.value) statusFilter.value = String(status)
+  if (status && (!fixedStatus.value || isTodoRoute.value)) statusFilter.value = String(status)
   dateField.value = ['finish', 'submit'].includes(dateFieldQuery) ? dateFieldQuery : ''
   const date = queryValue('dateStart') || queryValue('startDate') || queryValue('dateEnd') || queryValue('endDate')
   if (date) dateFilter.value = String(date)
@@ -578,6 +604,7 @@ watch(() => [route.query.dateStart, route.query.dateEnd, route.query.startDate, 
 
 watch(() => route.path, () => {
   applyDashboardQueryFilters()
+  sanitizeStatusFilter()
   page.value = 1
   detailVisible.value = false
   loadData()
@@ -816,6 +843,7 @@ async function loadPublisherList() {
 
 onMounted(() => {
   applyDashboardQueryFilters()
+  sanitizeStatusFilter()
   loadPublisherList()
 })
 

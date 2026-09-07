@@ -880,15 +880,14 @@ test('联动原任务图片拖到桌面时保留原文件名', async ({ page }) 
     return { downloadUrl: dataTransfer.getData('DownloadURL') }
   })
 
-  expect(dragData.downloadUrl).toContain(':dress-main-1.png:')
-  expect(dragData.downloadUrl).toContain('/api/task/download/2001')
-  await expect.poll(() => page.evaluate(() => window.__paymentImageDragCalls)).toContainEqual({
-    type: 'prepareFileDrags',
-    params: {
-      items: [{ fileId: 2001, fileName: 'dress-main-1.png' }],
-      token: 'payment-test-token'
-    }
-  })
+  expect(dragData.downloadUrl).toBe('')
+  await expect.poll(() => page.evaluate(() => window.__paymentImageDragCalls
+    .filter(call => call.type === 'prepareFileDrags')
+    .flatMap(call => call.params.items)
+    .some(item => item.fileId === 2001 &&
+      item.fileName === 'dress-main-1.png' &&
+      item.downloadPath === '/api/task/download/2001')
+  )).toBe(true)
 })
 
 test('来源任务详情保留原浏览器下载方式', async ({ page }) => {

@@ -399,13 +399,13 @@ describe('用户权限配置', () => {
       .get('/api/config/list')
       .set('Authorization', `Bearer ${token}`);
     expect(configListRes.body.code).toBe(0);
-    const editableConfig = configListRes.body.data.find(c => c.editable === 1);
+    const editableConfig = configListRes.body.data.find(c => c.config_key === 'upload.max_file_count');
     expect(editableConfig).toBeDefined();
 
     const configUpdateRes = await request(app)
       .put('/api/config/update')
       .set('Authorization', `Bearer ${token}`)
-      .send({ id: editableConfig.id, configValue: editableConfig.config_value || 'test-value' });
+      .send({ id: editableConfig.id, configValue: editableConfig.config_value || '10' });
     expect(configUpdateRes.body.code).toBe(0);
   });
 

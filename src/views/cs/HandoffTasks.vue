@@ -26,6 +26,21 @@
           <el-option label="全部" value="" />
           <el-option v-for="option in statusOptions" :key="option.value" :label="option.label" :value="option.value" />
         </el-select>
+        <el-select
+          v-model="filters.designerId"
+          clearable
+          filterable
+          placeholder="基础美工筛选"
+          @change="handleFilterChange"
+        >
+          <el-option label="全部" value="" />
+          <el-option
+            v-for="designer in basicDesignerList"
+            :key="designer.id"
+            :label="designer.name || designer.real_name || designer.username"
+            :value="String(designer.id)"
+          />
+        </el-select>
         <el-button :icon="Refresh" :loading="loading" @click="refresh()">刷新</el-button>
       </div>
 
@@ -47,7 +62,7 @@
                 :src="getFileUrl(getStyleImages(row.files)[0])"
                 :preview-src-list="getStyleImages(row.files).map(getFileUrl)"
                 preview-teleported
-                fit="cover"
+                fit="contain"
               />
               <span>{{ getStyleImages(row.files).length }}张</span>
             </div>
@@ -141,10 +156,10 @@
 </template>
 
 <script setup>
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Refresh, Search, UserFilled, View } from '@element-plus/icons-vue'
-import { claimCsHandoffTaskApi, getCsHandoffTasksApi, getFileUrl, preloadFilesForDrag, setupFileDrag } from '@/api'
+import { claimCsHandoffTaskApi, getBasicDesignerListApi, getCsHandoffTasksApi, getFileUrl, preloadFilesForDrag, setupFileDrag } from '@/api'
 import { useUserStore } from '@/store'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
@@ -157,7 +172,8 @@ const userStore = useUserStore()
 const tasks = ref([])
 const total = ref(0)
 const claimingIds = ref(new Set())
-const filters = reactive({ keyword: '', status: '', page: 1, pageSize: 15 })
+const filters = reactive({ keyword: '', status: '', designerId: '', page: 1, pageSize: 15 })
+const basicDesignerList = ref([])
 const statusOptions = [
   { label: '已接单', value: 'accepted' },
   { label: '待审核', value: 'doing' },
@@ -182,7 +198,10 @@ const {
 })
 
 async function loadTasks() {
-  const response = await getCsHandoffTasksApi({ ...filters })
+  const response = await getCsHandoffTasksApi({
+    ...filters,
+    designerId: filters.designerId || undefined
+  })
   if (response.code !== 0) return
   tasks.value = response.data?.list || []
   total.value = Number(response.data?.total || 0)
@@ -202,6 +221,15 @@ function handlePageSizeChange() {
   refresh()
 }
 
+async function loadBasicDesigners() {
+  try {
+    const response = await getBasicDesignerListApi()
+    if (response.code === 0) basicDesignerList.value = response.data || []
+  } catch (error) {
+    console.error('[HandoffTasks] 加载基础美工列表失败:', error)
+  }
+}
+
 function statusLabel(status) {
   return status === 'rejected' ? '修改中' : STATUS_MAP[status] || status || '-'
 }
@@ -218,6 +246,8 @@ function getEffectImages(files) {
 function statusType(status) {
   return STATUS_TAG_TYPE[status] || 'info'
 }
+
+onMounted(loadBasicDesigners)
 
 async function claimTask(task) {
   if (!task?.id || !canClaim.value) return
@@ -268,7 +298,7 @@ async function claimTask(task) {
 
 .toolbar {
   display: grid;
-  grid-template-columns: minmax(260px, 1fr) 150px auto;
+  grid-template-columns: minmax(260px, 1fr) 150px 150px auto;
   gap: 10px;
   margin-bottom: 14px;
 }

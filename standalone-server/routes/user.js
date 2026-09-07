@@ -224,7 +224,7 @@ router.get('/task-designers', requireAnyPermission(['admin.tasks.design', 'admin
 /**
  * GET /api/user/basic-designers - 获取基础美工列表
  */
-router.get('/basic-designers', requireAnyPermission(['cs.publish.basic', 'cs.tasks.basic', 'basic.tasks.cs', 'admin.tasks.cs', 'score.review.basic', 'score.records.basic'], 'admin', 'sub_admin', 'cs_agent', 'basic_designer'), async (req, res, next) => {
+router.get('/basic-designers', requireAnyPermission(['cs.publish.basic', 'cs.tasks.basic', 'basic.tasks.cs', 'admin.tasks.cs', 'score.review.basic', 'score.records.basic', 'cs.handoff.tasks'], 'admin', 'sub_admin', 'cs_agent', 'basic_designer'), async (req, res, next) => {
   try {
     const rows = await userService.getBasicDesignerList();
     res.json({ code: 0, msg: '查询成功', data: rows });

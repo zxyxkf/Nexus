@@ -7,8 +7,8 @@ import { computed } from 'vue'
 import StatsPanel from '@/components/StatsPanel.vue'
 
 const cards = computed(() => [
-  { key: 'total_score', label: '累计分值', color: '#722ed1' },
-  { key: 'total', label: '总接单量', color: '#409eff' },
+  { key: 'current_month_effect_images', label: '当月效果图', color: '#722ed1' },
+  { key: 'current_month_original_images', label: '当月原图', color: '#409eff' },
   { key: 'finished_count', label: '已完成', color: '#67c23a' },
   { key: 'current_month_score', label: '当月分值', color: '#1890ff' },
   { key: 'today_score', label: '今日分值', color: '#fa8c16' },

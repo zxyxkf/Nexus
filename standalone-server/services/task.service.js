@@ -25,6 +25,7 @@ const {
   canViewAllPaymentData
 } = require('./payment-tracking/access');
 const csHandoffService = require('./cs-handoff.service');
+const taskStyleSnapshotService = require('./task-style-snapshot.service');
 
 // ==================== 辅助 ====================
 
@@ -84,88 +85,164 @@ function attachAllowedActions(task, user) {
 
 // ==================== 创建/编辑/删除 ====================
 
-async function createTask(body, user) {
-  const { title, description, priority, deadline, scoreItemId, score, refPath, wangwangId, styleNumber, specifiedColor, designerId, shopName, quantity, taskFilePath } = body;
-
+async function prepareTaskCreation(body, user) {
+  const title = String(body?.title || '').trim();
   if (!title) throw new AppError(400, '任务标题不能为空');
-
   const taskGroup = body.taskGroup || (user.role === 'cs_agent' ? 'cs' : 'design');
-  if (taskGroup === 'cs') {
-    await csHandoffService.assertCsActionAvailable(user, '发布任务');
-  }
+  if (taskGroup === 'cs') await csHandoffService.assertCsActionAvailable(user, '发布任务');
+  return { title, taskGroup };
+}
+
+async function insertCreatedTask(conn, body, user, taskGroup, title) {
+  const { description, priority, deadline, scoreItemId, score, refPath, wangwangId, styleNumber, specifiedColor, designerId, shopName, quantity, taskFilePath } = body;
   const targetRole = getTargetRole(taskGroup);
+  const taskNo = await taskDao.generateTaskNo(conn, taskGroup);
 
-  return withLock(`task-no:${taskGroup}`, async () => {
-  for (let retry = 0; retry < 3; retry++) {
-    try {
-      const result = await executeTransaction(async (conn) => {
-        const taskNo = await taskDao.generateTaskNo(conn, taskGroup);
+  let status = 'wait';
+  let designerIdVal = null;
+  let designerNameVal = null;
 
-        let status = 'wait';
-        let designerIdVal = null;
-        let designerNameVal = null;
-
-        if (designerId) {
-          const d = await taskDao.findDesigner(conn, designerId, targetRole);
-          if (d) {
-            status = 'accepted';
-            designerIdVal = d.id;
-            designerNameVal = d.real_name;
-          }
-        }
-
-        const insertId = await taskDao.insertTask(conn, {
-          taskNo, title, description: description || '', priority: priority || 2,
-          deadline: deadline || null, publisherId: user.id, status,
-          publisherName: user.realName || user.username,
-          scoreItemId: scoreItemId || null, score: score || 0,
-          refPath: taskGroup === 'cs' ? '' : (refPath || ''),
-          styleNumber: styleNumber || '', specifiedColor: specifiedColor || '',
-          wangwangId: taskGroup === 'cs' ? (wangwangId || '') : '',
-          designerId: designerIdVal, designerName: designerNameVal,
-          taskGroup, shopName: shopName || '', quantity: quantity || 1,
-          taskFilePath: taskFilePath || '',
-          acceptTime: designerIdVal ? new Date() : null
-        });
-
-        return { insertId, assignedId: designerIdVal };
-      });
-
-      const taskId = result.insertId;
-      const actualDesignerId = result.assignedId;
-
-      logger.info('任务创建', { userId: user.id, taskId, taskGroup, designerId: actualDesignerId || null });
-
-      socketEmit(`group:${taskGroup}`);
-      if (actualDesignerId) {
-        socketEmit(`user:${actualDesignerId}`);
-        // 发送桌面通知给被指定的人员
-        const actorName = taskGroup === 'cs' ? '客服' : '运营';
-        sendNotification({
-          userId: actualDesignerId,
-          type: 'task_assigned',
-          title: '新任务分配',
-          content: `${actorName} ${user.realName || user.username} 分配给您一个新任务「${title}」`,
-          taskId,
-          taskTitle: title,
-          taskGroup,
-          publisherId: user.id,
-          designerId: actualDesignerId
-        }).catch(() => {});
-      }
-
-      const msg = actualDesignerId
-        ? (taskGroup === 'cs' ? '任务已发布并直接分配给基础美工' : taskGroup === 'operator' ? '任务已发布并直接分配给运营助理' : '任务已发布并直接分配给美工')
-        : '任务发布成功';
-      return { msg, data: { id: taskId } };
-
-    } catch (err) {
-      if (err instanceof AppError) throw err;
-      const isDup = err.code === 'ER_DUP_ENTRY' || err.errno === 1062 || err.errno === 19 || (err.message && err.message.includes('UNIQUE constraint failed'));
-      if (!isDup || retry >= 2) throw err;
+  if (designerId) {
+    const designer = await taskDao.findDesigner(conn, designerId, targetRole);
+    if (designer) {
+      status = 'accepted';
+      designerIdVal = designer.id;
+      designerNameVal = designer.real_name;
     }
   }
-  throw new AppError(500, '任务编号生成冲突，请重试');
+
+  const insertId = await taskDao.insertTask(conn, {
+    taskNo, title, description: description || '', priority: priority || 2,
+    deadline: deadline || null, publisherId: user.id, status,
+    publisherName: user.realName || user.username,
+    scoreItemId: scoreItemId || null, score: score || 0,
+    refPath: taskGroup === 'cs' ? '' : (refPath || ''),
+    styleNumber: styleNumber || '', specifiedColor: specifiedColor || '',
+    wangwangId: taskGroup === 'cs' ? (wangwangId || '') : '',
+    designerId: designerIdVal, designerName: designerNameVal,
+    taskGroup, shopName: shopName || '', quantity: quantity || 1,
+    taskFilePath: taskFilePath || '',
+    acceptTime: designerIdVal ? new Date() : null
+  });
+
+  return { insertId, assignedId: designerIdVal, taskGroup, title };
+}
+
+function isDuplicateKeyError(error) {
+  return error?.code === 'ER_DUP_ENTRY'
+    || error?.errno === 1062
+    || error?.errno === 19
+    || error?.message?.includes('UNIQUE constraint failed');
+}
+
+function announceCreatedTask(result, user) {
+  const taskId = result.insertId;
+  const actualDesignerId = result.assignedId;
+  const { taskGroup, title } = result;
+
+  logger.info('任务创建', { userId: user.id, taskId, taskGroup, designerId: actualDesignerId || null });
+  socketEmit(`group:${taskGroup}`);
+  if (actualDesignerId) {
+    socketEmit(`user:${actualDesignerId}`);
+    const actorName = taskGroup === 'cs' ? '客服' : '运营';
+    sendNotification({
+      userId: actualDesignerId,
+      type: 'task_assigned',
+      title: '新任务分配',
+      content: `${actorName} ${user.realName || user.username} 分配给您一个新任务「${title}」`,
+      taskId,
+      taskTitle: title,
+      taskGroup,
+      publisherId: user.id,
+      designerId: actualDesignerId
+    }).catch(() => {});
+  }
+
+  const msg = actualDesignerId
+    ? (taskGroup === 'cs' ? '任务已发布并直接分配给基础美工' : taskGroup === 'operator' ? '任务已发布并直接分配给运营助理' : '任务已发布并直接分配给美工')
+    : '任务发布成功';
+  return { msg, data: { id: taskId } };
+}
+
+async function createTask(body, user) {
+  const { title, taskGroup } = await prepareTaskCreation(body, user);
+
+  return withLock(`task-no:${taskGroup}`, async () => {
+    for (let retry = 0; retry < 3; retry++) {
+      try {
+        const result = await executeTransaction(conn => insertCreatedTask(conn, body, user, taskGroup, title));
+        return announceCreatedTask(result, user);
+      } catch (err) {
+        if (err instanceof AppError || !isDuplicateKeyError(err) || retry >= 2) throw err;
+      }
+    }
+    throw new AppError(500, '任务编号生成冲突，请重试');
+  });
+}
+
+async function persistInitialReferenceFiles(conn, taskId, files, taskGroup, userId, storedPaths) {
+  const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  for (const file of files || []) {
+    file.originalname = fixFilenameEncoding(file.originalname);
+    const extension = path.extname(file.originalname).toLowerCase();
+    const fileType = IMAGE_EXTS.includes(extension) ? 'image' : 'attachment';
+    const filePath = fileType === 'image'
+      ? saveImage(taskGroup, dateStr, path.basename(file.path), fs.readFileSync(file.path))
+      : saveAttachment(taskGroup, dateStr, path.basename(file.path), file.path);
+    storedPaths.push(filePath);
+    await taskDao.insertFileRecord(conn, {
+      taskId,
+      fileName: file.originalname,
+      filePath,
+      fileSize: file.size,
+      fileType,
+      mimeType: file.mimetype || '',
+      uploaderId: userId,
+      fileCategory: 'reference'
+    });
+  }
+}
+
+async function publishTask(body, referenceFiles, styleOptions, user) {
+  const { title, taskGroup } = await prepareTaskCreation(body, user);
+  const manifest = Array.isArray(styleOptions?.manifest) ? styleOptions.manifest : [];
+  const materialStyleId = styleOptions?.materialStyleId;
+  const editedFiles = styleOptions?.files || [];
+  if (manifest.length && !materialStyleId) throw new AppError(400, '缺少款式素材信息');
+
+  return withLock(`task-no:${taskGroup}`, async () => {
+    for (let retry = 0; retry < 3; retry++) {
+      const storedPaths = [];
+      try {
+        const result = await executeTransaction(async conn => {
+          const created = await insertCreatedTask(conn, body, user, taskGroup, title);
+          await persistInitialReferenceFiles(conn, created.insertId, referenceFiles, taskGroup, user.id, storedPaths);
+          if (manifest.length) {
+            await taskStyleSnapshotService.persistTaskStyleSnapshots({
+              conn,
+              task: { id: created.insertId, task_group: taskGroup, publisher_id: user.id },
+              taskId: created.insertId,
+              materialStyleId,
+              manifest,
+              files: editedFiles,
+              user,
+              writtenPaths: storedPaths
+            });
+          }
+          return created;
+        });
+        return announceCreatedTask(result, user);
+      } catch (err) {
+        for (const filePath of storedPaths) {
+          try {
+            const absolutePath = resolvePath(filePath);
+            if (absolutePath && fs.existsSync(absolutePath)) fs.unlinkSync(absolutePath);
+          } catch (_) {}
+        }
+        if (err instanceof AppError || !isDuplicateKeyError(err) || retry >= 2) throw err;
+      }
+    }
+    throw new AppError(500, '任务编号生成冲突，请重试');
   });
 }
 
@@ -216,13 +293,7 @@ async function snapshotMaterialImages(taskId, materialStyleId, materialImageIds,
   return { copied: images.length };
 }
 
-async function getTaskDetail(taskId, user) {
-  if (!taskId) throw new AppError(400, '任务ID不能为空');
-
-  const task = await taskDao.getTaskDetail(taskId);
-  if (!task) throw new AppError(400, '任务不存在');
-
-  // 权限校验
+async function assertTaskViewAccess(task, user) {
   const canViewAllTaskDetail = hasPermission(user, 'task.view.all')
     || canViewByAllTasksPermission(task, user)
     || canOpenPaymentTask(task, user)
@@ -254,6 +325,30 @@ async function getTaskDetail(taskId, user) {
       }
     }
   }
+}
+
+async function getTaskFileForUser(fileId, user) {
+  const [rows] = await execute(
+    `SELECT f.*, t.publisher_id, t.designer_id, t.task_group, t.status,
+            t.handoff_status, COALESCE(u.store, '') AS publisher_store
+     FROM task_file f
+     INNER JOIN task_info t ON t.id = f.task_id
+     LEFT JOIN sys_user u ON u.id = t.publisher_id
+     WHERE f.id = ?`,
+    [fileId]
+  );
+  const file = rows[0];
+  if (!file) throw new AppError(404, '文件不存在');
+  await assertTaskViewAccess(file, user);
+  return file;
+}
+
+async function getTaskDetail(taskId, user) {
+  if (!taskId) throw new AppError(400, '任务ID不能为空');
+
+  const task = await taskDao.getTaskDetail(taskId);
+  if (!task) throw new AppError(400, '任务不存在');
+  await assertTaskViewAccess(task, user);
 
   const files = await taskDao.getTaskFiles(taskId);
   const transferRecords = task.task_group === 'cs'
@@ -570,6 +665,7 @@ function visibleSidebarBadges(user, ownStats = {}, reviewStats = {}) {
   if (hasPermission(user, 'operator.review.design')) badges['/operator/review'] = Number(reviewStats.design_review_count || 0);
   if (hasPermission(user, 'operator.review.assistant')) badges['/operator/op-review'] = Number(reviewStats.operator_review_count || 0);
   if (hasPermission(user, 'cs.review.basic')) badges['/cs/review'] = Number(reviewStats.cs_review_count || 0);
+  if (user?.role === 'cs_agent' && hasPermission(user, 'cs.tasks.basic')) badges['/cs/tasks'] = Number(reviewStats.cs_modification_count || 0);
   if (hasPermission(user, 'cs.handoff.tasks')) badges['/cs/handoff-tasks'] = Number(reviewStats.cs_handoff_count || 0);
   if (hasPermission(user, 'score.review.basic')) badges['/basic/score-review'] = Number(reviewStats.score_review_count || 0);
 
@@ -603,6 +699,8 @@ function filterAdminDetailStatsByPermission(data, user) {
     operatorAssistantStats: allowed.has('operator') ? data.operatorAssistantStats : [],
     designerDailyStats: allowed.has('design') ? data.designerDailyStats : [],
     basicDesignerDailyStats: allowed.has('cs') ? data.basicDesignerDailyStats : [],
+    basicDesignerImageMonthlyStats: allowed.has('cs') ? data.basicDesignerImageMonthlyStats : { current: [], last: [] },
+    basicDesignerImageDailyStats: allowed.has('cs') ? data.basicDesignerImageDailyStats : [],
     operatorAssistantDailyStats: allowed.has('operator') ? data.operatorAssistantDailyStats : [],
     operatorStats: allowed.has('design') ? data.operatorStats : [],
     operatorPublishStats: allowed.has('operator') ? data.operatorPublishStats : [],
@@ -893,18 +991,18 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
 }
 
 async function uploadOriginalFiles(taskId, files, user) {
-  if (!taskId) throw new AppError(400, '浠诲姟ID涓嶈兘涓虹┖');
+  if (!taskId) throw new AppError(400, '任务ID不能为空');
   files = files || [];
-  if (!files.length) throw new AppError(400, '璇烽€夋嫨鍘熷浘鏂囦欢');
+  if (!files.length) throw new AppError(400, '请选择原图文件');
 
   const storedPaths = [];
   try {
     await executeTransaction(async (conn) => {
       const task = await taskDao.getTaskForUpdate(conn, taskId);
-      if (!task || task.task_group !== 'cs') throw new AppError(400, 'CS task original upload is not supported');
-      if (task.status !== 'pending_original') throw new AppError(400, 'Task is not waiting for original files');
+      if (!task || task.task_group !== 'cs') throw new AppError(400, '仅客服基础美工任务支持上传原图');
+      if (task.status !== 'pending_original') throw new AppError(400, '当前任务不在待上传原图状态');
       if (user.role !== 'basic_designer' || Number(task.designer_id) !== Number(user.id)) {
-        throw new AppError(403, 'You cannot upload original files for this task');
+        throw new AppError(403, '无权为此任务上传原图');
       }
 
       const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
@@ -948,28 +1046,28 @@ async function uploadOriginalFiles(taskId, files, user) {
     socketEmit(`user:${brief.publisher_id}`);
     socketEmit('group:cs');
   }
-  return { msg: `Original files uploaded (${files.length})` };
+  return { msg: `原图上传成功（${files.length}个文件）` };
 }
 
 async function completeOriginalUpload(taskId, user) {
-  if (!taskId) throw new AppError(400, '浠诲姟ID涓嶈兘涓虹┖');
+  if (!taskId) throw new AppError(400, '任务ID不能为空');
 
   return withLock(`original-upload:${taskId}`, async () => {
     let taskBrief = null;
     await executeTransaction(async (conn) => {
       const task = await taskDao.getTaskForUpdate(conn, taskId);
-      if (!task || task.task_group !== 'cs') throw new AppError(400, 'CS task original completion is not supported');
+      if (!task || task.task_group !== 'cs') throw new AppError(400, '仅客服基础美工任务支持完成原图上传');
       if (user.role !== 'basic_designer' || Number(task.designer_id) !== Number(user.id)) {
-        throw new AppError(403, 'You cannot complete original upload for this task');
+        throw new AppError(403, '无权完成此任务的原图上传');
       }
       if (task.status === 'finished') return;
-      if (task.status !== 'pending_original') throw new AppError(400, '褰撳墠浠诲姟涓嶈兘瀹屾垚鍘熷浘涓婁紶');
+      if (task.status !== 'pending_original') throw new AppError(400, '当前任务不能完成原图上传');
 
       const [files] = await conn.execute(
         `SELECT id FROM task_file WHERE task_id = ? AND file_category = 'original' LIMIT 1`,
         [taskId]
       );
-      if (!files.length) throw new AppError(400, 'Upload at least one original file first');
+      if (!files.length) throw new AppError(400, '请先上传至少一个原图文件');
 
       const finalScore = Number(task.applied_score) > 0 ? Number(task.applied_score) : 1;
       await taskDao.updateTaskStatus(conn, taskId, 'finished', {
@@ -989,7 +1087,7 @@ async function completeOriginalUpload(taskId, user) {
       socketEmit(`user:${taskBrief.publisher_id}`);
       socketEmit('group:cs');
     }
-    return { msg: 'Original upload completed; task is finished' };
+    return { msg: '原图上传已完成，任务已结束' };
   });
 }
 
@@ -1583,10 +1681,21 @@ async function getMyStats(user) {
 
   // designer / basic_designer / operator_assistant
   const base = await taskDao.getDesignerSummary(userId);
-  const detailRows = await taskDao.getDesignerDetailRows(userId);
-  const scoreItems = role === 'designer' ? await taskDao.getScoreItems() : [];
-
   const now = new Date();
+  const currentMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const [detailRows, scoreItems, personalFileRows] = await Promise.all([
+    taskDao.getDesignerDetailRows(userId),
+    role === 'designer' ? taskDao.getScoreItems() : Promise.resolve([]),
+    role === 'basic_designer'
+      ? taskDao.getBasicDesignerFileStats({
+        start: localDateTimeString(currentMonthStart),
+        end: localDateTimeString(nextMonthStart),
+        userId
+      })
+      : Promise.resolve([])
+  ]);
+
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
   const yesterday = new Date(today.getTime() - 86400000);
   const thisMonth = now.getMonth() + 1;
@@ -1625,6 +1734,8 @@ async function getMyStats(user) {
 
   const finished = Number(base.finished_count) || 0;
   const total = Number(base.total) || 1;
+  const currentMonthEffectImages = personalFileRows.filter(row => row.file_category === 'work').length;
+  const currentMonthOriginalImages = personalFileRows.filter(row => row.file_category === 'original').length;
 
   return attachBadges({
     ...base,
@@ -1643,6 +1754,10 @@ async function getMyStats(user) {
         scoreItems.filter(item => item.source === 'design'),
         now
       )
+    } : {}),
+    ...(role === 'basic_designer' ? {
+      current_month_effect_images: currentMonthEffectImages,
+      current_month_original_images: currentMonthOriginalImages
     } : {})
   });
 }
@@ -1761,6 +1876,62 @@ function parseDateTime(value) {
   if (value instanceof Date) return isNaN(value.getTime()) ? null : value;
   const date = new Date(String(value).replace(' ', 'T'));
   return date && !isNaN(date.getTime()) ? date : null;
+}
+
+function localDateTimeString(date) {
+  const value = date instanceof Date ? date : new Date(date);
+  const y = value.getFullYear();
+  const m = String(value.getMonth() + 1).padStart(2, '0');
+  const d = String(value.getDate()).padStart(2, '0');
+  const h = String(value.getHours()).padStart(2, '0');
+  const min = String(value.getMinutes()).padStart(2, '0');
+  const s = String(value.getSeconds()).padStart(2, '0');
+  return `${y}-${m}-${d} ${h}:${min}:${s}`;
+}
+
+function aggregateBasicDesignerImageStats(rows, users, start, end) {
+  const result = new Map((users || []).map(user => [Number(user.id), {
+    id: user.id,
+    name: user.name || user.username,
+    effect_count: 0,
+    original_count: 0
+  }]));
+
+  for (const row of rows || []) {
+    const uploadedAt = parseDateTime(row.create_time);
+    const userId = Number(row.uploader_id);
+    if (!uploadedAt || uploadedAt < start || uploadedAt >= end || !result.has(userId)) continue;
+    const target = result.get(userId);
+    if (row.file_category === 'work') target.effect_count += 1;
+    if (row.file_category === 'original') target.original_count += 1;
+  }
+  return [...result.values()];
+}
+
+function buildBasicDesignerImageDailyStats(rows, users, refDate = new Date()) {
+  const year = refDate.getFullYear();
+  const month = refDate.getMonth();
+  const dayCount = new Date(year, month + 1, 0).getDate();
+  const result = new Map((users || []).map(user => [Number(user.id), {
+    id: user.id,
+    user_id: user.id,
+    name: user.name || user.username,
+    daily_stats: Array.from({ length: dayCount }, (_, index) => ({
+      day: index + 1,
+      effect_count: 0,
+      original_count: 0
+    }))
+  }]));
+
+  for (const row of rows || []) {
+    const uploadedAt = parseDateTime(row.create_time);
+    const userId = Number(row.uploader_id);
+    if (!uploadedAt || uploadedAt.getFullYear() !== year || uploadedAt.getMonth() !== month || !result.has(userId)) continue;
+    const target = result.get(userId).daily_stats[uploadedAt.getDate() - 1];
+    if (row.file_category === 'work') target.effect_count += 1;
+    if (row.file_category === 'original') target.original_count += 1;
+  }
+  return [...result.values()];
 }
 
 function buildPublisherMonthlyStats(tasks, refYear) {
@@ -1931,13 +2102,20 @@ async function getDashboardStats(user = null) {
 async function getAdminDetailStats(user = null) {
   const now = new Date();
   const thisYear = now.getFullYear();
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 
-  const [designers, basicDesigners, operatorAssistants, scoreItems, allTasks] = await Promise.all([
+  const [designers, basicDesigners, operatorAssistants, scoreItems, allTasks, basicDesignerFileRows] = await Promise.all([
     taskDao.getUsersByRoleWithUsername('designer'),
     taskDao.getUsersByRoleWithUsername('basic_designer'),
     taskDao.getUsersByRoleWithUsername('operator_assistant'),
     taskDao.getScoreItems(),
-    taskDao.getAllTasksForStats()
+    taskDao.getAllTasksForStats(),
+    taskDao.getBasicDesignerFileStats({
+      start: localDateTimeString(lastMonthStart),
+      end: localDateTimeString(nextMonthStart)
+    })
   ]);
 
   // 兼容历史数据：task_group 为 NULL 的任务归属 design 分组
@@ -1950,6 +2128,11 @@ async function getAdminDetailStats(user = null) {
     operatorAssistantStats: buildDesignerStats(operatorAssistants, allTasks, scoreItems, now, 'operator'),
     designerDailyStats: buildDailyScoreStats(designers, allTasks, now, 'design'),
     basicDesignerDailyStats: buildDailyScoreStats(basicDesigners, allTasks, now, 'cs'),
+    basicDesignerImageMonthlyStats: {
+      current: aggregateBasicDesignerImageStats(basicDesignerFileRows, basicDesigners, thisMonthStart, nextMonthStart),
+      last: aggregateBasicDesignerImageStats(basicDesignerFileRows, basicDesigners, lastMonthStart, thisMonthStart)
+    },
+    basicDesignerImageDailyStats: buildBasicDesignerImageDailyStats(basicDesignerFileRows, basicDesigners, now),
     operatorAssistantDailyStats: buildDailyScoreStats(operatorAssistants, allTasks, now, 'operator'),
     operatorStats: buildPublisherMonthlyStats(designTasks, thisYear),
     operatorPublishStats: buildPublisherMonthlyStats(operatorTasks, thisYear),
@@ -1960,7 +2143,7 @@ async function getAdminDetailStats(user = null) {
 }
 
 module.exports = {
-  createTask, snapshotMaterialImages, getTaskDetail, deleteTask, updateTask, reopenFinishedCsTask, updateCsTaskNo, batchDelete, batchReassign,
+  createTask, publishTask, snapshotMaterialImages, assertTaskViewAccess, getTaskFileForUser, getTaskDetail, deleteTask, updateTask, reopenFinishedCsTask, updateCsTaskNo, batchDelete, batchReassign,
   getMyPublished, getMyAccepted, getTaskHall, getAllTasks, getAllTasksForUser, searchTasks,
   acceptTask, uploadFiles, uploadOriginalFiles, completeOriginalUpload, completeCsModification, transferTask, finishTask, reviewTask, requestCsModification, batchReview,
   withdrawTask, undoSubmit,

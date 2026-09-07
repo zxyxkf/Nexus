@@ -1,5 +1,9 @@
 const { execute } = require('../config/database');
 
+function run(executor, sql, params = []) {
+  return executor?.execute ? executor.execute(sql, params) : execute(sql, params);
+}
+
 function placeholders(values) {
   return values.map(() => '?').join(',');
 }
@@ -26,8 +30,8 @@ async function listProducts(keyword = '') {
   return rows;
 }
 
-async function getProduct(id) {
-  const [rows] = await execute('SELECT * FROM material_product WHERE id = ?', [id]);
+async function getProduct(id, executor = null) {
+  const [rows] = await run(executor, 'SELECT * FROM material_product WHERE id = ?', [id]);
   return rows[0] || null;
 }
 
@@ -44,18 +48,18 @@ async function renameProduct(id, name) {
   return getProduct(id);
 }
 
-async function deleteProduct(id) {
-  return execute('DELETE FROM material_product WHERE id = ?', [id]);
+async function deleteProduct(id, executor = null) {
+  return run(executor, 'DELETE FROM material_product WHERE id = ?', [id]);
 }
 
-async function listStyles(productId, keyword = '') {
+async function listStyles(productId, keyword = '', executor = null) {
   const params = [productId];
   let where = 'WHERE s.product_id = ?';
   if (keyword) {
     where += ' AND s.name LIKE ?';
     params.push(`%${keyword}%`);
   }
-  const [rows] = await execute(
+  const [rows] = await run(executor,
     `SELECT s.*, p.name AS product_name, COUNT(i.id) AS image_count,
             (SELECT mi.id FROM material_image mi
              WHERE mi.style_id = s.id ORDER BY mi.sort_order, mi.id LIMIT 1) AS preview_path
@@ -70,8 +74,8 @@ async function listStyles(productId, keyword = '') {
   return rows;
 }
 
-async function getStyle(id) {
-  const [rows] = await execute(
+async function getStyle(id, executor = null) {
+  const [rows] = await run(executor,
     `SELECT s.*, p.name AS product_name FROM material_style s
      INNER JOIN material_product p ON p.id = s.product_id WHERE s.id = ?`, [id]
   );
@@ -91,50 +95,50 @@ async function renameStyle(id, name) {
   return getStyle(id);
 }
 
-async function deleteStyle(id) {
-  return execute('DELETE FROM material_style WHERE id = ?', [id]);
+async function deleteStyle(id, executor = null) {
+  return run(executor, 'DELETE FROM material_style WHERE id = ?', [id]);
 }
 
-async function listImages(styleId, color = '') {
+async function listImages(styleId, color = '', executor = null) {
   const params = [styleId];
   let where = 'WHERE style_id = ?';
   if (color) {
     where += ' AND color = ?';
     params.push(color);
   }
-  const [rows] = await execute(
+  const [rows] = await run(executor,
     `SELECT * FROM material_image ${where} ORDER BY sort_order, id`, params
   );
   return rows;
 }
 
-async function getImage(id) {
-  const [rows] = await execute('SELECT * FROM material_image WHERE id = ?', [id]);
+async function getImage(id, executor = null) {
+  const [rows] = await run(executor, 'SELECT * FROM material_image WHERE id = ?', [id]);
   return rows[0] || null;
 }
 
-async function getImagesByIds(ids) {
+async function getImagesByIds(ids, executor = null) {
   if (!ids.length) return [];
-  const [rows] = await execute(
+  const [rows] = await run(executor,
     `SELECT * FROM material_image WHERE id IN (${placeholders(ids)}) ORDER BY sort_order, id`, ids
   );
   return rows;
 }
 
-async function getNextSortOrder(styleId) {
-  const [rows] = await execute('SELECT COALESCE(MAX(sort_order), -1) AS max_order FROM material_image WHERE style_id = ?', [styleId]);
+async function getNextSortOrder(styleId, executor = null) {
+  const [rows] = await run(executor, 'SELECT COALESCE(MAX(sort_order), -1) AS max_order FROM material_image WHERE style_id = ?', [styleId]);
   return Number(rows[0]?.max_order ?? -1) + 1;
 }
 
-async function createImage(data) {
-  const [result] = await execute(
+async function createImage(data, executor = null) {
+  const [result] = await run(executor,
     `INSERT INTO material_image
       (style_id, original_name, display_name, color, color_source, sort_order, file_path, file_size, mime_type, created_by)
      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
     [data.styleId, data.originalName, data.displayName, data.color || '', data.colorSource || 'auto',
       data.sortOrder, data.filePath, data.fileSize || 0, data.mimeType || '', data.createdBy]
   );
-  return getImage(result.insertId);
+  return getImage(result.insertId, executor);
 }
 
 async function renameImage(id, displayName, color, colorSource) {
@@ -153,12 +157,12 @@ async function updateImageColor(id, color) {
   return getImage(id);
 }
 
-async function deleteImage(id) {
-  return execute('DELETE FROM material_image WHERE id = ?', [id]);
+async function deleteImage(id, executor = null) {
+  return run(executor, 'DELETE FROM material_image WHERE id = ?', [id]);
 }
 
-async function setImageOrder(id, sortOrder) {
-  return execute('UPDATE material_image SET sort_order = ?, update_time = CURRENT_TIMESTAMP WHERE id = ?', [sortOrder, id]);
+async function setImageOrder(id, sortOrder, executor = null) {
+  return run(executor, 'UPDATE material_image SET sort_order = ?, update_time = CURRENT_TIMESTAMP WHERE id = ?', [sortOrder, id]);
 }
 
 async function search(keyword) {

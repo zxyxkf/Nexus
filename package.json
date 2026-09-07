@@ -1,6 +1,6 @@
 {
   "name": "nexus",
-  "version": "15.3.0",
+  "version": "15.3.3",
   "description": "Nexus",
   "main": "electron/main.js",
   "scripts": {
@@ -81,6 +81,10 @@
       {
         "from": "build/app-update.yml",
         "to": "app-update.yml"
+      },
+      {
+        "from": "electron/drag-icon.ico",
+        "to": "drag-icon.ico"
       }
     ],
     "win": {

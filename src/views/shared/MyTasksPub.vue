@@ -63,10 +63,10 @@
               <el-option label="全部" value="" />
               <el-option label="待接单" value="wait" />
               <el-option label="已接单" value="accepted" />
-              <el-option label="作图中" value="doing" />
-              <el-option label="待上传原图" value="pending_original" />
+              <el-option :label="isCsAgent ? '审核中' : '作图中'" value="doing" />
+              <el-option v-if="isCsAgent" label="待上传原图" value="pending_original" />
               <el-option label="已完成" value="finished" />
-              <el-option label="已驳回" value="rejected" />
+              <el-option :label="isCsAgent ? '修改中' : '已驳回'" value="rejected" />
               <el-option label="草稿" value="draft" />
             </el-select>
             <el-date-picker
@@ -126,7 +126,7 @@
           <template #default="{ row }">
             <template v-if="isCsAgent">
               <div v-if="getStyleImages(row.files).length" class="style-thumb-cell" draggable="true" @dragstart="setupFileDrag($event, getStyleImages(row.files)[0])">
-                <el-image :src="getFileUrl(getStyleImages(row.files)[0])" :preview-src-list="getStyleImages(row.files).map(getFileUrl)" preview-teleported fit="cover" />
+                <el-image :src="getFileUrl(getStyleImages(row.files)[0])" :preview-src-list="getStyleImages(row.files).map(getFileUrl)" preview-teleported fit="contain" />
                 <span>{{ getStyleImages(row.files).length }}张</span>
               </div><span v-else>-</span>
             </template>
@@ -419,7 +419,11 @@ const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
   onError: error => console.error('[MyTasks] 加载任务详情失败:', error)
 })
 
-function statusLabel(s) { return STATUS_MAP[s] || s }
+function statusLabel(s) {
+  if (isCsAgent.value && s === 'doing') return '审核中'
+  if (isCsAgent.value && s === 'rejected') return '修改中'
+  return STATUS_MAP[s] || s
+}
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
 
 const progressSteps = { wait: '20%', accepted: '40%', doing: '60%', pending_original: '80%', finished: '100%', rejected: '60%', draft: '0%' }

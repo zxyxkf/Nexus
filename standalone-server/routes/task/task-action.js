@@ -56,6 +56,27 @@ function cleanupTempFiles(files) {
   }
 }
 
+function restoreOriginalFileNames(req) {
+  const rawNames = req.body?.originalFileNames;
+  if (!rawNames) return;
+
+  let names;
+  try {
+    names = JSON.parse(rawNames);
+  } catch (_) {
+    return;
+  }
+  if (!Array.isArray(names)) return;
+
+  for (const [index, file] of (req.files || []).entries()) {
+    const originalName = names[index];
+    if (typeof originalName !== 'string' || !originalName) continue;
+    // Keep the same path-safety constraints as multer's file filter.
+    if (originalName.includes('..') || /[\\/\u0000\r\n]/.test(originalName)) continue;
+    file.originalname = originalName;
+  }
+}
+
 // ==================== 接单 ====================
 
 router.post('/accept', requireAnyPermission(['designer.hall.design', 'basic.hall.cs', 'assistant.hall.operator'], 'designer', 'basic_designer', 'operator_assistant'), async (req, res, next) => {
@@ -74,6 +95,7 @@ router.post('/upload-original', requireAnyPermission(['task.upload.work'], 'basi
       return res.json({ code: 400, msg: err.message });
     }
     try {
+      restoreOriginalFileNames(req);
       const result = await taskService.uploadOriginalFiles(Number(req.body.taskId), req.files || [], req.user);
       res.json({ code: 0, ...result });
     } catch (error) {
@@ -114,9 +136,13 @@ router.post('/upload-files', requireAnyPermission(['task.upload.work', 'task.cre
 
   multer({ storage, fileFilter, limits: { fileSize: getMaxFileSizeMB() * 1024 * 1024, files: getMaxFileCount() } })
     .array('files', getMaxFileCount())(req, res, async (err) => {
-      if (err) return res.json({ code: 400, msg: err.message });
+      if (err) {
+        cleanupTempFiles(req.files);
+        return res.json({ code: 400, msg: err.message });
+      }
 
       try {
+        restoreOriginalFileNames(req);
         const { taskId } = req.body;
         const fileCategory = req.body.fileCategory || 'work';
         const actualQuantity = parseInt(req.body.actualQuantity) || 0;
@@ -175,6 +201,7 @@ router.post('/request-modification', requireAnyPermission(['cs.review.basic', 't
         return res.json({ code: 400, msg: err.message });
       }
       try {
+        restoreOriginalFileNames(req);
         const result = await taskService.requestCsModification(
           parseInt(req.body.taskId),
           req.body.note,
@@ -219,6 +246,7 @@ router.post('/complete-modification', requireAnyPermission(['task.upload.work'],
         return res.json({ code: 400, msg: err.message });
       }
       try {
+        restoreOriginalFileNames(req);
         const result = await taskService.completeCsModification(
           parseInt(req.body.taskId),
           parseInt(req.body.rejectRecordId),

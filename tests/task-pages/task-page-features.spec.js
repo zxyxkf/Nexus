@@ -48,13 +48,13 @@ const users = {
 }
 
 const files = [
-  { id: 101, file_name: 'reference.png', file_type: 'image', file_category: 'reference', file_size: 1200 },
-  { id: 102, file_name: 'brief.pdf', file_type: 'file', file_category: 'reference', file_size: 2048 },
-  { id: 103, file_name: 'work.png', file_type: 'image', file_category: 'work', file_size: 4096 },
-  { id: 104, file_name: 'work.zip', file_type: 'file', file_category: 'work', file_size: 8192 },
-  { id: 105, file_name: 'rejected-version.zip', file_type: 'file', file_category: 'reject', file_size: 16384 },
-  { id: 106, file_name: 'style-a.png', file_type: 'image', file_category: 'style', file_size: 2048 },
-  { id: 107, file_name: 'style-b.png', file_type: 'image', file_category: 'style', file_size: 3072 }
+  { id: 101, file_name: 'reference.png', file_type: 'image', file_category: 'reference', file_size: 1200, task_no: 'T-DOING' },
+  { id: 102, file_name: 'brief.pdf', file_type: 'file', file_category: 'reference', file_size: 2048, task_no: 'T-DOING' },
+  { id: 103, file_name: 'work.png', file_type: 'image', file_category: 'work', file_size: 4096, task_no: 'T-DOING' },
+  { id: 104, file_name: 'work.zip', file_type: 'file', file_category: 'work', file_size: 8192, task_no: 'T-DOING' },
+  { id: 105, file_name: 'rejected-version.zip', file_type: 'file', file_category: 'reject', file_size: 16384, task_no: 'T-DOING' },
+  { id: 106, file_name: 'style-a.png', file_type: 'image', file_category: 'style', file_size: 2048, task_no: 'T-DOING' },
+  { id: 107, file_name: 'style-b.png', file_type: 'image', file_category: 'style', file_size: 3072, task_no: 'T-DOING' }
 ]
 
 const taskRows = [
@@ -493,6 +493,96 @@ test.beforeEach(async ({ page }) => {
   await mockApis(page)
 })
 
+test('basic todo date filter clears and reloads the unfiltered list', async ({ page }) => {
+  const dateCalls = []
+  const filteredTask = {
+    ...taskRows[1],
+    id: 902,
+    task_no: 'T-DATE-FILTERED',
+    task_group: 'cs',
+    status: 'accepted',
+    designer_id: users.basic.id
+  }
+  const unfilteredTasks = [
+    filteredTask,
+    {
+      ...filteredTask,
+      id: 903,
+      task_no: 'T-DATE-RESTORED'
+    }
+  ]
+
+  await page.route('**/api/task/my-accepted**', route => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('taskGroup') !== 'cs') return route.fallback()
+    const date = url.searchParams.get('dateStart') || ''
+    dateCalls.push(date)
+    return json(route, listPayload(date ? [filteredTask] : unfilteredTasks))
+  })
+
+  await loginAs(page, { ...users.basic, permissions: ['basic.tasks.cs'] })
+  await page.goto('/#/basic/tasks/todo')
+  await waitForTaskTable(page)
+
+  const statusSelect = page.locator('.header-right .el-select').last()
+  await statusSelect.click()
+  const statusDropdown = page.locator('.el-select-dropdown:visible')
+  await expect(statusDropdown.getByRole('option', { name: '已接单', exact: true })).toBeVisible()
+  await expect(statusDropdown.getByRole('option', { name: '待上传原图', exact: true })).toBeVisible()
+  await expect(statusDropdown.getByRole('option', { name: '修改中', exact: true })).toBeVisible()
+  await expect(statusDropdown.getByRole('option', { name: '审核中', exact: true })).toHaveCount(0)
+  await expect(statusDropdown.getByRole('option', { name: '已完成', exact: true })).toHaveCount(0)
+  await page.keyboard.press('Escape')
+
+  const dateInput = page.locator('.header-right .el-date-editor input').first()
+  await dateInput.fill('2026-06-02')
+  await dateInput.press('Enter')
+  await expect(page.locator('.el-table__body-wrapper')).toContainText('T-DATE-FILTERED')
+  await expect(page.locator('.el-table__body-wrapper')).not.toContainText('T-DATE-RESTORED')
+
+  const callsBeforeClear = dateCalls.length
+  await page.locator('.header-right .el-date-editor .el-input__suffix-inner .el-icon').last().click()
+  await page.waitForTimeout(250)
+  expect(dateCalls.length).toBeGreaterThan(callsBeforeClear)
+  expect(dateCalls.at(-1)).toBe('')
+  await expect(page.locator('.el-table__body-wrapper')).toContainText('T-DATE-RESTORED')
+})
+
+test('basic task routes keep status filters isolated and discard unsupported values', async ({ page }) => {
+  const requestedStatuses = []
+  await page.route('**/api/task/my-accepted**', route => {
+    const url = new URL(route.request().url())
+    if (url.searchParams.get('taskGroup') !== 'cs') return route.fallback()
+    requestedStatuses.push(url.searchParams.get('status') || '')
+    return json(route, listPayload(taskRows.filter(task => task.task_group === 'cs')))
+  })
+
+  await loginAs(page, { ...users.basic, permissions: ['basic.tasks.cs'] })
+  await page.goto('/#/basic/tasks')
+  await waitForTaskTable(page)
+
+  await page.locator('.header-right .el-select').last().click()
+  await page.getByRole('option', { name: '已完成', exact: true }).click()
+  await expect.poll(() => requestedStatuses.at(-1)).toBe('finished')
+
+  await page.goto('/#/basic/tasks/todo')
+  await waitForTaskTable(page)
+  await expect.poll(() => requestedStatuses.at(-1)).toBe('accepted,rejected,pending_original')
+  const todoStatus = page.locator('.header-right .el-select').last()
+  await todoStatus.click()
+  await page.getByRole('option', { name: '修改中', exact: true }).click()
+  await expect.poll(() => requestedStatuses.at(-1)).toBe('rejected')
+
+  await page.goto('/#/basic/tasks/pending')
+  await waitForTaskTable(page)
+  await expect.poll(() => requestedStatuses.at(-1)).toBe('doing')
+
+  await page.goto('/#/basic/tasks/todo')
+  await waitForTaskTable(page)
+  await expect(page.locator('.header-right .el-select').last()).toContainText('修改中')
+  await expect.poll(() => requestedStatuses.at(-1)).toBe('rejected')
+})
+
 test('customer service can toggle shift status and open the shared handoff page', async ({ page }) => {
   await loginAs(page, users.cs)
   await page.goto('/#/cs/publish')
@@ -576,6 +666,10 @@ test('style image editor supports canvas panning without changing saved scene', 
   const interactiveCanvas = dialog.locator('canvas.upper-canvas')
   const renderedCanvas = dialog.locator('canvas.lower-canvas')
   await expect(interactiveCanvas).toBeVisible()
+  const viewportBox = await dialog.locator('.style-editor-viewport').boundingBox()
+  const canvasBox = await interactiveCanvas.boundingBox()
+  expect(canvasBox.width).toBeGreaterThan(viewportBox.width * 0.5)
+  expect(canvasBox.height).toBeGreaterThan(viewportBox.height * 0.5)
 
   await dialog.locator('input[type="file"]').setInputFiles({
     name: 'logo.png',
@@ -584,9 +678,8 @@ test('style image editor supports canvas panning without changing saved scene', 
   })
   await expect(dialog.getByText('边缘净化', { exact: true })).toBeVisible()
   await expect(dialog.getByText('整体单色', { exact: true })).toBeVisible()
-  await dialog.getByText('指定颜色', { exact: true }).click()
-  await expect(dialog.getByRole('button', { name: '吸管取色', exact: true })).toBeVisible()
-  await expect(dialog.getByText('颜色容差', { exact: true })).toBeVisible()
+  await expect(dialog.getByText('指定颜色', { exact: true })).toHaveCount(0)
+  await expect(dialog.getByRole('button', { name: '吸管取色', exact: true })).toHaveCount(0)
   await expect(dialog.getByRole('button', { name: '应用换色', exact: true })).toBeVisible()
 
   await dialog.getByText('选择形状', { exact: true }).click()
@@ -1145,26 +1238,44 @@ test('inline work upload preview supports table and fullscreen drag-out', async 
   expectBrowserDragData(viewerDragData)
 })
 
-test('cached Electron file drag calls native drag and keeps browser fallback', async ({ page }) => {
+test('cached Electron file drag calls native drag without browser fallback', async ({ page }) => {
   await mockElectronDrag(page, { cached: true })
   await loginAs(page, users.designer)
   await page.goto('/#/designer/tasks')
 
   const dragData = await dispatchDragStart(page.locator('.el-table [draggable="true"]').first())
-  expectBrowserDragData(dragData)
+  expect(dragData.downloadUrl).toBe('')
+  expect(dragData.uriList).toBe('')
+  expect(dragData.plain).toBe('')
+  expect(dragData.html).toBe('')
 
   const calls = await page.evaluate(() => window.__dragCalls)
   expect(calls.some(call => call.type === 'isFileCached')).toBe(true)
   expect(calls.some(call => call.type === 'doFileDrag')).toBe(true)
+  expect(calls.find(call => call.type === 'isFileCached').fileId).toEqual(expect.objectContaining({
+    fileId: 101,
+    fileName: 'reference.png',
+    downloadPath: '/api/task/download/101',
+    token: TOKEN
+  }))
+  expect(calls.find(call => call.type === 'doFileDrag').fileId).toEqual(expect.objectContaining({
+    fileId: 101,
+    fileName: 'reference.png',
+    downloadPath: '/api/task/download/101',
+    token: TOKEN
+  }))
 })
 
-test('uncached Electron file drag preloads cache and keeps browser fallback', async ({ page }) => {
+test('uncached Electron file drag preloads cache without browser fallback', async ({ page }) => {
   await mockElectronDrag(page, { cached: false })
   await loginAs(page, users.designer)
   await page.goto('/#/designer/tasks')
 
   const dragData = await dispatchDragStart(page.locator('.el-table [draggable="true"]').first())
-  expectBrowserDragData(dragData)
+  expect(dragData.downloadUrl).toBe('')
+  expect(dragData.uriList).toBe('')
+  expect(dragData.plain).toBe('')
+  expect(dragData.html).toBe('')
 
   const calls = await page.evaluate(() => window.__dragCalls)
   const prepareCall = calls.find(call => call.type === 'prepareFileDrags')
@@ -1173,6 +1284,36 @@ test('uncached Electron file drag preloads cache and keeps browser fallback', as
   expect(prepareCall.params.items).toEqual(expect.arrayContaining([
     expect.objectContaining({ fileId: 101, fileName: 'reference.png' })
   ]))
+  expect(calls
+    .filter(call => call.type === 'prepareFileDrags')
+    .some(call => call.params.items.some(item => item.fileId === 101 && item.priority === 'high'))
+  ).toBe(true)
+})
+
+test('pending Electron preload is promoted only once when dragging starts', async ({ page }) => {
+  await mockElectronDrag(page, { cached: false, deferPrepare: true })
+  await loginAs(page, users.designer)
+  await page.goto('/#/designer/tasks')
+
+  await expect.poll(async () => page.evaluate(() => window.__dragCalls
+    .filter(call => call.type === 'prepareFileDrags')
+    .flatMap(call => call.params.items)
+    .filter(item => item.fileId === 101 && item.priority === 'normal').length
+  )).toBe(1)
+
+  const dragTarget = page.locator('.el-table [draggable="true"]').first()
+  await dispatchDragStart(dragTarget)
+  await dispatchDragStart(dragTarget)
+
+  const priorities = await page.evaluate(() => window.__dragCalls
+    .filter(call => call.type === 'prepareFileDrags')
+    .flatMap(call => call.params.items)
+    .filter(item => item.fileId === 101)
+    .map(item => item.priority)
+  )
+  expect(priorities).toEqual(['normal', 'high'])
+
+  await page.evaluate(() => window.__resolveDragPrepares.splice(0).forEach(resolve => resolve()))
 })
 
 test('preview image drag reuses shared drag bridge and preloads Electron cache', async ({ page }) => {
@@ -1206,12 +1347,34 @@ test('preview image drag reuses shared drag bridge and preloads Electron cache',
   })
 
   expect(dragData.draggable).toBe(true)
-  expectBrowserDragData(dragData)
+  expect(dragData.downloadUrl).toBe('')
+  expect(dragData.uriList).toBe('')
+  expect(dragData.plain).toBe('')
+  expect(dragData.html).toBe('')
 
   const calls = await page.evaluate(() => window.__dragCalls)
   const prepareCalls = calls.filter(call => call.type === 'prepareFileDrags')
   expect(prepareCalls.length).toBeGreaterThan(0)
   expect(prepareCalls.some(call => call.params.items.some(item => item.fileId === 101))).toBe(true)
+})
+
+test('客服 Electron drag uses the task number while other roles keep original names', async ({ page }) => {
+  await mockElectronDrag(page, { cached: false })
+  await loginAs(page, users.cs)
+  await page.goto('/#/cs/tasks')
+
+  const dragData = await dispatchDragStart(page.locator('.el-table [draggable="true"]').first())
+  expect(dragData.downloadUrl).toBe('')
+  expect(dragData.uriList).toBe('')
+
+  const calls = await page.evaluate(() => window.__dragCalls)
+  const preparedItems = calls
+    .filter(call => call.type === 'prepareFileDrags')
+    .flatMap(call => call.params.items)
+  expect(preparedItems).toEqual(expect.arrayContaining([
+    expect.objectContaining({ fileId: 101, fileName: expect.stringMatching(/^T-DOING(?:_\d+)?\.png$/) }),
+    expect.objectContaining({ fileId: 103, fileName: expect.stringMatching(/^T-DOING(?:_\d+)?\.png$/) })
+  ]))
 })
 
 test('table column visibility and resized widths survive reload', async ({ page }) => {
@@ -1278,7 +1441,7 @@ test('task table preferences survive leaving to stats, hall, notifications and d
       leavePaths: ['/#/designer/stats', '/#/designer/hall', '/#/notifications', '/#/dashboard'],
       statsMarker: '个人统计',
       resizeColumn: '工作项目',
-      statusOption: '作图中',
+      statusOption: '待审核',
       expectedFirstTask: 'T-ACCEPTED'
     },
     {
@@ -1287,7 +1450,7 @@ test('task table preferences survive leaving to stats, hall, notifications and d
       leavePaths: ['/#/basic/stats', '/#/basic/hall', '/#/notifications', '/#/dashboard/basic-designer'],
       statsMarker: '个人统计',
       resizeColumn: '旺旺ID',
-      statusOption: '作图中',
+      statusOption: '审核中',
       expectedFirstTask: 'T-DOING'
     },
     {
@@ -1349,7 +1512,7 @@ test('table default clears hidden columns, resized widths and persisted sort', a
   await page.locator('.nexus-column-panel.is-open .nexus-column-actions button').filter({ hasText: '默认' }).click()
 
   await expectColumnVisible(page, '发布人')
-  await expect(page.locator('.header-right .el-select').first()).toContainText('作图中')
+  await expect(page.locator('.header-right .el-select').first()).toContainText('待审核')
   await expect.poll(async () => getHeaderWidth(page, '工作项目')).toBeLessThan(state.widthBefore + 30)
   await expect.poll(async () => getStoredPreferencePresence(page, keysBeforeReset)).toEqual({
     visible: false,
@@ -1387,7 +1550,7 @@ test('custom sortable task table keeps create time order and default clears it',
   await page.goto('/#/basic/tasks')
   const state = await setCommonTaskPreferences(page, {
     resizeColumn: '旺旺ID',
-    statusOption: '作图中',
+    statusOption: '审核中',
     expectedFirstTask: 'T-DOING'
   })
 
@@ -1451,14 +1614,14 @@ async function waitForTaskTable(page) {
 async function setDesignerTaskPreferences(page) {
   return setCommonTaskPreferences(page, {
     resizeColumn: '工作项目',
-    statusOption: '作图中',
+    statusOption: '待审核',
     expectedFirstTask: 'T-ACCEPTED'
   })
 }
 
 async function setCommonTaskPreferences(page, options = {}) {
   const resizeColumn = options.resizeColumn || '工作项目'
-  const statusOption = options.statusOption || '作图中'
+  const statusOption = options.statusOption || '待审核'
   const expectedFirstTask = options.expectedFirstTask || 'T-ACCEPTED'
   await waitForTaskTable(page)
 
@@ -1588,24 +1751,30 @@ async function expectColumnVisible(page, label) {
   })).toBe(true)
 }
 
-async function mockElectronDrag(page, { cached }) {
-  await page.addInitScript(({ cachedValue }) => {
+async function mockElectronDrag(page, { cached, deferPrepare = false }) {
+  await page.addInitScript(({ cachedValue, shouldDeferPrepare }) => {
     window.__dragCalls = []
+    window.__resolveDragPrepares = []
     window.electronAPI = {
       isFileCached(fileId) {
         window.__dragCalls.push({ type: 'isFileCached', fileId })
         return cachedValue
       },
-      doFileDrag(fileId) {
-        window.__dragCalls.push({ type: 'doFileDrag', fileId })
+      doFileDrag(request) {
+        window.__dragCalls.push({ type: 'doFileDrag', fileId: request })
         return true
       },
       prepareFileDrags(params) {
         window.__dragCalls.push({ type: 'prepareFileDrags', params })
+        if (shouldDeferPrepare) {
+          return new Promise(resolve => {
+            window.__resolveDragPrepares.push(() => resolve({ success: true }))
+          })
+        }
         return Promise.resolve({ success: true })
       }
     }
-  }, { cachedValue: cached })
+  }, { cachedValue: cached, shouldDeferPrepare: deferPrepare })
 }
 
 async function mockApis(page) {

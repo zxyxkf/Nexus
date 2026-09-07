@@ -4,7 +4,7 @@ import path from 'path'
 import packageJson from './package.json'
 
 const devPort = Number(process.env.VITE_DEV_PORT || 5173)
-const devApiTarget = process.env.VITE_DEV_API_TARGET || 'http://localhost:18632'
+const devApiTarget = process.env.VITE_DEV_API_TARGET || 'http://127.0.0.1:18632'
 
 export default defineConfig({
   plugins: [vue()],

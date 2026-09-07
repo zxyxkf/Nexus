@@ -673,6 +673,142 @@ describe('任务查询', () => {
   });
 });
 
+describe('任务文件预览和下载鉴权', () => {
+  let taskId;
+  let taskFileId;
+  let pooledTaskId;
+  let pooledFileId;
+
+  beforeAll(async () => {
+    const created = await request(app)
+      .post('/api/task/create')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({
+        title: '任务文件鉴权测试',
+        taskGroup: 'design',
+        priority: 1,
+        designerId,
+        shopName: '测试店铺'
+      });
+    expect(created.body.code).toBe(0);
+    taskId = created.body.data.id;
+
+    const pooled = await request(app)
+      .post('/api/task/create')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ title: '暂存任务文件鉴权测试', taskGroup: 'cs', priority: 1 });
+    expect(pooled.body.code).toBe(0);
+    pooledTaskId = pooled.body.data.id;
+
+    const { execute } = require('../../config/database');
+    const { saveImage } = require('../../utils/share');
+    const png = Buffer.from(
+      'iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Y9Z9xkAAAAASUVORK5CYII=',
+      'base64'
+    );
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const taskPath = saveImage('design', 'access-test', `task-${suffix}.png`, png);
+    const pooledPath = saveImage('cs', 'access-test', `pooled-${suffix}.png`, png);
+
+    const [taskFile] = await execute(
+      `INSERT INTO task_file
+         (task_id, file_name, file_path, file_size, file_type, mime_type, uploader_id, file_category)
+       VALUES (?, ?, ?, ?, 'image', 'image/png', ?, 'reference')`,
+      [taskId, `task-${suffix}.png`, taskPath, png.length, operatorId]
+    );
+    taskFileId = taskFile.insertId || taskFile.lastID;
+
+    await execute("UPDATE task_info SET handoff_status = 'pooled' WHERE id = ?", [pooledTaskId]);
+    const [pooledFile] = await execute(
+      `INSERT INTO task_file
+         (task_id, file_name, file_path, file_size, file_type, mime_type, uploader_id, file_category)
+       VALUES (?, ?, ?, ?, 'image', 'image/png', ?, 'reference')`,
+      [pooledTaskId, `pooled-${suffix}.png`, pooledPath, png.length, operatorId]
+    );
+    pooledFileId = pooledFile.insertId || pooledFile.lastID;
+  });
+
+  afterAll(async () => {
+    for (const id of [taskId, pooledTaskId].filter(Boolean)) {
+      await request(app)
+        .post('/api/task/delete')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ taskId: id });
+    }
+  });
+
+  it('allows the publisher, assignee, same-store operator and task-group viewer', async () => {
+    const { generateAccessToken } = require('../../middleware/auth');
+    const sameStoreToken = generateAccessToken({
+      id: 910001,
+      username: 'same_store_operator',
+      role: 'operator',
+      store: '测试店铺',
+      permissions: ['task.view.store']
+    });
+    const groupViewerToken = generateAccessToken({
+      id: 910002,
+      username: 'design_group_viewer',
+      role: 'designer',
+      permissions: ['admin.tasks.design']
+    });
+
+    for (const token of [operatorToken, designerToken, sameStoreToken, groupViewerToken]) {
+      const response = await request(app)
+        .get(`/api/task/preview/${taskFileId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(response.status).toBe(200);
+      expect(response.headers['cache-control']).toContain('private');
+    }
+  });
+
+  it('allows a handoff viewer to read pooled task files', async () => {
+    const { generateAccessToken } = require('../../middleware/auth');
+    const handoffToken = generateAccessToken({
+      id: 910003,
+      username: 'handoff_viewer',
+      role: 'cs_agent',
+      permissions: ['cs.handoff.tasks']
+    });
+    const response = await request(app)
+      .get(`/api/task/preview/${pooledFileId}`)
+      .set('Authorization', `Bearer ${handoffToken}`);
+    expect(response.status).toBe(200);
+  });
+
+  it('rejects users who cannot view the owning task', async () => {
+    const { generateAccessToken } = require('../../middleware/auth');
+    const deniedToken = generateAccessToken({
+      id: 910004,
+      username: 'denied_file_viewer',
+      role: 'basic_designer',
+      permissions: ['task.view.own']
+    });
+
+    const preview = await request(app)
+      .get(`/api/task/preview/${taskFileId}`)
+      .set('Authorization', `Bearer ${deniedToken}`);
+    expect(preview.body.code).toBe(403);
+
+    const download = await request(app)
+      .get(`/api/task/download/${taskFileId}`)
+      .set('Authorization', `Bearer ${deniedToken}`);
+    expect(download.body.code).toBe(403);
+
+    const anonymous = await request(app).get(`/api/task/preview/${taskFileId}`);
+    expect(anonymous.status).toBe(401);
+  });
+
+  it('downloads authorized files with private caching', async () => {
+    const response = await request(app)
+      .get(`/api/task/download/${taskFileId}`)
+      .set('Authorization', `Bearer ${operatorToken}`);
+    expect(response.status).toBe(200);
+    expect(response.headers['cache-control']).toContain('private');
+    expect(response.headers['content-disposition']).toContain('attachment');
+  });
+});
+
 // ==================== 清理 ====================
 
 afterAll(async () => {

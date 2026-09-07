@@ -43,7 +43,11 @@ async function attachFilesToTasks(taskIds) {
   const pool = getPool();
   const placeholders = taskIds.map(() => '?').join(',');
   const [files] = await pool.execute(
-    `SELECT * FROM task_file WHERE task_id IN (${placeholders}) ORDER BY create_time ASC`,
+    `SELECT tf.*, t.task_no
+     FROM task_file tf
+     INNER JOIN task_info t ON t.id = tf.task_id
+     WHERE tf.task_id IN (${placeholders})
+     ORDER BY tf.create_time ASC`,
     taskIds
   );
   for (const f of files) {

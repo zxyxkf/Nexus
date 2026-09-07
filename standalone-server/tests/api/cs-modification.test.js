@@ -175,18 +175,20 @@ describe('customer service modification workflow', () => {
 
   test('publisher can request a modification with attachments only', async () => {
     const id = await createTask();
+    const originalFileName = '修改参考";\u007f 1.txt';
     const response = await request(app)
       .post('/api/task/request-modification')
       .set('Authorization', `Bearer ${publisherToken}`)
       .field('taskId', String(id))
       .field('note', '')
-      .attach('files', Buffer.from('customer service note'), '修改参考.txt');
+      .field('originalFileNames', JSON.stringify([originalFileName]))
+      .attach('files', Buffer.from('customer service note'), 'nexus-upload-1.txt');
 
     expect(response.body.code).toBe(0);
     const task = (await detail(id)).body.data;
     expect(task.reject_records).toHaveLength(1);
     expect(task.reject_records[0].files).toEqual([
-      expect.objectContaining({ file_name: '修改参考.txt', file_category: 'reject' })
+      expect.objectContaining({ file_name: originalFileName, file_category: 'reject' })
     ]);
   });
 
@@ -294,6 +296,34 @@ describe('customer service modification workflow', () => {
     expect(task.reject_records[0].designer_reply).toBe('文字已经调整');
     expect(Number(task.applied_score)).toBe(3);
     expect(task.score_review_status || '').toBe('');
+  });
+
+  test('basic designer modification attachments preserve names outside multipart headers', async () => {
+    const id = await createTask();
+    const modification = await request(app)
+      .post('/api/task/request-modification')
+      .set('Authorization', `Bearer ${publisherToken}`)
+      .field('taskId', String(id))
+      .field('note', '请调整附件内容');
+    expect(modification.body.code).toBe(0);
+
+    const originalFileName = '完成修改";\u007f 1.psd';
+    const completed = await request(app)
+      .post('/api/task/complete-modification')
+      .set('Authorization', `Bearer ${basicToken}`)
+      .field('taskId', String(id))
+      .field('rejectRecordId', String(modification.body.data.rejectRecordId))
+      .field('reply', '附件已经调整')
+      .field('appliedScore', '3')
+      .field('retainedFileIds', '[]')
+      .field('originalFileNames', JSON.stringify([originalFileName]))
+      .attach('files', Buffer.from('updated attachment'), 'nexus-upload-1.psd');
+    expect(completed.body.code).toBe(0);
+
+    const task = (await detail(id)).body.data;
+    expect(task.reject_records[0].files).toEqual([
+      expect.objectContaining({ file_name: originalFileName, file_category: 'work' })
+    ]);
   });
 
   test('undo keeps first work and score, and undo after a modification reopens the same round', async () => {

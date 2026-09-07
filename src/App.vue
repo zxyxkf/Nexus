@@ -53,5 +53,19 @@ onMounted(async () => {
   userStore.initFromStorage()
   userStore.bindAuthStorage()
   setupUpdateListeners()
+  window.addEventListener('nexus:file-drag-pending', handleFileDragPending)
+})
+
+function handleFileDragPending() {
+  ElMessage({
+    type: 'warning',
+    message: '文件正在准备，请稍后再拖拽',
+    grouping: true,
+    duration: 1800
+  })
+}
+
+onUnmounted(() => {
+  window.removeEventListener('nexus:file-drag-pending', handleFileDragPending)
 })
 </script>

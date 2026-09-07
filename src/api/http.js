@@ -145,6 +145,14 @@ request.interceptors.request.use(
       config.headers.Authorization = `Bearer ${token}`
       scheduleProactiveRefresh(token)
     }
+
+    // Let the browser supply the multipart boundary. Axios' instance-level
+    // JSON default must never be sent with a FormData body.
+    if (typeof FormData !== 'undefined' && config.data instanceof FormData) {
+      if (typeof config.headers?.delete === 'function') config.headers.delete('Content-Type')
+      delete config.headers?.['Content-Type']
+      delete config.headers?.['content-type']
+    }
     return config
   },
   error => Promise.reject(error)

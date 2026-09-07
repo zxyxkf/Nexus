@@ -14,7 +14,7 @@ contextBridge.exposeInMainWorld('electronAPI', {
   downloadFile: (params) => ipcRenderer.invoke('download-file', params),
   prepareFileDrags: (params) => ipcRenderer.invoke('prepare-file-drags', params),
   isFileCached: (fileId) => ipcRenderer.sendSync('is-file-cached', fileId),
-  doFileDrag: (fileId) => ipcRenderer.sendSync('do-file-drag', fileId),
+  doFileDrag: (request) => ipcRenderer.sendSync('do-file-drag', request),
   flashFrame: () => ipcRenderer.send('flash-frame'),
   showDesktopNotification: (opts) => ipcRenderer.send('desktop-notification', opts),
   showToast: (opts) => ipcRenderer.send('show-toast', opts),

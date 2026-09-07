@@ -13,25 +13,13 @@ const { getPool } = require('../config/database');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
 const { readImage, resolvePath } = require('../utils/share');
 const { MIME_MAP } = require('../dao/task.dao');
-const { hasPermission, canViewByAllTasksPermission } = require('../utils/task-permissions');
+const taskService = require('../services/task.service');
 
 // ==================== 文件预览/下载接口（URL token 认证） ====================
 
 router.get('/preview/:fileId', optionalAuth, async (req, res, next) => {
   try {
-    const { fileId } = req.params;
-    const pool = getPool();
-
-    const [rows] = await pool.execute(
-      `SELECT * FROM task_file WHERE id = ?`,
-      [fileId]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({ code: 404, msg: '文件不存在' });
-    }
-
-    const file = rows[0];
+    const file = await taskService.getTaskFileForUser(req.params.fileId, req.user);
     const filePath = file.file_path;
     if (!filePath) {
       return res.status(404).json({ code: 404, msg: '文件路径为空' });
@@ -49,7 +37,7 @@ router.get('/preview/:fileId', optionalAuth, async (req, res, next) => {
     }
 
     res.setHeader('Content-Type', contentType);
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
     res.send(result.buffer);
   } catch (err) {
     next(err);
@@ -58,19 +46,7 @@ router.get('/preview/:fileId', optionalAuth, async (req, res, next) => {
 
 router.get('/download/:fileId', optionalAuth, async (req, res, next) => {
   try {
-    const { fileId } = req.params;
-    const pool = getPool();
-
-    const [rows] = await pool.execute(
-      `SELECT * FROM task_file WHERE id = ?`,
-      [fileId]
-    );
-
-    if (rows.length === 0) {
-      return res.status(404).json({ code: 404, msg: '文件不存在' });
-    }
-
-    const file = rows[0];
+    const file = await taskService.getTaskFileForUser(req.params.fileId, req.user);
     const filePath = file.file_path;
     if (!filePath) {
       return res.status(404).json({ code: 404, msg: '文件路径为空' });
@@ -84,6 +60,7 @@ router.get('/download/:fileId', optionalAuth, async (req, res, next) => {
       }
       res.setHeader('Content-Type', 'application/octet-stream');
       res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(file.file_name)}`);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
       const stream = fs.createReadStream(absolutePath);
       stream.pipe(res);
     } catch (e) {
@@ -106,30 +83,52 @@ router.get('/batch-download', requireAuth, async (req, res, next) => {
     const pool = getPool();
     const placeholders = ids.map(() => '?').join(',');
     const [tasks] = await pool.execute(
-      `SELECT id, task_no, title, publisher_id, designer_id, task_group FROM task_info WHERE id IN (${placeholders})`,
+      `SELECT t.id, t.task_no, t.title, t.publisher_id, t.designer_id, t.task_group,
+              t.status, t.handoff_status, COALESCE(u.store, '') AS publisher_store
+       FROM task_info t
+       LEFT JOIN sys_user u ON u.id = t.publisher_id
+       WHERE t.id IN (${placeholders})`,
       ids
     );
-
-    if (req.user.role !== 'admin' && !hasPermission(req.user, 'task.view.all')) {
-      const invalid = tasks.some(t =>
-        Number(t.publisher_id) !== Number(req.user.id) &&
-        Number(t.designer_id) !== Number(req.user.id) &&
-        !canViewByAllTasksPermission(t, req.user)
-      );
-      if (invalid) return res.status(403).json({ code: 403, msg: '无权下载所选任务文件' });
-    }
+    for (const task of tasks) await taskService.assertTaskViewAccess(task, req.user);
 
     const taskIds = tasks.map(t => t.id);
     if (!taskIds.length) return res.status(404).json({ code: 404, msg: '任务不存在' });
 
+    const rawCategories = String(req.query.fileCategories || '').trim();
+    const fileCategories = rawCategories
+      ? [...new Set(rawCategories.split(',').map(value => value.trim()).filter(Boolean))]
+      : [];
+    const allowedCategories = {
+      cs: new Set(['reference', 'style', 'work', 'original']),
+      design: new Set(['reference', 'work']),
+      operator: new Set(['reference', 'work'])
+    };
+    if (fileCategories.length) {
+      const invalid = tasks.some(task => {
+        const group = task.task_group || 'design';
+        const allowed = allowedCategories[group] || allowedCategories.design;
+        return fileCategories.some(category => !allowed.has(category));
+      });
+      if (invalid) {
+        return res.status(400).json({ code: 400, msg: '所选文件类别与任务分区不匹配' });
+      }
+    }
+
     const filePlaceholders = taskIds.map(() => '?').join(',');
+    const fileParams = [...taskIds];
+    let fileWhere = `f.task_id IN (${filePlaceholders})`;
+    if (fileCategories.length) {
+      fileWhere += ` AND f.file_category IN (${fileCategories.map(() => '?').join(',')})`;
+      fileParams.push(...fileCategories);
+    }
     const [files] = await pool.execute(
-      `SELECT f.*, t.task_no
+      `SELECT f.*, t.task_no, t.task_group
        FROM task_file f
        INNER JOIN task_info t ON f.task_id = t.id
-       WHERE f.task_id IN (${filePlaceholders})
+       WHERE ${fileWhere}
        ORDER BY t.task_no, f.file_category, f.create_time`,
-      taskIds
+      fileParams
     );
     if (!files.length) return res.json({ code: 404, msg: '所选任务没有可下载文件' });
 
@@ -142,12 +141,17 @@ router.get('/batch-download', requireAuth, async (req, res, next) => {
     const dateStr = new Date().toISOString().slice(0, 10);
     res.setHeader('Content-Type', 'application/zip');
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(`任务文件_${dateStr}.zip`)}`);
+    res.setHeader('Cache-Control', 'private, no-store');
     archive.on('error', err => next(err));
     archive.pipe(res);
 
     const usedNames = new Set();
     for (const { file, absolutePath } of existingFiles) {
-      const folder = `${file.task_no}/${file.file_category === 'reference' ? '参考文件' : '作品文件'}`;
+      const group = file.task_group || 'design';
+      const categoryFolders = group === 'cs'
+        ? { reference: '参考图', style: '款式图', work: '效果图', original: '原图', reject: '修改记录' }
+        : { reference: '参考图', work: '作品' };
+      const folder = `${file.task_no}/${categoryFolders[file.file_category] || '其他文件'}`;
       let entryName = `${folder}/${file.file_name}`;
       let idx = 1;
       while (usedNames.has(entryName)) {

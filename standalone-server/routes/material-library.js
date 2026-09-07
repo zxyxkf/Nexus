@@ -9,7 +9,6 @@ const { requireAuth, requirePermission, optionalAuth } = require('../middleware/
 const AppError = require('../utils/AppError');
 const service = require('../services/material-library.service');
 const { fixFilenameEncoding } = require('../utils/upload');
-const { getImage } = require('../dao/material-library.dao');
 
 const tempDir = path.join(os.tmpdir(), 'nexus-material-library');
 fs.mkdirSync(tempDir, { recursive: true });
@@ -39,24 +38,38 @@ function receiveImages(req, res, next) {
   });
 }
 
+function restoreOriginalNames(req) {
+  let names = [];
+  try {
+    const value = req.body?.originalNames;
+    const parsed = typeof value === 'string' ? JSON.parse(value) : value;
+    if (Array.isArray(parsed)) names = parsed;
+  } catch (_) {
+    names = [];
+  }
+  for (const [index, file] of (req.files || []).entries()) {
+    const originalName = String(names[index] || '').trim();
+    file.originalname = originalName || fixFilenameEncoding(file.originalname);
+  }
+}
+
 router.get('/images/:imageId/preview', optionalAuth, async (req, res, next) => {
   try {
-    const image = await getImage(Number(req.params.imageId));
-    if (!image) return res.status(404).json({ code: 404, msg: '图片不存在' });
+    const image = await service.getReadableImage(req.user, Number(req.params.imageId));
     const filePath = service.resolveImagePath(image);
     res.setHeader('Content-Type', image.mime_type || 'application/octet-stream');
-    res.setHeader('Cache-Control', 'public, max-age=3600');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
     fs.createReadStream(filePath).pipe(res);
   } catch (err) { next(err); }
 });
 
 router.get('/images/:imageId/download', optionalAuth, async (req, res, next) => {
   try {
-    const image = await getImage(Number(req.params.imageId));
-    if (!image) return res.status(404).json({ code: 404, msg: '图片不存在' });
+    const image = await service.getReadableImage(req.user, Number(req.params.imageId));
     const filePath = service.resolveImagePath(image);
     res.setHeader('Content-Disposition', `attachment; filename*=UTF-8''${encodeURIComponent(image.display_name || image.original_name)}`);
     res.setHeader('Content-Type', 'application/octet-stream');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
     fs.createReadStream(filePath).pipe(res);
   } catch (err) { next(err); }
 });
@@ -140,7 +153,7 @@ router.post('/styles/:styleId/images', requirePermission('material.library', 'ad
   try {
     const id = idParam(req, 'styleId');
     if (!id) return res.status(400).json({ code: 400, msg: '款式 ID 无效' });
-    for (const file of req.files || []) file.originalname = fixFilenameEncoding(file.originalname);
+    restoreOriginalNames(req);
     send(res, await service.saveUploadedImages(req.user, id, req.files || []), '图片上传成功');
   } catch (err) {
     for (const file of req.files || []) { try { fs.unlinkSync(file.path); } catch (_) {} }

@@ -95,16 +95,20 @@ test('客服通过后进入待上传原图且不提前进入分值审核', async
 
 test('原图可分批上传，完成上传后才进入已完成和分值审核', async () => {
   const taskId = await createTask({ status: 'pending_original' });
+  const firstOriginalName = '源文件";\u007f A.psd';
+  const secondOriginalName = '源文件B.zip';
   const first = await request(app)
     .post('/api/task/upload-original')
     .set('Authorization', `Bearer ${basicToken}`)
     .field('taskId', String(taskId))
-    .attach('files', Buffer.from('psd source'), '源文件A.psd');
+    .field('originalFileNames', JSON.stringify([firstOriginalName]))
+    .attach('files', Buffer.from('psd source'), 'nexus-upload-1.psd');
   const second = await request(app)
     .post('/api/task/upload-original')
     .set('Authorization', `Bearer ${basicToken}`)
     .field('taskId', String(taskId))
-    .attach('files', Buffer.from('zip source'), '源文件B.zip');
+    .field('originalFileNames', JSON.stringify([secondOriginalName]))
+    .attach('files', Buffer.from('zip source'), 'nexus-upload-1.zip');
 
   expect([first.body.code, second.body.code]).toEqual([0, 0]);
   expect((await getTask(taskId)).status).toBe('pending_original');
@@ -113,8 +117,8 @@ test('原图可分批上传，完成上传后才进入已完成和分值审核',
     [taskId]
   );
   expect(files).toEqual([
-    expect.objectContaining({ file_name: '源文件A.psd', file_category: 'original' }),
-    expect.objectContaining({ file_name: '源文件B.zip', file_category: 'original' })
+    expect.objectContaining({ file_name: firstOriginalName, file_category: 'original' }),
+    expect.objectContaining({ file_name: secondOriginalName, file_category: 'original' })
   ]);
 
   const completed = await request(app)

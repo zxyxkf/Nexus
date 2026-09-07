@@ -9,8 +9,10 @@ const { getPool } = require('../config/database');
 const { requireAuth, requireAnyPermission } = require('../middleware/auth');
 const { initStorageConfig } = require('../utils/share');
 const avatarService = require('../services/avatar.service');
+const materialLibraryService = require('../services/material-library.service');
 
 const AVATAR_CONFIG_KEY = 'upload.user_avatar_dir';
+const MATERIAL_LIBRARY_CONFIG_KEY = 'upload.material_library_dir';
 
 router.use(requireAuth);
 
@@ -76,6 +78,14 @@ router.put('/update', requireAnyPermission(['admin.config'], 'admin'), async (re
         return res.json({ code: 403, msg: '仅超级管理员可配置头像存储目录' });
       }
       await avatarService.updateAvatarStorageConfig(id, configValue);
+      return res.json({ code: 0, msg: '更新成功' });
+    }
+
+    if (configs[0].config_key === MATERIAL_LIBRARY_CONFIG_KEY) {
+      if (req.user.role !== 'admin') {
+        return res.json({ code: 403, msg: '仅超级管理员可配置素材库存储目录' });
+      }
+      await materialLibraryService.updateMaterialStorageConfig(id, configValue);
       return res.json({ code: 0, msg: '更新成功' });
     }
 
