@@ -3,6 +3,7 @@
  */
 
 export const STATUS_MAP = {
+  pending_original_review: '待审核原图',
   wait: '待接单',
   accepted: '已接单',
   doing: '待审核',
@@ -13,6 +14,7 @@ export const STATUS_MAP = {
 }
 
 export const STATUS_TAG_TYPE = {
+  pending_original_review: 'warning',
   wait: 'info',
   accepted: 'warning',
   doing: 'primary',
@@ -85,6 +87,9 @@ export function getTaskHeaderTime(task) {
   if (!task) return { label: '时间', value: '' }
   if (task.status === 'finished') {
     return { label: '审核通过时间', value: task.finish_time || task.update_time || task.submit_time || task.create_time || '' }
+  }
+  if (task.status === 'pending_original_review') {
+    return { label: '待审核原图时间', value: task.update_time || task.submit_time || task.create_time || '' }
   }
   if (task.status === 'pending_original') {
     return { label: '待上传原图时间', value: task.update_time || task.submit_time || task.create_time || '' }

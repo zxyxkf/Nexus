@@ -152,6 +152,8 @@ export const uploadOriginalFilesApi = (taskId, files, extraData = {}) => {
 export const completeOriginalUploadApi = (taskId) => taskMutation(
   request.post('/api/task/complete-original-upload', { taskId })
 )
+export const reviewOriginalTaskApi = (data) => taskMutation(request.post('/api/task/review-original', data))
+export const withdrawOriginalTaskApi = (data) => taskMutation(request.post('/api/task/withdraw-original', data))
 export const getAllTasksApi = (params) => request.get('/api/task/all', { params })
 export const getTaskDetailApi = (params) => request.get('/api/task/detail', { params })
 export const getMyStatsApi = () => request.get('/api/task/stats/my')

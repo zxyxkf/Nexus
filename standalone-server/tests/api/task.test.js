@@ -127,6 +127,15 @@ describe('任务 CRUD', () => {
     expect(res.body.code).not.toBe(0);
   });
 
+  it('运营发布美工设计任务必须填写款号', async () => {
+    const res = await request(app)
+      .post('/api/task/create')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ title: '缺少款号', taskGroup: 'design' });
+    expect(res.body.code).toBe(400);
+    expect(res.body.msg).toContain('款号');
+  });
+
   it('designer 无权创建任务', async () => {
     const res = await request(app)
       .post('/api/task/create')
@@ -139,7 +148,7 @@ describe('任务 CRUD', () => {
     const createRes = await request(app)
       .post('/api/task/create')
       .set('Authorization', `Bearer ${operatorToken}`)
-      .send({ title: '待删除任务', shopName: 'test', taskGroup: 'design', priority: 1 });
+      .send({ title: '待删除任务', shopName: 'test', taskGroup: 'design', priority: 1, styleNumber: 'DELETE-001' });
     const delTaskId = createRes.body.data.id;
 
     const res = await request(app)
@@ -171,7 +180,8 @@ describe('完整状态流转（大厅接单模式）', () => {
         taskGroup: 'design',
         score: 10,
         quantity: 2,
-        shopName: '大厅测试'
+        shopName: '大厅测试',
+        styleNumber: 'HALL-001'
         // 不传 designerId → 进入任务大厅
       });
     expect(res.body.code).toBe(0);
@@ -364,6 +374,7 @@ describe('内联上传辅助能力', () => {
         shopName: '路径测试',
         taskGroup: 'design',
         priority: 1,
+        styleNumber: 'PATH-001',
         designerId
       });
     expect(create.body.code).toBe(0);
@@ -395,7 +406,7 @@ describe('驳回与重新提交', () => {
     const create = await request(app)
       .post('/api/task/create')
       .set('Authorization', `Bearer ${operatorToken}`)
-      .send({ title: '驳回测试任务', shopName: '驳回测试', taskGroup: 'design', priority: 1 });
+      .send({ title: '驳回测试任务', shopName: '驳回测试', taskGroup: 'design', priority: 1, styleNumber: 'REJECT-001' });
     rejectTaskId = create.body.data.id;
 
     await request(app)
@@ -688,6 +699,7 @@ describe('任务文件预览和下载鉴权', () => {
         taskGroup: 'design',
         priority: 1,
         designerId,
+        styleNumber: 'ACCESS-001',
         shopName: '测试店铺'
       });
     expect(created.body.code).toBe(0);

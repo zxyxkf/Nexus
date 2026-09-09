@@ -21,7 +21,7 @@
       </div>
 
       <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" :data="displayList" v-loading="loading" stripe style="width:100%" empty-text="暂无待审核任务" @selection-change="onSelectChange" @sort-change="handleSortChange">
-        <el-table-column type="selection" width="45" />
+        <el-table-column type="selection" width="45" :selectable="isReviewSelectable" />
         <el-table-column prop="task_no" label="任务编号" show-overflow-tooltip sortable="custom" />
         <el-table-column prop="title" label="工作项目" show-overflow-tooltip />
         <el-table-column label="分值" align="center">
@@ -130,9 +130,10 @@
         </el-table-column>
         <el-table-column label="状态">
           <template #default="{ row }">
-            <el-tag :type="row.status === 'doing' ? 'primary' : 'success'" size="small">
+            <el-tag v-if="row.status !== 'pending_original_review'" :type="row.status === 'doing' ? 'primary' : 'success'" size="small">
               {{ row.status === 'doing' ? '待审核' : '已完成' }}
             </el-tag>
+            <el-tag v-else type="warning" size="small">待审核原图</el-tag>
           </template>
         </el-table-column>
         <el-table-column prop="create_time" label="发布时间" width="170" sortable="custom" show-overflow-tooltip>
@@ -157,6 +158,11 @@
               :loading="paymentOpeningIds.has(row.id)"
               @click="handleOpenPayment(row)"
             >开启打款</el-button>
+            <el-button
+              v-if="isCsAgent && row.status === 'pending_original_review' && row.allowedActions?.reviewOriginal"
+              type="success" link size="small"
+              @click="handleOriginalReview(row)"
+            >审核原图</el-button>
             <el-button
               v-if="row.status === 'doing' && row.allowedActions?.review"
               type="success" link size="small"
@@ -191,7 +197,8 @@
       detail-context="review"
       @close="detailVisible = false"
     >
-      <template #actions>
+       <template #actions>
+         <el-button v-if="isCsAgent && currentTask.status === 'pending_original_review' && currentTask.allowedActions?.reviewOriginal" type="success" size="small" @click="handleOriginalReview(currentTask)" :loading="reviewLoading">审核原图</el-button>
         <el-button v-if="currentTask.status === 'doing' && currentTask.allowedActions?.review" type="warning" size="small" @click="openModificationFromDetail">修改</el-button>
         <el-button v-if="currentTask.status === 'doing' && currentTask.allowedActions?.review" type="success" size="small" @click="doReview('pass')" :loading="reviewLoading">通过</el-button>
         <el-button v-if="!isCsAgent && currentTask.status === 'doing' && currentTask.allowedActions?.review" type="danger" size="small" @click="doReview('reject')" :loading="reviewLoading">驳回</el-button>
@@ -223,7 +230,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
-import { getMyPublishedApi, reviewTaskApi, requestCsModificationApi, batchReviewApi, getFileUrl, setupFileDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
+import { getMyPublishedApi, reviewTaskApi, reviewOriginalTaskApi, requestCsModificationApi, batchReviewApi, getFileUrl, setupFileDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
@@ -307,6 +314,10 @@ const paymentOpeningIds = ref(new Set())
 const batchPaymentOpening = ref(false)
 
 function onSelectChange(rows) { selectedRows.value = rows }
+function isReviewSelectable(row) {
+  if (row.status === 'pending_original_review') return false
+  return Boolean(row.allowedActions?.review || row.allowedActions?.openPayment)
+}
 
 async function openModification(row) {
   if (!isCsAgent.value || row?.status !== 'doing') return
@@ -407,9 +418,10 @@ async function loadData(options = {}) {
     const res = await getMyPublishedApi({
       page: page.value,
       pageSize: pageSize.value,
-      status: 'doing',
+      status: 'doing,pending_original_review',
       taskGroup: taskGroup.value,
-      selfOnly: true
+      selfOnly: true,
+      reviewView: true
     })
     if (res.code === 0) {
       list.value = res.data.list || []
@@ -419,6 +431,34 @@ async function loadData(options = {}) {
     console.error('[Review] 加载审核列表失败:', e)
   } finally {
     if (!options.silent) loading.value = false
+  }
+}
+
+async function handleOriginalReview(row) {
+  if (!row?.allowedActions?.reviewOriginal) return
+  try {
+    const action = await ElMessageBox.confirm(
+      '原图是否通过审核？选择“确定”通过，取消则不通过。',
+      '审核原图',
+      { distinguishCancelAndClose: true, confirmButtonText: '通过', cancelButtonText: '不通过', type: 'warning' }
+    ).then(() => 'pass').catch(error => {
+      if (error === 'cancel') return 'reject'
+      throw error
+    })
+    reviewLoading.value = true
+    const res = await reviewOriginalTaskApi({ taskId: row.id, action })
+    if (res.code === 0) {
+      ElMessage.success(action === 'pass' ? '原图审核通过' : '原图审核不通过，已退回待上传原图')
+      list.value = list.value.filter(item => item.id !== row.id)
+      detailVisible.value = false
+      await loadData()
+    } else {
+      ElMessage.error(res.msg || '原图审核失败')
+    }
+  } catch (error) {
+    if (error !== 'close' && error !== 'cancel') console.error('[Review] original review failed', error)
+  } finally {
+    reviewLoading.value = false
   }
 }
 

@@ -11,11 +11,12 @@ const VALID_TRANSITIONS = {
   accepted: ['doing', 'draft'],
   doing:   ['finished', 'rejected', 'accepted'],
   rejected: ['doing'],
-  pending_original: ['finished'],
+  pending_original: ['pending_original_review'],
+  pending_original_review: ['finished', 'pending_original'],
   finished: [],
 };
 
-const ALL_STATUSES = ['draft', 'wait', 'accepted', 'doing', 'submitted', 'pending_original', 'finished', 'rejected'];
+const ALL_STATUSES = ['draft', 'wait', 'accepted', 'doing', 'submitted', 'pending_original', 'pending_original_review', 'finished', 'rejected'];
 
 function isValidTransition(from, to) {
   const valid = VALID_TRANSITIONS[from];
@@ -87,10 +88,18 @@ describe('任务状态机', () => {
       expect(isValidTransition('rejected', 'doing')).toBe(true);
     });
 
-    it('pending_original 只能在完成原图上传后转为 finished', () => {
-      expect(isValidTransition('pending_original', 'finished')).toBe(true);
+    it('pending_original 完成原图上传后转为 pending_original_review', () => {
+      expect(isValidTransition('pending_original', 'pending_original_review')).toBe(true);
+      expect(isValidTransition('pending_original', 'finished')).toBe(false);
       expect(isValidTransition('pending_original', 'doing')).toBe(false);
       expect(isValidTransition('pending_original', 'rejected')).toBe(false);
+    });
+
+    it('pending_original_review 可审核通过或退回重新上传', () => {
+      expect(isValidTransition('pending_original_review', 'finished')).toBe(true);
+      expect(isValidTransition('pending_original_review', 'pending_original')).toBe(true);
+      expect(isValidTransition('pending_original_review', 'doing')).toBe(false);
+      expect(isValidTransition('pending_original_review', 'rejected')).toBe(false);
     });
 
     it('finished 不能再转换到任何状态', () => {

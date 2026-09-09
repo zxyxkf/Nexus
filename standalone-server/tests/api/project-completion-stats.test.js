@@ -93,6 +93,7 @@ describe('美工项目类型完成统计与指定人员负载', () => {
           taskGroup: 'design',
           priority: 1,
           designerId,
+          styleNumber: `STATS-${item.name}-${suffix}`,
           scoreItemId: scoreItem.id,
           score: scoreItem.score || 1,
           shopName: '项目统计店铺'

@@ -57,23 +57,31 @@ const rejectedHint = computed(() => props.taskGroup === 'cs'
 
 const timeline = computed(() => {
   const task = props.task
-  const hasSubmitTime = ['doing', 'rejected', 'pending_original', 'finished'].includes(task.status)
+  const originalFiles = (task.files || []).filter(file => file.file_category === 'original')
+  const originalUploadTime = originalFiles.length ? originalFiles[originalFiles.length - 1].create_time : ''
+  const hasSubmitTime = ['doing', 'rejected', 'pending_original', 'pending_original_review', 'finished'].includes(task.status)
   const hasScoreReview = props.taskGroup === 'cs' && (task.score_review_time || ['approved', 'rejected'].includes(task.score_review_status))
   const items = [
     { key: 'create', label: '发布任务', time: task.create_time, done: true },
-    { key: 'accept', label: `${workerName.value}接单`, time: task.designer_id ? (task.accept_time || '') : '', done: ['accepted', 'doing', 'rejected', 'pending_original', 'finished'].includes(task.status) },
+    { key: 'accept', label: `${workerName.value}接单`, time: task.designer_id ? (task.accept_time || '') : '', done: ['accepted', 'doing', 'rejected', 'pending_original', 'pending_original_review', 'finished'].includes(task.status) },
     { key: 'submit', label: '上传提交', time: hasSubmitTime ? (task.submit_time || task.update_time || '') : '', done: hasSubmitTime },
     {
       key: 'review',
       label: props.taskGroup === 'cs' && task.status === 'rejected' ? '客服提出修改' : `${reviewerName.value}审核`,
       time: task.finish_time || (['rejected', 'pending_original'].includes(task.status) ? task.update_time : ''),
-      done: ['rejected', 'pending_original', 'finished'].includes(task.status)
+      done: ['rejected', 'pending_original', 'pending_original_review', 'finished'].includes(task.status)
     }
   ]
-  if (props.taskGroup === 'cs' && ['pending_original', 'finished'].includes(task.status)) {
+  if (props.taskGroup === 'cs' && ['pending_original', 'pending_original_review', 'finished'].includes(task.status)) {
     items.push({
       key: 'original-upload',
       label: '上传原图',
+      time: ['pending_original_review', 'finished'].includes(task.status) ? originalUploadTime : '',
+      done: ['pending_original_review', 'finished'].includes(task.status)
+    })
+    items.push({
+      key: 'original-review',
+      label: '客服审核原图',
       time: task.status === 'finished' ? (task.finish_time || task.update_time || '') : '',
       done: task.status === 'finished'
     })
@@ -95,6 +103,7 @@ function activeKey(status) {
   if (status === 'doing') return 'review'
   if (status === 'rejected') return 'submit'
   if (status === 'pending_original') return 'original-upload'
+  if (status === 'pending_original_review') return 'original-review'
   return ''
 }
 </script>

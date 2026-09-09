@@ -57,7 +57,7 @@ async function setShiftStatus(status, user) {
              publisher_id = NULL, publisher_name = '', update_time = NOW()
          WHERE task_group = 'cs'
            AND publisher_id = ?
-           AND status NOT IN ('wait', 'finished')`,
+           AND status NOT IN ('wait', 'pending_original_review', 'finished')`,
         [POOLED, user.id]
       );
       movedTaskCount = Number(result?.affectedRows || 0);

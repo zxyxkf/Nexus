@@ -501,7 +501,12 @@ it('opens payment tracking from task images and reports batch skip reasons', asy
   expect(restrictedList.body.data.list).toEqual(expect.arrayContaining([
     expect.objectContaining({
       id: restrictedSameStoreTask,
-      allowedActions: { review: false, openPayment: true }
+      allowedActions: {
+        review: false,
+        reviewOriginal: false,
+        withdrawOriginal: false,
+        openPayment: true
+      }
     })
   ]));
   expect(restrictedList.body.data.list.some(task => Number(task.id) === Number(restrictedCrossStoreTask))).toBe(false);
@@ -529,7 +534,12 @@ it('opens payment tracking from task images and reports batch skip reasons', asy
   expect(allStoreList.body.data.list).toEqual(expect.arrayContaining([
     expect.objectContaining({
       id: restrictedCrossStoreTask,
-      allowedActions: { review: false, openPayment: true }
+      allowedActions: {
+        review: false,
+        reviewOriginal: false,
+        withdrawOriginal: false,
+        openPayment: true
+      }
     })
   ]));
 

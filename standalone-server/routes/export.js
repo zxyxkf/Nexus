@@ -208,6 +208,8 @@ router.get('/tasks', async (req, res) => {
 
     const statusMap = { wait: '待接单', accepted: '已接单', doing: '作图中', pending_original: '待上传原图', finished: '已完成', rejected: '已驳回' };
 
+    statusMap.pending_original_review = '待审核原图';
+
     rows.forEach(row => {
       sheet.addRow({
         task_no: row.task_no,
@@ -224,6 +226,7 @@ router.get('/tasks', async (req, res) => {
 
     // 状态列着色
     const statusColors = { wait: 'FFE0E0E0', accepted: 'FFFFF3CD', doing: 'FFCCE5FF', pending_original: 'FFFFE0B2', finished: 'FFD4EDDA', rejected: 'FFF8D7DA' };
+    statusColors.pending_original_review = 'FFFFE0B2';
     sheet.eachRow((row, rowIdx) => {
       if (rowIdx > 1) {
         const statusCell = row.getCell(5);

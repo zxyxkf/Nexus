@@ -20,9 +20,9 @@
         </el-form-item>
 
         <!-- 共享字段：款号 + 指定颜色；客服任务使用素材库款式选择器 -->
-        <el-form-item label="款号">
+        <el-form-item label="款号" :prop="isOperatorDesignTask ? 'styleNumber' : undefined">
           <StylePicker v-if="isCsAgent" v-model="materialStyleId" v-model:color="form.specifiedColor" v-model:selected-image-ids="selectedMaterialImageIds" :show-images="false" @change="onMaterialStyleChange" />
-          <el-input v-else v-model="form.styleNumber" placeholder="款号（可选）" />
+          <el-input v-else v-model="form.styleNumber" :placeholder="isOperatorDesignTask ? '请输入款号' : '款号（可选）'" />
         </el-form-item>
         <el-form-item v-if="!isCsAgent" label="指定颜色">
           <el-input v-model="form.specifiedColor" placeholder="指定颜色（可选）" />
@@ -217,6 +217,7 @@ const route = useRoute()
 const taskGroup = computed(() => route.meta.taskGroup || (route.meta.role === 'cs_agent' || route.path.startsWith('/cs/') ? 'cs' : 'design'))
 const isCsAgent = computed(() => taskGroup.value === 'cs' || route.path.startsWith('/cs/'))
 const isOperatorTask = computed(() => taskGroup.value === 'operator')
+const isOperatorDesignTask = computed(() => route.meta.role === 'operator' && taskGroup.value === 'design')
 const designerLabel = computed(() => isCsAgent.value ? '指定基础美工' : isOperatorTask.value ? '指定运营助理' : '指定美工')
 const designerPlaceholder = computed(() => isCsAgent.value ? '不选择则发布到基础任务大厅' : isOperatorTask.value ? '不选择则发布到运营任务大厅' : '不选择则发布到任务大厅')
 const designerHint = computed(() => isCsAgent.value ? '选择基础美工后任务将直接分配给该人员' : isOperatorTask.value ? '选择运营助理后任务将直接分配给该人员' : '选择美工后任务将直接分配给该人员')
@@ -473,6 +474,15 @@ const designers = ref([])
 const rules = {
   scoreItemId: [
     { required: true, message: '请选择工作项目', trigger: 'change' }
+  ],
+  styleNumber: [
+    {
+      validator: (_rule, value, callback) => {
+        if (isOperatorDesignTask.value && !String(value || '').trim()) return callback(new Error('请填写款号'))
+        callback()
+      },
+      trigger: ['blur', 'change']
+    }
   ]
 }
 

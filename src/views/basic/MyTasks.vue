@@ -46,6 +46,7 @@
               <el-option label="已接单" value="accepted" />
               <el-option v-if="!isTodoRoute" label="审核中" value="doing" />
               <el-option label="待上传原图" value="pending_original" />
+              <el-option label="待审核原图" value="pending_original_review" />
               <el-option v-if="!isTodoRoute" label="已完成" value="finished" />
               <el-option label="修改中" value="rejected" />
             </el-select>
@@ -199,7 +200,13 @@
               @click="handleUndoSubmit(row)"
             >撤回</el-button>
             <el-button
-              v-if="row.status !== 'finished'"
+              v-if="row.status === 'pending_original_review'"
+              type="warning"
+              link size="small"
+              @click="handleWithdrawOriginal(row)"
+            >撤回</el-button>
+            <el-button
+              v-if="row.status !== 'finished' && row.status !== 'pending_original_review'"
               type="info"
               link size="small"
               @click="openTransfer(row)"
@@ -383,7 +390,7 @@ import { ref, computed, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Document, Search, UploadFilled } from '@element-plus/icons-vue'
-import { completeCsModificationApi, getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, transferTaskApi, undoSubmitApi, getBasicDesignerListApi, getPublisherListApi, getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { completeCsModificationApi, getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, transferTaskApi, undoSubmitApi, withdrawOriginalTaskApi, getBasicDesignerListApi, getPublisherListApi, getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, scoreReviewTagType } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
@@ -426,9 +433,9 @@ const pageTitle = computed(() => route.meta.title || '我的任务')
 
 function sanitizeStatusFilter() {
   const allowed = !fixedStatus.value
-    ? new Set(['accepted', 'doing', 'pending_original', 'finished', 'rejected'])
+    ? new Set(['accepted', 'doing', 'pending_original', 'pending_original_review', 'finished', 'rejected'])
     : isTodoRoute.value
-      ? new Set(['accepted', 'pending_original', 'rejected'])
+      ? new Set(['accepted', 'pending_original', 'pending_original_review', 'rejected'])
       : new Set()
   if (!allowed.has(statusFilter.value)) statusFilter.value = ''
 }
@@ -550,7 +557,7 @@ async function loadData(options = {}) {
       page: page.value,
       pageSize: pageSize.value,
       status: isTodoRoute.value
-        ? (statusFilter.value || 'accepted,rejected,pending_original')
+        ? (statusFilter.value || 'accepted,rejected,pending_original,pending_original_review')
         : (fixedStatus.value || statusFilter.value || undefined),
       taskGroup: 'cs',
       keyword: keyword.value || undefined,
@@ -826,6 +833,25 @@ async function handleUndoSubmit(row) {
       loadData()
     } else {
       ElMessage.error(res.msg)
+    }
+  } catch {}
+}
+
+async function handleWithdrawOriginal(row) {
+  if (!row?.id || row.status !== 'pending_original_review') return
+  try {
+    await ElMessageBox.confirm(
+      '确认撤回原图审核？撤回后可以重新上传原图，现有文件不会被清空。',
+      '撤回原图审核',
+      { type: 'warning', confirmButtonText: '确认撤回' }
+    )
+    const res = await withdrawOriginalTaskApi({ taskId: row.id })
+    if (res.code === 0) {
+      ElMessage.success('已撤回，可重新上传原图')
+      detailVisible.value = false
+      await loadData()
+    } else {
+      ElMessage.error(res.msg || '撤回失败')
     }
   } catch {}
 }

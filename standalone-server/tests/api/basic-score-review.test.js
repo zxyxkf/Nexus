@@ -180,6 +180,11 @@ describe('基础美工申请分以客服最终通过为审核起点', () => {
       .set('Authorization', `Bearer ${basicToken}`)
       .send({ taskId })
       .expect(200);
+    const originalReview = await request(app)
+      .post('/api/task/review-original')
+      .set('Authorization', `Bearer ${csToken}`)
+      .send({ taskId, action: 'pass' });
+    expect(originalReview.body.code).toBe(0);
 
     reviewList = await request(app)
       .get('/api/score/review/list?pageSize=50')
@@ -248,6 +253,11 @@ describe('基础美工申请分以客服最终通过为审核起点', () => {
       .set('Authorization', `Bearer ${basicToken}`)
       .send({ taskId: finishedPendingTaskId })
       .expect(200);
+    const originalReview = await request(app)
+      .post('/api/task/review-original')
+      .set('Authorization', `Bearer ${csToken}`)
+      .send({ taskId: finishedPendingTaskId, action: 'pass' });
+    expect(originalReview.body.code).toBe(0);
 
     const leadStatsBefore = await request(app)
       .get('/api/task/stats/my')
@@ -318,6 +328,11 @@ describe('客服已完成基础美工任务编号修改', () => {
       .set('Authorization', `Bearer ${basicToken}`)
       .send({ taskId })
       .expect(200);
+    const originalReview = await request(app)
+      .post('/api/task/review-original')
+      .set('Authorization', `Bearer ${csToken}`)
+      .send({ taskId, action: 'pass' });
+    expect(originalReview.body.code).toBe(0);
 
     const detail = await request(app)
       .get(`/api/task/detail?taskId=${taskId}`)
@@ -394,6 +409,11 @@ describe('客服已完成基础美工任务编号修改', () => {
       .set('Authorization', `Bearer ${basicToken}`)
       .send({ taskId })
       .expect(200);
+    const originalReview = await request(app)
+      .post('/api/task/review-original')
+      .set('Authorization', `Bearer ${operatorToken}`)
+      .send({ taskId, action: 'pass' });
+    expect(originalReview.body.code).toBe(0);
 
     const denied = await request(app)
       .put('/api/task/cs-task-no')

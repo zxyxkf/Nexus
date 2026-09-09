@@ -4,6 +4,7 @@
  */
 
 const STATUS_MAP = {
+  pending_original_review: '待审核原图',
   draft: '草稿',
   wait: '待接单',
   accepted: '已接单',
@@ -15,6 +16,7 @@ const STATUS_MAP = {
 }
 
 const STATUS_TAG_TYPE = {
+  pending_original_review: 'warning',
   draft: '',
   wait: 'warning',
   accepted: 'primary',
@@ -26,6 +28,7 @@ const STATUS_TAG_TYPE = {
 }
 
 const PROGRESS_STEPS = {
+  pending_original_review: '90%',
   draft: '5%',
   wait: '15%',
   accepted: '35%',
@@ -41,7 +44,8 @@ const VALID_TRANSITIONS = {
   accepted: ['doing', 'draft'],
   doing: ['submitted', 'accepted'],
   submitted: ['finished', 'rejected'],
-  pending_original: ['finished'],
+  pending_original: ['pending_original_review'],
+  pending_original_review: ['finished', 'pending_original'],
   rejected: ['submitted']
 }
 

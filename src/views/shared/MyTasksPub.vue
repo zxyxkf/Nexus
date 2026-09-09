@@ -65,6 +65,7 @@
               <el-option label="已接单" value="accepted" />
               <el-option :label="isCsAgent ? '审核中' : '作图中'" value="doing" />
               <el-option v-if="isCsAgent" label="待上传原图" value="pending_original" />
+              <el-option v-if="isCsAgent" label="待审核原图" value="pending_original_review" />
               <el-option label="已完成" value="finished" />
               <el-option :label="isCsAgent ? '修改中' : '已驳回'" value="rejected" />
               <el-option label="草稿" value="draft" />
@@ -426,7 +427,7 @@ function statusLabel(s) {
 }
 function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
 
-const progressSteps = { wait: '20%', accepted: '40%', doing: '60%', pending_original: '80%', finished: '100%', rejected: '60%', draft: '0%' }
+const progressSteps = { wait: '20%', accepted: '40%', doing: '60%', pending_original: '80%', pending_original_review: '90%', finished: '100%', rejected: '60%', draft: '0%' }
 function progressWidth(s) { return progressSteps[s] || '0%' }
 
 const { getRefImages, getRefAttachments, getWorkFiles, getEffectFiles, getOriginalFiles, getRefImageSrcList, getImagePreviewIndex } = useFileHelpers()

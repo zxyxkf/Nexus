@@ -121,6 +121,39 @@ async function notifyTaskEvent(eventType, task, actor) {
       publisherId: publisher_id,
       designerId: designer_id
     },
+    task_original_uploaded: {
+      userId: publisher_id,
+      type: 'task_submit',
+      title: '原图待审核',
+      taskTitle: title,
+      content: `任务「${title}」的原图已上传，等待您审核`,
+      taskId: task.id,
+      taskGroup: task.task_group,
+      publisherId: publisher_id,
+      designerId: designer_id
+    },
+    task_original_review_pass: {
+      userId: designer_id,
+      type: 'task_review',
+      title: '原图审核通过',
+      taskTitle: title,
+      content: `您的任务「${title}」原图已通过审核`,
+      taskId: task.id,
+      taskGroup: task.task_group,
+      publisherId: publisher_id,
+      designerId: designer_id
+    },
+    task_original_review_reject: {
+      userId: designer_id,
+      type: 'task_reject',
+      title: '原图需要重新上传',
+      taskTitle: title,
+      content: `您的任务「${title}」原图审核未通过，请重新上传`,
+      taskId: task.id,
+      taskGroup: task.task_group,
+      publisherId: publisher_id,
+      designerId: designer_id
+    },
     task_transfer: {
       userId: designer_id,
       type: 'task_transfer',

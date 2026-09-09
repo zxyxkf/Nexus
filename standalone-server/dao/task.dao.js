@@ -214,11 +214,14 @@ async function getTaskRejectRecords(taskId) {
 
 async function getTaskForUpdate(conn, taskId) {
   const [rows] = await conn.execute(
-    `SELECT id, title, task_no, status, publisher_id, publisher_name,
-            designer_id, designer_name, task_group,
-            score, applied_score, score_review_status, score_review_score,
-            handoff_status, handoff_time
-     FROM task_info WHERE id = ? FOR UPDATE`,
+    `SELECT t.id, t.title, t.task_no, t.status, t.publisher_id, t.publisher_name,
+            t.designer_id, t.designer_name, t.task_group,
+            t.score, t.applied_score, t.score_review_status, t.score_review_score,
+            t.handoff_status, t.handoff_time,
+            COALESCE(u.store, '') AS publisher_store
+     FROM task_info t
+     LEFT JOIN sys_user u ON u.id = t.publisher_id
+     WHERE t.id = ? FOR UPDATE`,
     [taskId]
   );
   return rows[0] || null;
@@ -484,7 +487,7 @@ function appendStatusFilter(where, params, status) {
 }
 
 /** 我发布的任务 */
-async function queryMyPublished({ userId, role, store, permissions = [], filterGroup, selfOnly, paymentOpenView = false, canViewAllPaymentTasks = false, status, styleNumber, keyword, taskNo, designerId, publisherId, dateStart, dateEnd, dateField, sortField, sortOrder, page, pageSize }) {
+async function queryMyPublished({ userId, role, store, permissions = [], filterGroup, selfOnly, reviewView = false, reviewScope = '', paymentOpenView = false, canViewAllPaymentTasks = false, status, styleNumber, keyword, taskNo, designerId, publisherId, dateStart, dateEnd, dateField, sortField, sortOrder, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE 1=1';
   const params = [];
@@ -497,6 +500,18 @@ async function queryMyPublished({ userId, role, store, permissions = [], filterG
     if (!canViewAllPaymentTasks) {
       where += ' AND t.publisher_id IN (SELECT id FROM sys_user WHERE store = ?)';
       params.push(store || '');
+    }
+  } else if (reviewView) {
+    if (group === 'design') where += " AND (t.task_group = ? OR t.task_group IS NULL OR t.task_group = '')";
+    else where += ' AND t.task_group = ?';
+    params.push(group);
+
+    if (reviewScope === 'store' && store) {
+      where += ' AND t.publisher_id IN (SELECT id FROM sys_user WHERE store = ?)';
+      params.push(store);
+    } else if (reviewScope !== 'all') {
+      where += ' AND t.publisher_id = ?';
+      params.push(userId);
     }
   } else if (role === 'admin' || role === 'sub_admin') {
     if (group === 'design') where += ' AND (t.task_group = ? OR t.task_group IS NULL OR t.task_group = \'\')';
@@ -515,7 +530,8 @@ async function queryMyPublished({ userId, role, store, permissions = [], filterG
 
   const requiredPerm = group === 'operator' ? 'operator.tasks.assistant' : group === 'cs' ? 'cs.tasks.basic' : 'operator.tasks.design';
   const reviewPerm = group === 'operator' ? 'operator.review.assistant' : group === 'cs' ? 'cs.review.basic' : 'operator.review.design';
-  if (!paymentOpenView && !hasPerm(requiredPerm) && !hasPerm(reviewPerm) && role !== 'admin' && role !== 'sub_admin') {
+  const paymentOnlyReview = reviewView && group === 'design' && hasPerm('payment.open');
+  if (!paymentOpenView && !paymentOnlyReview && !hasPerm(requiredPerm) && !hasPerm(reviewPerm) && role !== 'admin' && role !== 'sub_admin') {
     where += ' AND 1=0';
   }
 
@@ -793,7 +809,7 @@ async function getPublisherSummary(userId) {
             SUM(CASE WHEN status = 'doing' THEN 1 ELSE 0 END) as doing_count,
             SUM(CASE WHEN status = 'finished' THEN 1 ELSE 0 END) as finished_count,
             SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected_count,
-            SUM(CASE WHEN status IN ('wait','accepted','doing','pending_original') THEN 1 ELSE 0 END) as unfinished_count
+            SUM(CASE WHEN status IN ('wait','accepted','doing','pending_original','pending_original_review') THEN 1 ELSE 0 END) as unfinished_count
      FROM task_info WHERE publisher_id = ?`, [userId]
   );
   return rows[0];
@@ -834,7 +850,7 @@ async function getMonthlyRawData(publisherId, taskGroup, year) {
             MONTH(t.create_time) as month,
             COUNT(*) as published,
             SUM(CASE WHEN t.status = 'finished' THEN 1 ELSE 0 END) as finished,
-            SUM(CASE WHEN t.status IN ('accepted','doing','pending_original') THEN 1 ELSE 0 END) as unsubmitted
+            SUM(CASE WHEN t.status IN ('accepted','doing','pending_original','pending_original_review') THEN 1 ELSE 0 END) as unsubmitted
      FROM task_info t
      WHERE t.publisher_id = ? AND t.task_group = ? AND YEAR(t.create_time) = ?
      GROUP BY t.designer_id, MONTH(t.create_time)`,
@@ -851,7 +867,7 @@ async function getPublisherMonthlyRaw(publisherId, taskGroup, year) {
             SUM(CASE WHEN status = 'finished' THEN 1 ELSE 0 END) as finished,
             SUM(CASE WHEN status IN ('accepted','doing') THEN 1 ELSE 0 END) as doing,
             SUM(CASE WHEN status = 'wait' THEN 1 ELSE 0 END) as wait,
-            SUM(CASE WHEN status IN ('wait','accepted','doing','pending_original') THEN 1 ELSE 0 END) as unfinished
+            SUM(CASE WHEN status IN ('wait','accepted','doing','pending_original','pending_original_review') THEN 1 ELSE 0 END) as unfinished
      FROM task_info
      WHERE publisher_id = ? AND task_group = ? AND YEAR(create_time) = ?
      GROUP BY MONTH(create_time)`,
@@ -1001,18 +1017,24 @@ async function getAllTasksForStats() {
   return rows;
 }
 
-async function getSidebarBadgeStats(userId, allReview = false) {
+async function getSidebarBadgeStats(userId, reviewScope = 'own', store = '') {
   const pool = getPool();
-  const reviewOwnerSql = allReview ? '1=1' : 'publisher_id = ?';
-  const params = allReview ? [userId, userId, userId] : [userId, userId, userId, userId, userId, userId];
+  const reviewOwnerSql = reviewScope === 'all'
+    ? '1=1'
+    : reviewScope === 'store' && store
+      ? 'publisher_id IN (SELECT id FROM sys_user WHERE store = ?)'
+      : 'publisher_id = ?';
+  const reviewScopeValue = reviewScope === 'store' && store ? store : userId;
+  const params = [userId, userId, userId];
+  if (reviewScope !== 'all') params.push(reviewScopeValue, reviewScopeValue, reviewScopeValue);
   const [rows] = await pool.execute(
     `SELECT
        SUM(CASE WHEN designer_id = ? AND COALESCE(NULLIF(task_group, ''), 'design') = 'design' AND status IN ('accepted', 'rejected') THEN 1 ELSE 0 END) as design_todo_count,
-       SUM(CASE WHEN designer_id = ? AND task_group = 'cs' AND status IN ('accepted', 'rejected', 'pending_original') THEN 1 ELSE 0 END) as basic_todo_count,
+       SUM(CASE WHEN designer_id = ? AND task_group = 'cs' AND status IN ('accepted', 'rejected', 'pending_original', 'pending_original_review') THEN 1 ELSE 0 END) as basic_todo_count,
        SUM(CASE WHEN designer_id = ? AND task_group = 'operator' AND status IN ('accepted', 'rejected') THEN 1 ELSE 0 END) as assistant_todo_count,
        SUM(CASE WHEN COALESCE(task_group, 'design') IN ('design', '') AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as design_review_count,
        SUM(CASE WHEN task_group = 'operator' AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as operator_review_count,
-       SUM(CASE WHEN task_group = 'cs' AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as cs_review_count,
+       SUM(CASE WHEN task_group = 'cs' AND status IN ('doing', 'pending_original_review') AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as cs_review_count,
        SUM(CASE WHEN task_group = 'cs' AND status = 'rejected' AND publisher_id = ? AND COALESCE(handoff_status, '') <> 'pooled' THEN 1 ELSE 0 END) as cs_modification_count,
        SUM(CASE WHEN task_group = 'cs' AND score_review_status = 'pending' AND status IN ('doing', 'finished') THEN 1 ELSE 0 END) as score_review_count,
        SUM(CASE WHEN task_group = 'cs' AND handoff_status = 'pooled' THEN 1 ELSE 0 END) as cs_handoff_count

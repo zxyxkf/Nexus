@@ -114,6 +114,15 @@ router.post('/complete-original-upload', requireAnyPermission(['task.upload.work
   }
 });
 
+router.post('/withdraw-original', requireAnyPermission(['task.upload.work'], 'basic_designer'), async (req, res, next) => {
+  try {
+    const result = await taskService.withdrawOriginalTask(Number(req.body.taskId), req.user);
+    res.json({ code: 0, ...result });
+  } catch (error) {
+    next(error);
+  }
+});
+
 router.post('/upload-files', requireAnyPermission(['task.upload.work', 'task.create.design', 'task.create.operator', 'task.create.cs'], 'designer', 'basic_designer', 'operator', 'cs_agent', 'operator_assistant'), (req, res, next) => {
   const tmpDir = path.join(os.tmpdir(), 'd-design-tmp');
   try { fs.mkdirSync(tmpDir, { recursive: true }); } catch (_) {}
@@ -289,6 +298,14 @@ router.post('/review', requireAnyPermission(['task.review.own', 'task.review.sto
   try {
     const { taskId, action, rejectReason } = req.body;
     const result = await taskService.reviewTask(taskId, action, rejectReason, req.user);
+    res.json({ code: 0, ...result });
+  } catch (err) { next(err); }
+});
+
+router.post('/review-original', requireAnyPermission(['task.review.own', 'task.review.store', 'task.review.all'], 'operator', 'admin', 'cs_agent'), async (req, res, next) => {
+  try {
+    const { taskId, action } = req.body;
+    const result = await taskService.reviewOriginalTask(Number(taskId), action, req.user);
     res.json({ code: 0, ...result });
   } catch (err) { next(err); }
 });

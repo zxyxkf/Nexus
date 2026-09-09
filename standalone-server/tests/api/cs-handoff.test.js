@@ -102,9 +102,9 @@ beforeEach(async () => {
   await setShift(csBId, 'online');
 });
 
-test('offline pools accepted doing rejected and draft but not wait or finished', async () => {
+test('offline pools active work but keeps wait, original review and finished tasks assigned', async () => {
   const ids = {};
-  for (const status of ['wait', 'accepted', 'doing', 'rejected', 'draft', 'finished']) {
+  for (const status of ['wait', 'accepted', 'doing', 'rejected', 'draft', 'pending_original_review', 'finished']) {
     ids[status] = await createTask(status, { designerId: status === 'wait' ? null : basicId });
   }
 
@@ -122,7 +122,7 @@ test('offline pools accepted doing rejected and draft but not wait or finished',
   for (const status of ['accepted', 'doing', 'rejected', 'draft']) {
     expect(byStatus.get(status)).toMatchObject({ publisher_id: null, publisher_name: '', handoff_status: 'pooled' });
   }
-  for (const status of ['wait', 'finished']) {
+  for (const status of ['wait', 'pending_original_review', 'finished']) {
     expect(byStatus.get(status)).toMatchObject({ publisher_id: csAId, handoff_status: '' });
   }
 });

@@ -16,6 +16,7 @@
           <el-option label="已接单" value="accepted" />
           <el-option :label="taskGroup === 'cs' ? '审核中' : '作图中'" value="doing" />
           <el-option v-if="taskGroup === 'cs'" label="待上传原图" value="pending_original" />
+          <el-option v-if="taskGroup === 'cs'" label="待审核原图" value="pending_original_review" />
           <el-option label="已完成" value="finished" />
           <el-option :label="taskGroup === 'cs' ? '修改中' : '已驳回'" value="rejected" />
         </el-select>

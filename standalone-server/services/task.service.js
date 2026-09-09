@@ -57,20 +57,44 @@ function canOpenPaymentTask(task, user) {
 
 function canReviewTask(task, user) {
   if (task?.status !== 'doing') return false;
-  const groupPermission = normalizedTaskGroup(task) === 'operator'
+  return canReviewTaskWithStatus(task, user);
+}
+
+function reviewScopeForGroup(user, taskGroup) {
+  if (hasPermission(user, 'task.review.all')) return 'all';
+  if (hasPermission(user, 'task.review.store') && user?.store) return 'store';
+
+  const groupPermission = taskGroup === 'operator'
     ? 'operator.review.assistant'
-    : normalizedTaskGroup(task) === 'cs'
+    : taskGroup === 'cs'
       ? 'cs.review.basic'
       : 'operator.review.design';
-  const hasReviewPermission = hasPermission(user, groupPermission)
-    || hasPermission(user, 'task.review.own')
-    || hasPermission(user, 'task.review.store')
-    || hasPermission(user, 'task.review.all');
-  if (!hasReviewPermission) return false;
-  if (user?.role === 'operator' || user?.role === 'cs_agent') {
-    return Number(task.publisher_id) === Number(user.id);
+  if (hasPermission(user, 'task.review.own') || hasPermission(user, groupPermission)) return 'own';
+  return '';
+}
+
+function canReviewTaskWithStatus(task, user) {
+  const scope = reviewScopeForGroup(user, normalizedTaskGroup(task));
+  if (scope === 'all') return true;
+  if (scope === 'store') {
+    return Boolean(user?.store)
+      && Boolean(task?.publisher_store)
+      && task.publisher_store === user.store;
   }
-  return true;
+  return scope === 'own' && Number(task.publisher_id) === Number(user?.id);
+}
+
+function canReviewOriginalTask(task, user) {
+  if (task?.status !== 'pending_original_review' || normalizedTaskGroup(task) !== 'cs') return false;
+  return canReviewTaskWithStatus(task, user);
+}
+
+function canWithdrawOriginalTask(task, user) {
+  return task?.status === 'pending_original_review'
+    && normalizedTaskGroup(task) === 'cs'
+    && user?.role === 'basic_designer'
+    && hasPermission(user, 'task.upload.work')
+    && Number(task.designer_id) === Number(user.id);
 }
 
 function attachAllowedActions(task, user) {
@@ -78,6 +102,8 @@ function attachAllowedActions(task, user) {
     ...task,
     allowedActions: {
       review: canReviewTask(task, user),
+      reviewOriginal: canReviewOriginalTask(task, user),
+      withdrawOriginal: canWithdrawOriginalTask(task, user),
       openPayment: canOpenPaymentTask(task, user)
     }
   };
@@ -89,6 +115,9 @@ async function prepareTaskCreation(body, user) {
   const title = String(body?.title || '').trim();
   if (!title) throw new AppError(400, '任务标题不能为空');
   const taskGroup = body.taskGroup || (user.role === 'cs_agent' ? 'cs' : 'design');
+  if (user.role === 'operator' && taskGroup === 'design' && !String(body?.styleNumber || '').trim()) {
+    throw new AppError(400, '\u8bf7\u586b\u5199\u6b3e\u53f7');
+  }
   if (taskGroup === 'cs') await csHandoffService.assertCsActionAvailable(user, '发布任务');
   return { title, taskGroup };
 }
@@ -537,8 +566,10 @@ async function getMyPublished(query, user) {
   const pageSize = parseInt(query.pageSize) || 15;
   const group = query.taskGroup || (user.role === 'cs_agent' ? 'cs' : 'design');
   const selfOnly = query.selfOnly === '1' || query.selfOnly === 'true';
+  const reviewView = query.reviewView === '1' || query.reviewView === 'true';
+  const reviewScope = reviewView ? reviewScopeForGroup(user, group) : '';
   const allPaymentTasks = canViewAllPaymentTasks(user);
-  const paymentOpenView = group === 'design'
+  const paymentOpenView = !reviewView && group === 'design'
     && hasPermission(user, 'payment.open')
     && (!selfOnly || allPaymentTasks);
 
@@ -548,6 +579,8 @@ async function getMyPublished(query, user) {
     permissions: user.permissions || [],
     filterGroup: group,
     selfOnly,
+    reviewView,
+    reviewScope,
     paymentOpenView,
     canViewAllPaymentTasks: allPaymentTasks,
     status: query.status, styleNumber: query.styleNumber,
@@ -1060,7 +1093,6 @@ async function completeOriginalUpload(taskId, user) {
       if (user.role !== 'basic_designer' || Number(task.designer_id) !== Number(user.id)) {
         throw new AppError(403, '无权完成此任务的原图上传');
       }
-      if (task.status === 'finished') return;
       if (task.status !== 'pending_original') throw new AppError(400, '当前任务不能完成原图上传');
 
       const [files] = await conn.execute(
@@ -1069,26 +1101,99 @@ async function completeOriginalUpload(taskId, user) {
       );
       if (!files.length) throw new AppError(400, '请先上传至少一个原图文件');
 
-      const finalScore = Number(task.applied_score) > 0 ? Number(task.applied_score) : 1;
-      await taskDao.updateTaskStatus(conn, taskId, 'finished', {
-        finish_time: new Date(),
-        urge_time: null,
-        score: 1,
-        score_review_status: finalScore > 1 ? 'pending' : '',
-        score_review_reason: '',
-        score_review_time: null,
-        score_review_score: 0
+      await taskDao.updateTaskStatus(conn, taskId, 'pending_original_review', {
+        finish_time: null,
+        urge_time: null
       });
-      taskBrief = { ...task, id: taskId, status: 'finished' };
+      taskBrief = { ...task, id: taskId, status: 'pending_original_review' };
     });
 
     if (taskBrief) {
-      await notifyTaskEvent('task_review_pass', taskBrief, user);
+      await notifyTaskEvent('task_original_uploaded', taskBrief, user);
       socketEmit(`user:${taskBrief.publisher_id}`);
       socketEmit('group:cs');
     }
-    return { msg: '原图上传已完成，任务已结束' };
+    return { msg: '原图上传完成，等待客服审核' };
   });
+}
+
+async function reviewOriginalTask(taskId, action, user) {
+  if (!taskId || !action) throw new AppError(400, '原图审核参数不完整');
+  if (!['pass', 'reject'].includes(action)) throw new AppError(400, '原图审核操作无效');
+  await csHandoffService.assertCsActionAvailable(user, '审核原图');
+
+  return withLock(`review-original:${taskId}`, async () => {
+    let taskBrief = null;
+    await executeTransaction(async (conn) => {
+      const task = await taskDao.getTaskForUpdate(conn, taskId);
+      if (!task) throw new AppError(400, '任务不存在');
+      if (task.task_group !== 'cs') throw new AppError(400, '仅客服基础美工任务支持原图审核');
+      if (task.status !== 'pending_original_review') throw new AppError(400, '当前任务不在待审核原图状态');
+      if (!canReviewOriginalTask(task, user)) throw new AppError(403, '无权审核此任务的原图');
+
+      const [files] = await conn.execute(
+        `SELECT id FROM task_file WHERE task_id = ? AND file_category = 'original' LIMIT 1`,
+        [taskId]
+      );
+      if (!files.length) throw new AppError(400, '请先上传至少一个原图文件');
+
+      if (action === 'pass') {
+        const finalScore = Number(task.applied_score) > 0 ? Number(task.applied_score) : 1;
+        await taskDao.updateTaskStatus(conn, taskId, 'finished', {
+          finish_time: new Date(),
+          urge_time: null,
+          score: 1,
+          score_review_status: finalScore > 1 ? 'pending' : '',
+          score_review_reason: '',
+          score_review_time: null,
+          score_review_score: 0
+        });
+      } else {
+        await taskDao.updateTaskStatus(conn, taskId, 'pending_original', {
+          finish_time: null,
+          urge_time: null
+        });
+      }
+      taskBrief = { ...task, id: taskId, status: action === 'pass' ? 'finished' : 'pending_original' };
+    });
+
+    if (taskBrief) {
+      await notifyTaskEvent(action === 'pass' ? 'task_original_review_pass' : 'task_original_review_reject', taskBrief, user);
+      socketEmit(`user:${taskBrief.designer_id}`);
+      socketEmit(`user:${taskBrief.publisher_id}`);
+      socketEmit('group:cs');
+    }
+    return { msg: action === 'pass' ? '原图审核通过，任务已完成' : '原图审核不通过，请重新上传' };
+  });
+}
+
+async function withdrawOriginalTask(taskId, user) {
+  if (!taskId) throw new AppError(400, '任务ID不能为空');
+
+  let taskBrief = null;
+  await executeTransaction(async (conn) => {
+    const task = await taskDao.getTaskForUpdate(conn, taskId);
+    if (!task) throw new AppError(400, '任务不存在');
+    if (!canWithdrawOriginalTask(task, user)) {
+      if (task.task_group !== 'cs' || task.status !== 'pending_original_review') {
+        throw new AppError(400, '当前任务不在待审核原图状态');
+      }
+      throw new AppError(403, '无权撤回此任务的原图审核');
+    }
+
+    await taskDao.updateTaskStatus(conn, taskId, 'pending_original', {
+      finish_time: null,
+      urge_time: null
+    });
+    taskBrief = { ...task, id: taskId, status: 'pending_original' };
+  });
+
+  if (taskBrief) {
+    socketEmit(`user:${taskBrief.publisher_id}`);
+    socketEmit(`user:${taskBrief.designer_id}`);
+    socketEmit('group:cs');
+  }
+  return { msg: '原图审核已撤回，可重新上传原图' };
 }
 
 async function completeCsModification(taskId, recordId, reply, appliedScore, retainedFileIds, files, user) {
@@ -1324,6 +1429,7 @@ async function transferTask(taskId, newDesignerId, reason, user) {
     if (!task) throw new AppError(400, '任务不存在');
     if (Number(task.designer_id) !== Number(user.id)) throw new AppError(403, '无权转移此任务');
     if (task.status === 'finished') throw new AppError(400, '已完成的任务不能转移');
+    if (task.status === 'pending_original_review') throw new AppError(400, '待审核原图的任务不能转移');
     if (Number(newDesignerId) === Number(user.id)) throw new AppError(400, '不能转移给自己');
 
     const d = await taskDao.findDesigner(conn, newDesignerId, 'basic_designer');
@@ -1404,10 +1510,7 @@ async function reviewTask(taskId, action, rejectReason, user) {
       reviewedTaskGroup = task?.task_group || 'design';
       if (!task) throw new AppError(400, '任务不存在');
 
-      // 业务权限：非管理员只能审核自己发布的任务
-      if ((user.role === 'operator' || user.role === 'cs_agent') && Number(task.publisher_id) !== Number(user.id)) {
-        throw new AppError(403, '无权审核他人发布的任务');
-      }
+      if (!canReviewTaskWithStatus(task, user)) throw new AppError(403, '无权审核此任务');
       if (task.status === 'finished' && action === 'pass') {
         alreadyFinished = true;
         return;
@@ -1483,11 +1586,14 @@ async function batchReview(taskIds, user) {
   const count = await executeTransaction(async (conn) => {
     const placeholders = taskIds.map(() => '?').join(',');
     const [rows] = await conn.execute(
-      `SELECT id, status, publisher_id, task_group, applied_score, score_review_status, score_review_score FROM task_info WHERE id IN (${placeholders})`, taskIds
+      `SELECT t.id, t.status, t.publisher_id, t.task_group, t.applied_score,
+              t.score_review_status, t.score_review_score,
+              COALESCE(u.store, '') AS publisher_store
+       FROM task_info t
+       LEFT JOIN sys_user u ON u.id = t.publisher_id
+       WHERE t.id IN (${placeholders})`, taskIds
     );
-    if ((user.role === 'operator' || user.role === 'cs_agent') && rows.some(r => Number(r.publisher_id) !== Number(user.id))) {
-      throw new AppError(403, '无权审核他人发布的任务');
-    }
+    if (rows.some(row => !canReviewTaskWithStatus(row, user))) throw new AppError(403, '无权审核所选任务');
     const validIds = rows.filter(r => r.status === 'doing').map(r => r.id);
     if (validIds.length === 0) throw new AppError(400, '所选任务均不可审核');
 
@@ -1630,7 +1736,11 @@ async function getMyStats(user) {
     sidebar_badges: visibleSidebarBadges(
       user,
       stats || {},
-      await taskDao.getSidebarBadgeStats(userId, role === 'admin' || role === 'sub_admin')
+      await taskDao.getSidebarBadgeStats(
+        userId,
+        reviewScopeForGroup(user, 'design') || 'own',
+        user.store || ''
+      )
     )
   });
 
@@ -2145,7 +2255,7 @@ async function getAdminDetailStats(user = null) {
 module.exports = {
   createTask, publishTask, snapshotMaterialImages, assertTaskViewAccess, getTaskFileForUser, getTaskDetail, deleteTask, updateTask, reopenFinishedCsTask, updateCsTaskNo, batchDelete, batchReassign,
   getMyPublished, getMyAccepted, getTaskHall, getAllTasks, getAllTasksForUser, searchTasks,
-  acceptTask, uploadFiles, uploadOriginalFiles, completeOriginalUpload, completeCsModification, transferTask, finishTask, reviewTask, requestCsModification, batchReview,
+  acceptTask, uploadFiles, uploadOriginalFiles, completeOriginalUpload, reviewOriginalTask, withdrawOriginalTask, completeCsModification, transferTask, finishTask, reviewTask, requestCsModification, batchReview,
   withdrawTask, undoSubmit,
   getMyStats, getDashboardStats, getAdminDetailStats
 };
