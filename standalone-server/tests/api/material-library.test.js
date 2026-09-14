@@ -1,5 +1,6 @@
 const os = require('os');
 const path = require('path');
+const fs = require('fs');
 const request = require('supertest');
 const { setupApp, cleanupDir } = require('./helpers/setup');
 
@@ -10,6 +11,7 @@ const PNG = Buffer.from(
 
 let app;
 let adminToken;
+let productId;
 let styleId;
 let materialDir;
 const cleanupDirs = [];
@@ -47,6 +49,7 @@ beforeAll(async () => {
     .set('Authorization', `Bearer ${adminToken}`)
     .send({ name: '上传限制测试商品库' });
   expect(product.body.code).toBe(0);
+  productId = product.body.data.id;
 
   const style = await request(app)
     .post(`/api/material-library/products/${product.body.data.id}/styles`)
@@ -80,6 +83,40 @@ describe('POST /api/material-library/styles/:styleId/images', () => {
       '图片.png',
       '商品图A.png'
     ]);
+    expect(stored.body.data.images.map(image => image.file_path)).toEqual([
+      'material/上传限制测试商品库/上传限制测试款式/军绿色A.png',
+      'material/上传限制测试商品库/上传限制测试款式/图片.png',
+      'material/上传限制测试商品库/上传限制测试款式/商品图A.png'
+    ]);
+    expect(fs.existsSync(path.join(materialDir, '上传限制测试商品库', '上传限制测试款式', '军绿色A.png'))).toBe(true);
+  });
+
+  it('moves the physical folders and stored paths when product or style cards are renamed', async () => {
+    const { execute } = require('../../config/database');
+
+    const styleRename = await request(app)
+      .put(`/api/material-library/styles/${styleId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: '重命名款式' });
+    expect(styleRename.body.code).toBe(0);
+    expect(fs.existsSync(path.join(materialDir, '上传限制测试商品库', '上传限制测试款式'))).toBe(false);
+    expect(fs.existsSync(path.join(materialDir, '上传限制测试商品库', '重命名款式', '军绿色A.png'))).toBe(true);
+
+    const productRename = await request(app)
+      .put(`/api/material-library/products/${productId}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: '重命名商品库' });
+    expect(productRename.body.code).toBe(0);
+    expect(fs.existsSync(path.join(materialDir, '上传限制测试商品库'))).toBe(false);
+    expect(fs.existsSync(path.join(materialDir, '重命名商品库', '重命名款式', '军绿色A.png'))).toBe(true);
+
+    const [rows] = await execute('SELECT file_path FROM material_image WHERE style_id = ? ORDER BY sort_order, id', [styleId]);
+    expect(rows.every(image => image.file_path.startsWith('material/重命名商品库/重命名款式/'))).toBe(true);
+
+    const preview = await request(app)
+      .get(`/api/material-library/images/${(await require('../../dao/material-library.dao').listImages(styleId))[0].id}/preview`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(preview.status).toBe(200);
   });
 
   it('rolls back the whole upload when a later file cannot be copied', async () => {
@@ -233,5 +270,48 @@ describe('POST /api/material-library/styles/:styleId/images', () => {
 
     const anonymous = await request(app).get(image.previewUrl);
     expect(anonymous.status).toBe(401);
+  });
+
+  it('ranks and caps style-only search results', async () => {
+    const dao = require('../../dao/material-library.dao');
+    const suffix = `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    const product = await request(app)
+      .post('/api/material-library/products')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: `search-product-${suffix}` });
+    expect(product.body.code).toBe(0);
+
+    const rankTerm = `rank-${suffix}`;
+    await dao.createStyle(product.body.data.id, `inside-${rankTerm}`, 1);
+    await dao.createStyle(product.body.data.id, `${rankTerm}-prefix`, 1);
+    await dao.createStyle(product.body.data.id, rankTerm, 1);
+
+    const ranked = await request(app)
+      .get('/api/material-library/search')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .query({ q: rankTerm, scope: 'styles', limit: 50 });
+
+    expect(ranked.body.code).toBe(0);
+    expect(ranked.body.data.products).toEqual([]);
+    expect(ranked.body.data.styles.map(style => style.name)).toEqual([
+      rankTerm,
+      `${rankTerm}-prefix`,
+      `inside-${rankTerm}`
+    ]);
+    expect(ranked.body.data.hasMore).toBe(false);
+
+    const bulkTerm = `bulk-${suffix}`;
+    for (let index = 0; index < 55; index += 1) {
+      await dao.createStyle(product.body.data.id, `${bulkTerm}-${String(index).padStart(2, '0')}`, 1);
+    }
+
+    const capped = await request(app)
+      .get('/api/material-library/search')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .query({ q: bulkTerm, scope: 'styles', limit: 500 });
+
+    expect(capped.body.code).toBe(0);
+    expect(capped.body.data.styles).toHaveLength(50);
+    expect(capped.body.data.hasMore).toBe(true);
   });
 });

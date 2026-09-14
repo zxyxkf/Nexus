@@ -9,6 +9,7 @@ jspm_packages/
 dist/
 dist.before-src-restore-check/
 release/
+release-*/
 standalone-server/dist/
 standalone-server/releases/
 build/Release/
@@ -32,6 +33,10 @@ pids/
 .understand-anything/
 src.before-server-src-check/
 src_tmp/
+.local-dev-data/
+.local-test-*
+.audit-*.diff
+/main.js
 
 # Logs and reports
 *.log

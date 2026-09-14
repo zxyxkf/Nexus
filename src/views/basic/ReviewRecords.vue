@@ -64,18 +64,43 @@
             </el-tag>
           </template>
         </el-table-column>
+        <el-table-column label="款式图" width="120" align="center">
+          <template #default="{ row }">
+            <div
+              v-if="getStyleImages(row.files).length"
+              class="media-thumb-cell"
+              draggable="true"
+              @dragstart="setupTaskFilesDrag($event, row, getStyleImages(row.files))"
+              @mousemove.once="preloadTaskFilesForDrag(row, getStyleImages(row.files))"
+            >
+              <el-image
+                :src="getTaskListFileGroups(row.files).styleThumbnailUrl"
+                fit="contain"
+                :preview-src-list="getTaskListFileGroups(row.files).stylePreviewUrls"
+                lazy
+                @load="preloadTaskFilesForDrag(row, getStyleImages(row.files).slice(0, 1))"
+                preview-teleported
+              />
+              <span>{{ getStyleImages(row.files).length }}张</span>
+            </div>
+            <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
+          </template>
+        </el-table-column>
         <el-table-column label="参考图" min-width="160" align="center">
           <template #default="{ row }">
             <div
               v-if="getRefImages(row.files).length"
               draggable="true"
-              @dragstart="setupFileDrag($event, getRefImages(row.files)[0])"
+              @dragstart="setupTaskFilesDrag($event, row, getRefFiles(row.files))"
+              @mousemove.once="preloadTaskFilesForDrag(row, getRefFiles(row.files))"
               style="display:inline-block;"
             >
               <el-image
-                :src="getFileUrl(getRefImages(row.files)[0])"
+                :src="getTaskListFileGroups(row.files).refThumbnailUrl"
                 fit="cover"
                 :preview-src-list="getRefImageSrcList(row.files)"
+                lazy
+                @load="preloadTaskFilesForDrag(row, getRefImages(row.files).slice(0, 1))"
                 preview-teleported
                 style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
               />
@@ -85,7 +110,7 @@
               :content="getRefAttachments(row.files).map(f => f.file_name).join('\n')"
               placement="top"
             >
-              <div class="file-badge" draggable="true" @dragstart="setupFileDrag($event, getRefAttachments(row.files)[0])" @mouseenter="preloadFilesForDrag(getRefAttachments(row.files))">
+              <div class="file-badge" draggable="true" @dragstart="setupTaskFilesDrag($event, row, getRefFiles(row.files))" @mousemove.once="preloadTaskFilesForDrag(row, getRefFiles(row.files))">
                 <el-icon :size="18"><Document /></el-icon>
                 <span>{{ getRefAttachments(row.files).length }}个附件</span>
               </div>
@@ -93,31 +118,66 @@
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
           </template>
         </el-table-column>
-        <el-table-column label="作品预览" min-width="150" align="center">
+        <el-table-column label="效果图" min-width="150" align="center">
           <template #default="{ row }">
             <div
-              v-if="getFirstImage(row.files)"
+              v-if="getEffectImages(row.files).length"
+              class="media-thumb-cell"
               draggable="true"
-              @dragstart="setupFileDrag($event, getFirstImage(row.files))"
-              style="display:inline-block;"
+              @dragstart="setupTaskFilesDrag($event, row, getEffectFiles(row.files))"
+              @mousemove.once="preloadTaskFilesForDrag(row, getEffectFiles(row.files))"
             >
               <el-image
-                :src="getFileUrl(getFirstImage(row.files))"
-                fit="cover"
-                :preview-src-list="getImageSrcList(row.files)"
+                :src="getTaskListFileGroups(row.files).effectThumbnailUrl"
+                fit="contain"
+                :preview-src-list="getTaskListFileGroups(row.files).effectPreviewUrls"
                 :initial-index="0"
+                lazy
+                @load="preloadTaskFilesForDrag(row, getEffectImages(row.files).slice(0, 1))"
                 preview-teleported
-                style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
               />
+              <span>{{ getEffectImages(row.files).length }}张</span>
             </div>
             <el-tooltip
-              v-else-if="getWorkFiles(row.files).length"
-              :content="getWorkFiles(row.files).map(f => f.file_name).join('\n')"
+              v-else-if="getEffectFiles(row.files).length"
+              :content="getEffectFiles(row.files).map(f => f.file_name).join('\n')"
               placement="top"
             >
-              <div class="file-badge" draggable="true" @dragstart="setupFileDrag($event, getWorkFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getWorkFiles(row.files))">
+              <div class="file-badge" draggable="true" @dragstart="setupTaskFilesDrag($event, row, getEffectFiles(row.files))" @mousemove.once="preloadTaskFilesForDrag(row, getEffectFiles(row.files))">
                 <el-icon :size="18"><Document /></el-icon>
-                <span>{{ getWorkFiles(row.files).length }}个附件</span>
+                <span>{{ getEffectFiles(row.files).length }}个文件</span>
+              </div>
+            </el-tooltip>
+            <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column label="原图" min-width="150" align="center">
+          <template #default="{ row }">
+            <div
+              v-if="getOriginalImages(row.files).length"
+              class="media-thumb-cell"
+              draggable="true"
+              @dragstart="setupTaskFilesDrag($event, row, getOriginalFiles(row.files))"
+              @mousemove.once="preloadTaskFilesForDrag(row, getOriginalFiles(row.files))"
+            >
+              <el-image
+                :src="getTaskListFileGroups(row.files).originalThumbnailUrl"
+                fit="contain"
+                :preview-src-list="getTaskListFileGroups(row.files).originalPreviewUrls"
+                lazy
+                @load="preloadTaskFilesForDrag(row, getOriginalImages(row.files).slice(0, 1))"
+                preview-teleported
+              />
+              <span>{{ getOriginalImages(row.files).length }}张</span>
+            </div>
+            <el-tooltip
+              v-else-if="getOriginalFiles(row.files).length"
+              :content="getOriginalFiles(row.files).map(f => f.file_name).join('\n')"
+              placement="top"
+            >
+              <div class="file-badge" draggable="true" @dragstart="setupTaskFilesDrag($event, row, getOriginalFiles(row.files))" @mousemove.once="preloadTaskFilesForDrag(row, getOriginalFiles(row.files))">
+                <el-icon :size="18"><Document /></el-icon>
+                <span>{{ getOriginalFiles(row.files).length }}个文件</span>
               </div>
             </el-tooltip>
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
@@ -160,7 +220,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { Document } from '@element-plus/icons-vue'
 import { getScoreReviewRecordsApi } from '@/api/score'
-import { getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getFileUrl, setupFilesDrag, preloadFilesForDrag } from '@/api'
 import { getBasicDesignerListApi, getPublisherListApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreReviewTime, formatScoreValue, scoreReviewTagType } from '@/utils/format'
 import Pagination from '@/components/Pagination.vue'
@@ -193,7 +253,33 @@ const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
   onError: error => console.error('[ReviewRecords] 加载详情失败:', error)
 })
 
-const { getRefImages, getRefAttachments, getRefImageSrcList, getWorkFiles, getFirstImage, getImageSrcList, downloadFile } = useFileHelpers()
+const { getTaskListFileGroups, downloadFile } = useFileHelpers()
+function getRefImages(files) { return getTaskListFileGroups(files).refImages }
+function getRefAttachments(files) { return getTaskListFileGroups(files).refAttachments }
+function getRefFiles(files) { return getTaskListFileGroups(files).refFiles }
+function getRefImageSrcList(files) { return getTaskListFileGroups(files).refPreviewUrls }
+function getEffectFiles(files) { return getTaskListFileGroups(files).effectFiles }
+function getOriginalFiles(files) { return getTaskListFileGroups(files).originalFiles }
+
+function getStyleImages(files) {
+  return getTaskListFileGroups(files).styleImages
+}
+
+function getEffectImages(files) {
+  return getTaskListFileGroups(files).effectImages
+}
+
+function getOriginalImages(files) {
+  return getTaskListFileGroups(files).originalImages
+}
+
+function setupTaskFilesDrag(event, task, files) {
+  setupFilesDrag(event, files, { taskNo: task?.task_no })
+}
+
+function preloadTaskFilesForDrag(task, files) {
+  preloadFilesForDrag(files, { taskNo: task?.task_no })
+}
 
 function statusLabel(status) { return STATUS_MAP[status] || status || '-' }
 function statusType(status) { return STATUS_TAG_TYPE[status] || 'info' }
@@ -288,6 +374,14 @@ onMounted(() => {
 }
 .file-badge:hover { color: var(--dd-primary); }
 .file-badge span { font-size: 10px; }
+.media-thumb-cell {
+  display: inline-flex; align-items: center; gap: 5px;
+  color: var(--dd-text-secondary); font-size: 11px;
+}
+.media-thumb-cell .el-image {
+  width: 48px; height: 48px; border-radius: 6px;
+  border: 1px solid var(--dd-border-light, #e4e7ed); cursor: pointer;
+}
 
 .file-card {
   display: flex; align-items: center; gap: 10px;

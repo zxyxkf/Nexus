@@ -61,7 +61,7 @@
       </section>
 
       <div
-        v-if="isCsTask && (styleImageFiles.length || originalFiles.length)"
+        v-if="isCsTask && (styleImageFiles.length || selectedEffectFiles.length || originalFiles.length)"
         class="task-detail-media-grid task-style-original-grid"
       >
         <section v-if="styleImageFiles.length" class="task-detail-media-section task-style-media-section">
@@ -72,6 +72,20 @@
               :key="file.id"
               :file="file"
               :preview-list="stylePreviewList"
+              :initial-index="index"
+              @download="downloadDetailFile(file)"
+            />
+          </div>
+        </section>
+
+        <section v-if="selectedEffectFiles.length" class="task-detail-media-section task-selected-effect-media-section">
+          <h3>效果图 ({{ selectedEffectFiles.length }})</h3>
+          <div class="task-detail-image-grid">
+            <TaskDetailImage
+              v-for="(file, index) in selectedEffectFiles"
+              :key="file.id"
+              :file="file"
+              :preview-list="selectedEffectPreviewList"
               :initial-index="index"
               @download="downloadDetailFile(file)"
             />
@@ -152,15 +166,6 @@
 
       </div>
 
-      <OriginalUploadPanel
-        v-if="isCsTask && currentContext === 'cs-assignee' && task.status === 'pending_original'"
-        :task="task"
-        :max-file-count="maxFileCount"
-        :max-file-size-m-b="maxFileSizeMB"
-        @uploaded="emit('original-uploaded', $event)"
-        @completed="emit('original-completed', $event)"
-      />
-
       <slot name="modifications" :task="task">
         <RejectHistory
           v-if="showRejectHistory"
@@ -180,7 +185,6 @@ import TaskDetailAttachment from '@/components/TaskDetailAttachment.vue'
 import TaskStatusTimeline from '@/components/TaskStatusTimeline.vue'
 import TaskTransferTimeline from '@/components/TaskTransferTimeline.vue'
 import RejectHistory from '@/components/RejectHistory.vue'
-import OriginalUploadPanel from '@/components/task/OriginalUploadPanel.vue'
 import { downloadFile, getFileUrl, saveFileToDisk } from '@/api/upload'
 import {
   STATUS_MAP,
@@ -199,12 +203,10 @@ const props = defineProps({
   visible: { type: Boolean, default: false },
   task: { type: Object, default: null },
   taskGroup: { type: String, default: 'design' },
-  detailContext: { type: String, default: '' },
-  maxFileCount: { type: Number, default: 10 },
-  maxFileSizeMB: { type: Number, default: 50 }
+  detailContext: { type: String, default: '' }
 })
 
-const emit = defineEmits(['close', 'original-uploaded', 'original-completed'])
+const emit = defineEmits(['close'])
 
 const {
   statusLabel: sourceStatusLabel,
@@ -216,6 +218,11 @@ const allFiles = computed(() => props.task?.files || [])
 const { getOriginalFiles } = useFileHelpers()
 const refFiles = computed(() => allFiles.value.filter(file => file.file_category === 'reference'))
 const styleFiles = computed(() => allFiles.value.filter(file => file.file_category === 'style'))
+const selectedEffectFiles = computed(() => allFiles.value.filter(file => (
+  file.file_category === 'work' &&
+  file.file_type === 'image' &&
+  file.is_selected_effect
+)))
 const workFiles = computed(() => allFiles.value.filter(file => (
   file.file_category !== 'reference' &&
   file.file_category !== 'style' &&
@@ -234,6 +241,7 @@ const workAttachments = computed(() => currentContext.value === 'hall'
   : workFiles.value.filter(file => file.file_type !== 'image'))
 const styleImageFiles = computed(() => styleFiles.value.filter(file => file.file_type === 'image'))
 const stylePreviewList = computed(() => styleImageFiles.value.map(file => file._previewSrc || getFileUrl(file)))
+const selectedEffectPreviewList = computed(() => selectedEffectFiles.value.map(file => file._previewSrc || getFileUrl(file)))
 const originalImageFiles = computed(() => originalFiles.value.filter(file => file.file_type === 'image'))
 const originalAttachments = computed(() => originalFiles.value.filter(file => file.file_type !== 'image'))
 const originalPreviewList = computed(() => originalImageFiles.value.map(file => file._previewSrc || getFileUrl(file)))

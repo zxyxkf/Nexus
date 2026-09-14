@@ -771,6 +771,13 @@ describe('任务文件预览和下载鉴权', () => {
         .set('Authorization', `Bearer ${token}`);
       expect(response.status).toBe(200);
       expect(response.headers['cache-control']).toContain('private');
+
+      const thumbnail = await request(app)
+        .get(`/api/task/thumbnail/${taskFileId}`)
+        .set('Authorization', `Bearer ${token}`);
+      expect(thumbnail.status).toBe(200);
+      expect(thumbnail.headers['content-type']).toContain('image/webp');
+      expect(thumbnail.headers['cache-control']).toContain('private');
     }
   });
 
@@ -801,6 +808,11 @@ describe('任务文件预览和下载鉴权', () => {
       .get(`/api/task/preview/${taskFileId}`)
       .set('Authorization', `Bearer ${deniedToken}`);
     expect(preview.body.code).toBe(403);
+
+    const thumbnail = await request(app)
+      .get(`/api/task/thumbnail/${taskFileId}`)
+      .set('Authorization', `Bearer ${deniedToken}`);
+    expect(thumbnail.body.code).toBe(403);
 
     const download = await request(app)
       .get(`/api/task/download/${taskFileId}`)

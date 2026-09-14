@@ -37,16 +37,16 @@ function normalizeDragUrl(url) {
   }
 }
 
-function registerDragFileUrl(url, file) {
+function registerDragFileUrl(url, file, options = {}) {
   if (!url || !file?.id || !file.file_name) return
   dragFileByUrl.set(url, file)
   dragFileByUrl.set(normalizeDragUrl(url), file)
-  prepareFileDragCache(file)
+  if (options.preloadDrag !== false) prepareFileDragCache(file)
   ensureImageDragBridge()
 }
 
-export function registerFileDragUrl(url, file) {
-  registerDragFileUrl(url, file)
+export function registerFileDragUrl(url, file, options = {}) {
+  registerDragFileUrl(url, file, options)
   return url
 }
 
@@ -221,6 +221,40 @@ function tryElectronFileDrag(file, options = {}) {
   return false
 }
 
+function getElectronDragItems(files, options = {}) {
+  const uniqueItems = new Map()
+  for (const file of Array.isArray(files) ? files : []) {
+    if (!file?.id || !file.file_name) continue
+    const item = {
+      fileId: file.id,
+      fileName: getDragFileName(file, options),
+      downloadPath: getFileDownloadPath(file),
+      token: getToken()
+    }
+    const key = `${item.fileId}:${item.fileName}:${item.downloadPath}`
+    if (!uniqueItems.has(key)) uniqueItems.set(key, item)
+  }
+  return Array.from(uniqueItems.values())
+}
+
+function tryElectronFilesDrag(files, options = {}) {
+  if (!window.electronAPI?.isFileCached || !window.electronAPI?.doFileDrag) return false
+  const items = getElectronDragItems(files, options)
+  if (!items.length) return false
+
+  try {
+    if (window.electronAPI.isFileCached({ items })) {
+      const dragged = window.electronAPI.doFileDrag({ items })
+      if (dragged) return true
+    }
+  } catch (e) {
+    console.warn('[API] Electron 批量原生拖拽触发失败:', e.message)
+  }
+
+  preloadFilesForDrag(files, { ...options, priority: 'high' })
+  return false
+}
+
 function getImageDragFile(target) {
   if (!(target instanceof HTMLImageElement)) return null
   return findDragFileByUrl(target.currentSrc || target.src)
@@ -252,7 +286,7 @@ function ensureImageDragBridge() {
     event.stopImmediatePropagation()
   }, true)
 
-  document.addEventListener('pointerover', event => {
+  document.addEventListener('pointermove', event => {
     const file = getImageDragFile(event.target)
     if (file) prepareFileDragCache(file)
   }, true)
@@ -260,6 +294,8 @@ function ensureImageDragBridge() {
   document.addEventListener('dragstart', event => {
     const file = getImageDragFile(event.target)
     if (!file) return
+    // List thumbnails delegate to their draggable container, which may represent a whole file group.
+    if (event.target.parentElement?.closest?.('[draggable="true"]')) return
     setupFileDrag(event, file)
   }, true)
 }
@@ -280,6 +316,26 @@ export function getFileUrl(fileOrPath) {
   if (filePath.startsWith('/api/')) return getServerBase() + appendToken(filePath)
   if (filePath.startsWith('/upload/')) return getServerBase() + filePath
   return getServerBase() + '/upload/' + filePath
+}
+
+export function getFilePreviewUrl(fileOrPath) {
+  if (!fileOrPath) return ''
+  if (typeof fileOrPath === 'object' && fileOrPath.id) {
+    const url = getServerBase() + appendToken(`/api/task/preview/${fileOrPath.id}`)
+    registerDragFileUrl(url, fileOrPath, { preloadDrag: false })
+    return url
+  }
+  return getFileUrl(fileOrPath)
+}
+
+export function getTaskThumbnailUrl(fileOrPath) {
+  if (!fileOrPath) return ''
+  if (typeof fileOrPath === 'object' && fileOrPath.id) {
+    const url = getServerBase() + appendToken(`/api/task/thumbnail/${fileOrPath.id}`)
+    registerDragFileUrl(url, fileOrPath, { preloadDrag: false })
+    return url
+  }
+  return getFilePreviewUrl(fileOrPath)
 }
 
 export function downloadFile(fileOrPath) {
@@ -357,6 +413,26 @@ export function setupFileDrag(event, file, options = {}) {
   }
 
   return applyFileDragData(event, file)
+}
+
+export function setupFilesDrag(event, files, options = {}) {
+  const validFiles = Array.from(files || []).filter(file => file?.id && file.file_name)
+  if (!validFiles.length) return ''
+  if (validFiles.length === 1) return setupFileDrag(event, validFiles[0], options)
+  if (event?.__nexusFileDragHandled) return ''
+  if (event) event.__nexusFileDragHandled = true
+
+  if (window.electronAPI?.doFileDrag) {
+    if (tryElectronFilesDrag(validFiles, options)) {
+      event?.preventDefault?.()
+      return ''
+    }
+    event?.preventDefault?.()
+    window.dispatchEvent(new CustomEvent('nexus:file-drag-pending'))
+    return ''
+  }
+
+  return applyFileDragData(event, validFiles[0])
 }
 
 export async function preloadFilesForDrag(files, options = {}) {

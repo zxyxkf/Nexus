@@ -77,7 +77,7 @@ async function attachFilesToTasks(taskIds) {
   const pool = getPool();
   const placeholders = taskIds.map(() => '?').join(',');
   const [files] = await pool.execute(
-    `SELECT tf.*, t.task_no, tr.reject_index
+    `SELECT tf.*, t.task_no, t.selected_effect_file_ids, tr.reject_index
      FROM task_file tf
      INNER JOIN task_info t ON t.id = tf.task_id
      LEFT JOIN task_reject_record tr ON tr.id = tf.reject_record_id
@@ -87,13 +87,28 @@ async function attachFilesToTasks(taskIds) {
   );
   for (const f of files) {
     if (!filesByTask[f.task_id]) filesByTask[f.task_id] = [];
+    const selectedEffectFileIds = parseSelectedEffectFileIds(f.selected_effect_file_ids);
     filesByTask[f.task_id].push({
       ...f,
+      is_selected_effect: selectedEffectFileIds.has(Number(f.id)),
       fileUrl: `/api/task/preview/${f.id}`,
       downloadUrl: `/api/task/download/${f.id}`
     });
   }
   return filesByTask;
+}
+
+function parseSelectedEffectFileIds(value) {
+  if (Array.isArray(value)) {
+    return new Set(value.map(Number).filter(id => Number.isInteger(id) && id > 0));
+  }
+  if (typeof value !== 'string' || !value.trim()) return new Set();
+  try {
+    const parsed = JSON.parse(value);
+    return parseSelectedEffectFileIds(parsed);
+  } catch (_) {
+    return new Set();
+  }
 }
 
 // ==================== CRUD ====================
@@ -146,7 +161,7 @@ async function getTaskDetail(taskId) {
 async function getTaskFiles(taskId) {
   const pool = getPool();
   const [files] = await pool.execute(
-    `SELECT tf.*, t.task_no, tr.reject_index
+    `SELECT tf.*, t.task_no, t.selected_effect_file_ids, tr.reject_index
      FROM task_file tf
      INNER JOIN task_info t ON t.id = tf.task_id
      LEFT JOIN task_reject_record tr ON tr.id = tf.reject_record_id
@@ -156,6 +171,7 @@ async function getTaskFiles(taskId) {
   );
   return files.map(f => ({
     ...f,
+    is_selected_effect: parseSelectedEffectFileIds(f.selected_effect_file_ids).has(Number(f.id)),
     fileUrl: `/api/task/preview/${f.id}`,
     downloadUrl: `/api/task/download/${f.id}`
   }));
@@ -189,7 +205,7 @@ async function getTaskRejectRecords(taskId) {
   const ids = rows.map(r => r.id);
   const placeholders = ids.map(() => '?').join(',');
   const [files] = await pool.execute(
-    `SELECT tf.*, t.task_no
+    `SELECT tf.*, t.task_no, t.selected_effect_file_ids
      FROM task_file tf
      INNER JOIN task_info t ON t.id = tf.task_id
      WHERE tf.reject_record_id IN (${placeholders})
@@ -201,6 +217,7 @@ async function getTaskRejectRecords(taskId) {
     if (!filesByReject[f.reject_record_id]) filesByReject[f.reject_record_id] = [];
     filesByReject[f.reject_record_id].push({
       ...f,
+      is_selected_effect: parseSelectedEffectFileIds(f.selected_effect_file_ids).has(Number(f.id)),
       fileUrl: `/api/task/preview/${f.id}`,
       downloadUrl: `/api/task/download/${f.id}`
     });
@@ -342,6 +359,19 @@ async function getRecordWorkFilesForUpdate(conn, taskId, recordId) {
      WHERE task_id = ? AND file_category = 'work' AND reject_record_id = ?
      ORDER BY create_time ASC, id ASC FOR UPDATE`,
     [taskId, recordId]
+  );
+  return rows || [];
+}
+
+async function getWorkImageFilesForUpdate(conn, taskId) {
+  const [rows] = await conn.execute(
+    `SELECT tf.id, tf.task_id, tf.file_category, tf.file_type, tf.reject_record_id,
+            tr.reject_index
+     FROM task_file tf
+     LEFT JOIN task_reject_record tr ON tr.id = tf.reject_record_id
+     WHERE tf.task_id = ? AND tf.file_category = 'work' AND tf.file_type = 'image'
+     ORDER BY tf.create_time ASC, tf.id ASC FOR UPDATE`,
+    [taskId]
   );
   return rows || [];
 }
@@ -1084,6 +1114,7 @@ module.exports = {
   countIncompleteRejectRecords,
   reopenRejectRecord,
   getRecordWorkFilesForUpdate,
+  getWorkImageFilesForUpdate,
   getInitialWorkFilesForUpdate,
   deleteFileRecords,
   deleteTaskData,

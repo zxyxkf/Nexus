@@ -11,7 +11,8 @@ const archiver = require('archiver');
 
 const { getPool } = require('../config/database');
 const { requireAuth, optionalAuth } = require('../middleware/auth');
-const { readImage, resolvePath } = require('../utils/share');
+const { readImageStream, resolvePath } = require('../utils/share');
+const { getImageThumbnail } = require('../utils/image-thumbnail');
 const { MIME_MAP } = require('../dao/task.dao');
 const taskService = require('../services/task.service');
 
@@ -31,14 +32,51 @@ router.get('/preview/:fileId', optionalAuth, async (req, res, next) => {
       return res.status(404).json({ code: 404, msg: '不支持预览此文件类型' });
     }
 
-    const result = readImage(filePath);
-    if (!result) {
+    const stream = readImageStream(filePath);
+    if (!stream) {
       return res.status(404).json({ code: 404, msg: '文件未找到' });
     }
 
     res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'private, max-age=3600');
-    res.send(result.buffer);
+    stream.on('error', next);
+    stream.pipe(res);
+  } catch (err) {
+    next(err);
+  }
+});
+
+router.get('/thumbnail/:fileId', optionalAuth, async (req, res, next) => {
+  try {
+    const file = await taskService.getTaskFileForUser(req.params.fileId, req.user);
+    const filePath = file.file_path;
+    if (!filePath) {
+      return res.status(404).json({ code: 404, msg: '文件路径为空' });
+    }
+
+    const ext = path.extname(file.file_name).toLowerCase();
+    const contentType = MIME_MAP[ext];
+    if (!contentType || !contentType.startsWith('image/')) {
+      return res.status(404).json({ code: 404, msg: '此文件不是可预览图片' });
+    }
+
+    const absolutePath = resolvePath(filePath);
+    if (!absolutePath || !fs.existsSync(absolutePath)) {
+      return res.status(404).json({ code: 404, msg: '文件未找到' });
+    }
+
+    try {
+      const thumbnail = await getImageThumbnail(absolutePath);
+      res.setHeader('Content-Type', 'image/webp');
+      res.setHeader('Cache-Control', 'private, max-age=86400');
+      return res.send(thumbnail);
+    } catch (_) {
+      const stream = fs.createReadStream(absolutePath);
+      res.setHeader('Content-Type', contentType);
+      res.setHeader('Cache-Control', 'private, max-age=3600');
+      stream.on('error', next);
+      return stream.pipe(res);
+    }
   } catch (err) {
     next(err);
   }

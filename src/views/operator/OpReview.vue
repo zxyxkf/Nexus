@@ -249,7 +249,8 @@ async function loadData(options = {}) {
       pageSize: pageSize.value,
       status: 'doing',
       taskGroup: 'operator',
-      selfOnly: true
+      selfOnly: true,
+      reviewView: true
     })
     if (res.code === 0) {
       list.value = res.data.list || []

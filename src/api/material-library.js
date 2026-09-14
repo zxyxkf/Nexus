@@ -33,4 +33,10 @@ export const renameMaterialImageApi = (id, data) => unwrap(request.put(`/api/mat
 export const updateMaterialImageColorApi = (id, color) => unwrap(request.put(`/api/material-library/images/${id}/color`, { color }))
 export const deleteMaterialImageApi = id => unwrap(request.delete(`/api/material-library/images/${id}`))
 export const reorderMaterialImagesApi = (styleId, imageIds) => unwrap(request.put('/api/material-library/images/reorder', { styleId, imageIds }))
-export const searchMaterialLibraryApi = q => unwrap(request.get('/api/material-library/search', { params: { q } }))
+export const searchMaterialLibraryApi = (q, options = {}) => {
+  const { signal, ...params } = options
+  return unwrap(request.get('/api/material-library/search', {
+    params: { q, ...params },
+    signal
+  }))
+}

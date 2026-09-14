@@ -35,8 +35,8 @@
         </el-table-column>
         <el-table-column v-if="isCsAgent" label="款式图" width="120" align="center">
           <template #default="{ row }">
-            <div v-if="getStyleImages(row.files).length" class="style-thumb-cell" draggable="true" @dragstart="setupFileDrag($event, getStyleImages(row.files)[0])">
-              <el-image :src="getFileUrl(getStyleImages(row.files)[0])" :preview-src-list="getStyleImages(row.files).map(getFileUrl)" preview-teleported fit="contain" />
+            <div v-if="getStyleImages(row.files).length" class="style-thumb-cell" draggable="true" @dragstart="setupFilesDrag($event, getStyleImages(row.files))" @mousemove.once="preloadFilesForDrag(getStyleImages(row.files))">
+              <el-image :src="getTaskListFileGroups(row.files).styleThumbnailUrl" :preview-src-list="getTaskListFileGroups(row.files).stylePreviewUrls" lazy @load="preloadFilesForDrag(getStyleImages(row.files).slice(0, 1))" preview-teleported fit="contain" />
               <span>{{ getStyleImages(row.files).length }}张</span>
             </div><span v-else>-</span>
           </template>
@@ -47,13 +47,16 @@
             <div
               v-if="getRefImages(row.files).length"
               draggable="true"
-              @dragstart="setupFileDrag($event, getRefImages(row.files)[0])"
+              @dragstart="setupListFileDrag($event, getRefFiles(row.files))"
+              @mousemove.once="preloadListFilesForDrag(getRefFiles(row.files))"
               style="display:inline-block;"
             >
               <el-image
-                :src="getFileUrl(getRefImages(row.files)[0])"
+                :src="getTaskListFileGroups(row.files).refThumbnailUrl"
                 fit="cover"
                 :preview-src-list="getRefImageSrcList(row.files)"
+                lazy
+                @load="preloadListFilesForDrag(getRefImages(row.files).slice(0, 1))"
                 preview-teleported
                 style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
               />
@@ -63,7 +66,7 @@
               :content="getRefAttachments(row.files).map(f => f.file_name).join('\n')"
               placement="top"
             >
-              <div class="file-badge" draggable="true" @dragstart="setupFileDrag($event, getRefAttachments(row.files)[0])" @mouseenter="preloadFilesForDrag(getRefAttachments(row.files))">
+              <div class="file-badge" draggable="true" @dragstart="setupListFileDrag($event, getRefFiles(row.files))" @mousemove.once="preloadListFilesForDrag(getRefFiles(row.files))">
                 <el-icon :size="18"><Document /></el-icon>
                 <span>{{ getRefAttachments(row.files).length }}个附件</span>
               </div>
@@ -77,26 +80,29 @@
               v-if="getEffectImages(row.files).length"
               class="media-thumb-cell"
               draggable="true"
-              @dragstart="setupFileDrag($event, getEffectImages(row.files)[0])"
+              @dragstart="setupListFileDrag($event, getDisplayedWorkFiles(row.files))"
+              @mousemove.once="preloadListFilesForDrag(getDisplayedWorkFiles(row.files))"
               style="display:inline-block;"
             >
               <el-image
-                :src="getFileUrl(getEffectImages(row.files)[0])"
+                :src="getTaskListFileGroups(row.files).effectThumbnailUrl"
                 fit="contain"
-                :preview-src-list="getEffectImages(row.files).map(getFileUrl)"
+                :preview-src-list="getTaskListFileGroups(row.files).effectPreviewUrls"
                 :initial-index="0"
+                lazy
+                @load="preloadListFilesForDrag(getEffectImages(row.files).slice(0, 1))"
                 preview-teleported
                 style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
               />
             </div>
             <el-tooltip
-              v-else-if="getWorkFiles(row.files).length"
-              :content="getWorkFiles(row.files).map(f => f.file_name).join('\n')"
+              v-else-if="getDisplayedWorkFiles(row.files).length"
+              :content="getDisplayedWorkFiles(row.files).map(f => f.file_name).join('\n')"
               placement="top"
             >
-              <div class="file-badge" @click="viewDetail(row)" draggable="true" @dragstart="setupFileDrag($event, getWorkFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getWorkFiles(row.files))">
+              <div class="file-badge" @click="viewDetail(row)" draggable="true" @dragstart="setupListFileDrag($event, getDisplayedWorkFiles(row.files))" @mousemove.once="preloadListFilesForDrag(getDisplayedWorkFiles(row.files))">
                 <el-icon :size="18"><Document /></el-icon>
-                <span>{{ getWorkFiles(row.files).length }}个附件</span>
+                <span>{{ getDisplayedWorkFiles(row.files).length }}个附件</span>
               </div>
             </el-tooltip>
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
@@ -108,19 +114,21 @@
               v-if="getOriginalImages(row.files).length"
               class="media-thumb-cell"
               draggable="true"
-              @dragstart="setupFileDrag($event, getOriginalImages(row.files)[0])"
-              @mouseenter="preloadFilesForDrag(getOriginalImages(row.files))"
+              @dragstart="setupFilesDrag($event, getOriginalFiles(row.files))"
+              @mousemove.once="preloadFilesForDrag(getOriginalFiles(row.files))"
             >
               <el-image
-                :src="getFileUrl(getOriginalImages(row.files)[0])"
+                :src="getTaskListFileGroups(row.files).originalThumbnailUrl"
                 fit="contain"
-                :preview-src-list="getOriginalImages(row.files).map(getFileUrl)"
+                :preview-src-list="getTaskListFileGroups(row.files).originalPreviewUrls"
+                lazy
+                @load="preloadFilesForDrag(getOriginalImages(row.files).slice(0, 1))"
                 preview-teleported
               />
               <span>{{ getOriginalImages(row.files).length }}张</span>
             </div>
             <el-tooltip v-else-if="getOriginalFiles(row.files).length" :content="getOriginalFiles(row.files).map(f => f.file_name).join('\n')" placement="top">
-              <div class="file-badge" draggable="true" @dragstart="setupFileDrag($event, getOriginalFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getOriginalFiles(row.files))">
+              <div class="file-badge" draggable="true" @dragstart="setupFilesDrag($event, getOriginalFiles(row.files))" @mousemove.once="preloadFilesForDrag(getOriginalFiles(row.files))">
                 <el-icon :size="18"><Document /></el-icon>
                 <span>{{ getOriginalFiles(row.files).length }}个文件</span>
               </div>
@@ -221,6 +229,13 @@
         />
       </template>
     </TaskDetail>
+
+    <EffectImageSelectionDialog
+      v-model="effectSelectionVisible"
+      :task="effectSelectionTask"
+      :loading="reviewLoading"
+      @confirm="confirmEffectSelection"
+    />
     </el-card>
   </div>
 </template>
@@ -230,7 +245,7 @@ import { ref, computed, watch, nextTick } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
-import { getMyPublishedApi, reviewTaskApi, reviewOriginalTaskApi, requestCsModificationApi, batchReviewApi, getFileUrl, setupFileDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
+import { getMyPublishedApi, reviewTaskApi, reviewOriginalTaskApi, requestCsModificationApi, batchReviewApi, getFileUrl, setupFileDrag, setupFilesDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
@@ -239,6 +254,7 @@ import { formatDate, formatScoreReviewApprovedScore, formatScoreReviewStatus, fo
 import { hasPermission } from '@/utils/permissions'
 import TaskDetail from '@/components/TaskDetail.vue'
 import CsModificationRecords from '@/components/task/CsModificationRecords.vue'
+import EffectImageSelectionDialog from '@/components/task/EffectImageSelectionDialog.vue'
 
 const route = useRoute()
 const taskGroup = computed(() => route.meta.taskGroup || (route.meta.role === 'cs_agent' ? 'cs' : 'design'))
@@ -301,6 +317,8 @@ const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
 })
 const modificationRef = ref(null)
 const reviewLoading = ref(false)
+const effectSelectionVisible = ref(false)
+const effectSelectionTask = ref(null)
 const selectedRows = ref([])
 const reviewableSelected = computed(() => selectedRows.value.filter(row => (
   row.status === 'doing' && row.allowedActions?.review
@@ -332,13 +350,38 @@ async function openModificationFromDetail() {
   modificationRef.value?.openNewModification?.()
 }
 
-const { getRefImages, getRefAttachments, getWorkFiles, getEffectFiles, getOriginalFiles, getRefImageSrcList } = useFileHelpers()
+async function openEffectSelection(row) {
+  if (!isCsAgent.value || !row?.allowedActions?.review) return
+  if (!currentTask.value || Number(currentTask.value.id) !== Number(row.id)) {
+    const loaded = await viewDetail(row)
+    if (!loaded || loaded.code !== 0 || !currentTask.value) return
+  }
+  effectSelectionTask.value = currentTask.value
+  detailVisible.value = false
+  effectSelectionVisible.value = true
+}
+
+const { getTaskListFileGroups } = useFileHelpers()
+function getRefImages(files) { return getTaskListFileGroups(files).refImages }
+function getRefAttachments(files) { return getTaskListFileGroups(files).refAttachments }
+function getRefFiles(files) { return getTaskListFileGroups(files).refFiles }
+function getEffectFiles(files) { return getTaskListFileGroups(files).effectFiles }
+function getOriginalFiles(files) { return getTaskListFileGroups(files).originalFiles }
+function getRefImageSrcList(files) { return getTaskListFileGroups(files).refPreviewUrls }
 function getWorkImages(files) {
   return getEffectFiles(files).filter(file => file.file_type === 'image')
 }
-function getStyleImages(files) { return (files || []).filter(file => file.file_category === 'style' && file.file_type === 'image') }
-function getEffectImages(files) { return getEffectFiles(files).filter(file => file.file_type === 'image') }
-function getOriginalImages(files) { return getOriginalFiles(files).filter(file => file.file_type === 'image') }
+function getStyleImages(files) { return getTaskListFileGroups(files).styleImages }
+function getEffectImages(files) { return getTaskListFileGroups(files).effectImages }
+function getOriginalImages(files) { return getTaskListFileGroups(files).originalImages }
+function getDisplayedWorkFiles(files) { return isCsAgent.value ? getEffectFiles(files) : getTaskListFileGroups(files).workFiles }
+function setupListFileDrag(event, files) {
+  if (isCsAgent.value) setupFilesDrag(event, files)
+  else setupFileDrag(event, files?.[0])
+}
+function preloadListFilesForDrag(files) {
+  preloadFilesForDrag(isCsAgent.value ? files : files?.slice(0, 1))
+}
 async function handleBatchReview() {
   if (!reviewableSelected.value.length) return
   try {
@@ -464,6 +507,10 @@ async function handleOriginalReview(row) {
 
 async function handleReview(row, action) {
   if (!row.allowedActions?.review) return
+  if (isCsAgent.value && action === 'pass') {
+    await openEffectSelection(row)
+    return
+  }
   const actionLabel = action === 'pass' ? '审核通过' : '驳回'
   try {
     await ElMessageBox.confirm(`确认${actionLabel}该任务？`, '提示')
@@ -485,6 +532,10 @@ async function handleReview(row, action) {
 
 async function doReview(action) {
   if (!currentTask.value?.allowedActions?.review) return
+  if (isCsAgent.value && action === 'pass') {
+    await openEffectSelection(currentTask.value)
+    return
+  }
   try {
     reviewLoading.value = true
     const res = await reviewTaskApi({ taskId: currentTask.value.id, action, rejectReason: '' })
@@ -498,6 +549,33 @@ async function doReview(action) {
     }
   } catch {
     // 用户取消
+  } finally {
+    reviewLoading.value = false
+  }
+}
+
+async function confirmEffectSelection(effectFileIds) {
+  const task = effectSelectionTask.value
+  if (!task || reviewLoading.value) return
+  reviewLoading.value = true
+  try {
+    const res = await reviewTaskApi({
+      taskId: task.id,
+      action: 'pass',
+      rejectReason: '',
+      effectFileIds
+    })
+    if (res.code === 0) {
+      ElMessage.success('审核通过，等待上传原图')
+      effectSelectionVisible.value = false
+      list.value = list.value.filter(item => Number(item.id) !== Number(task.id))
+      detailVisible.value = false
+      await loadData()
+    } else {
+      ElMessage.error(res.msg || '审核失败')
+    }
+  } catch (error) {
+    ElMessage.error(error.response?.data?.msg || error.message || '审核失败')
   } finally {
     reviewLoading.value = false
   }
@@ -534,7 +612,7 @@ watch(taskGroup, async () => {
   currentTask.value = null
   await loadData()
 })
-useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || reviewLoading.value })
+useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || effectSelectionVisible.value || reviewLoading.value })
 </script>
 
 <style scoped>

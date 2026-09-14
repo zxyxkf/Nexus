@@ -57,12 +57,18 @@
           </template>
           <div class="ps-item-inner">
             <span class="ps-item-name">{{ d.real_name || d.username }}</span>
+            <span v-if="showOnlineStatus" class="ps-item-online-status" :class="d.is_online ? 'is-online' : 'is-offline'">
+              {{ d.is_online ? '在线' : '离线' }}
+            </span>
             <span class="ps-item-badge">{{ d._activeTasks.length }}</span>
           </div>
         </el-tooltip>
         <div v-else class="ps-item-inner">
           <span class="ps-item-name">{{ d.real_name || d.username }}</span>
-          <span class="ps-item-idle">空闲</span>
+          <span v-if="showOnlineStatus" class="ps-item-online-status" :class="d.is_online ? 'is-online' : 'is-offline'">
+            {{ d.is_online ? '在线' : '离线' }}
+          </span>
+          <span v-else class="ps-item-idle">空闲</span>
         </div>
       </div>
       <div v-if="!filteredItems.length" class="ps-empty">无匹配结果</div>
@@ -80,7 +86,8 @@ const props = defineProps({
   placeholder: { type: String, default: '请选择' },
   filterable: { type: Boolean, default: false },
   clearable: { type: Boolean, default: false },
-  popoverWidth: { type: Number, default: 280 }
+  popoverWidth: { type: Number, default: 280 },
+  showOnlineStatus: { type: Boolean, default: false }
 })
 
 const emit = defineEmits(['update:modelValue', 'refresh'])
@@ -153,6 +160,9 @@ function clear() {
   padding: 1px 6px; border-radius: 999px; flex-shrink: 0;
 }
 .ps-item-idle { font-size: 12px; color: #67c23a; flex-shrink: 0; }
+.ps-item-online-status { font-size: 12px; flex-shrink: 0; }
+.ps-item-online-status.is-online { color: #67c23a; }
+.ps-item-online-status.is-offline { color: #f56c6c; }
 .ps-empty { padding: 16px; text-align: center; font-size: 13px; color: #c0c4cc; }
 </style>
 

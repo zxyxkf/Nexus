@@ -24,6 +24,14 @@ function inferColor(name) {
   const base = path.basename(String(name || ''), path.extname(String(name || ''))).trim();
   if (!base) return '';
 
+  // Preferred import convention: arbitrary product name + color + (sequence).
+  // Reading from the end makes the product-name length irrelevant.
+  const structuredSuffix = base.match(/\+([^+]+)\+\(\d+\)$/);
+  if (structuredSuffix) {
+    const candidate = normalizeColor(structuredSuffix[1]);
+    if (candidate) return candidate;
+  }
+
   // Preserve compound names such as "白色拼秋香绿" when the complete
   // leading Chinese segment is a color. Generic image prefixes are excluded
   // so names such as "图片蓝色A" do not become a color accidentally.

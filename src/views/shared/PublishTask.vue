@@ -44,6 +44,7 @@
 
         <el-form-item label="任务描述" prop="description">
           <el-input
+            ref="descriptionInputRef"
             v-model="form.description"
             type="textarea"
             :rows="6"
@@ -51,6 +52,21 @@
             show-word-limit
             placeholder="请详细描述作图需求，包括风格、尺寸、元素要求等"
           />
+          <div v-if="isCsAgent" class="description-shortcuts" aria-label="任务描述快捷填入">
+            <span class="description-shortcuts-label">快捷填入</span>
+            <div class="description-shortcuts-list">
+              <button
+                v-for="shortcut in descriptionShortcuts"
+                :key="shortcut"
+                type="button"
+                class="description-shortcut"
+                @mousedown.prevent
+                @click="insertDescriptionShortcut(shortcut)"
+              >
+                {{ shortcut }}
+              </button>
+            </div>
+          </div>
           <p class="form-hint">详细的需求描述有助于美工更准确地完成任务</p>
         </el-form-item>
 
@@ -150,6 +166,7 @@
             v-model="form.designerId"
             :items="designers"
             :placeholder="designerPlaceholder"
+            :show-online-status="isCsAgent"
             filterable
             clearable
             @refresh="loadDesigners"
@@ -203,7 +220,7 @@
 <script setup>
 import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { Plus, Delete, Document } from '@element-plus/icons-vue'
 import PersonSelect from '@/components/PersonSelect.vue'
 import { publishTaskApi, getScoreItemsApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi } from '@/api'
@@ -227,6 +244,7 @@ const maxRefImageCount = computed(() => getInt('upload.max_file_count', 10))
 const maxFileSizeMB = computed(() => getInt('upload.max_file_size_mb', 50))
 
 const formRef = ref(null)
+const descriptionInputRef = ref(null)
 const uploadRef = ref(null)
 const publishing = ref(false)
 const hasUnsavedData = ref(false)
@@ -241,6 +259,10 @@ const selectedMaterialStyleName = ref('')
 const materialViewerVisible = ref(false)
 const materialViewerImage = ref(null)
 const editedMaterialImages = reactive(new Map())
+const descriptionShortcuts = [
+  '左前胸', '右前胸', '正前胸', '后背', '后领口', '左袖口', '右袖口',
+  '左手臂', '右手臂', '正面左下摆', '正面右下摆', '后面左下摆', '后面右下摆'
+]
 const filteredMaterialImages = computed(() => form.specifiedColor ? materialImages.value.filter(image => image.color === form.specifiedColor) : materialImages.value)
 const selectedMaterialImages = computed(() => materialImages.value.filter(image => selectedMaterialImageIds.value.includes(image.id)))
 const currentEditedMaterialImage = computed(() => editedMaterialImages.get(materialViewerImage.value?.id))
@@ -340,6 +362,27 @@ function handleRefPaste(event) {
     prefix: 'reference',
     maxCount: maxRefImageCount.value,
     maxSizeMB: maxFileSizeMB.value
+  })
+}
+
+function insertDescriptionShortcut(shortcut) {
+  const input = descriptionInputRef.value
+  const textarea = input?.textarea || input?.$el?.querySelector('textarea')
+  const current = form.description || ''
+  const start = typeof textarea?.selectionStart === 'number' ? textarea.selectionStart : current.length
+  const end = typeof textarea?.selectionEnd === 'number' ? textarea.selectionEnd : start
+  const nextValue = current.slice(0, start) + shortcut + current.slice(end)
+  if (nextValue.length > 2000) {
+    ElMessage.warning('任务描述最多可填写 2000 个字符')
+    textarea?.focus()
+    return
+  }
+  const nextCursor = start + shortcut.length
+
+  form.description = nextValue
+  nextTick(() => {
+    textarea?.focus()
+    textarea?.setSelectionRange(nextCursor, nextCursor)
   })
 }
 
@@ -494,6 +537,25 @@ async function handlePublish() {
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
 
+  if (isCsAgent.value && form.designerId) {
+    const selectedDesigner = designers.value.find(d => String(d.id) === String(form.designerId))
+    if (selectedDesigner?.is_online === false) {
+      try {
+        await ElMessageBox.confirm(
+          `当前基础美工“${selectedDesigner.real_name || selectedDesigner.username}”已离线，是否仍然指定？`,
+          '基础美工已离线',
+          {
+            confirmButtonText: '仍然指定',
+            cancelButtonText: '取消',
+            type: 'warning'
+          }
+        )
+      } catch (_) {
+        return
+      }
+    }
+  }
+
   publishing.value = true
   try {
     const payload = isCsAgent.value
@@ -580,6 +642,45 @@ function resetForm() {
 
 <style scoped>
 .form-hint { font-size: 12px; color: var(--dd-text-muted); margin: 4px 0 0; }
+.description-shortcuts {
+  display: flex;
+  align-items: flex-start;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 8px;
+}
+.description-shortcuts-label {
+  flex: 0 0 auto;
+  padding-top: 5px;
+  color: var(--dd-text-secondary);
+  font-size: 12px;
+  line-height: 1.4;
+}
+.description-shortcuts-list {
+  display: flex;
+  flex: 1 1 360px;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.description-shortcut {
+  padding: 4px 9px;
+  border: 1px solid var(--el-border-color);
+  border-radius: 4px;
+  background: var(--el-fill-color-blank);
+  color: var(--dd-text-secondary);
+  font: inherit;
+  font-size: 12px;
+  line-height: 1.35;
+  cursor: pointer;
+  transition: color .15s ease, border-color .15s ease, background-color .15s ease;
+}
+.description-shortcut:hover,
+.description-shortcut:focus-visible {
+  border-color: var(--el-color-primary);
+  background: var(--el-color-primary-light-9);
+  color: var(--el-color-primary);
+  outline: none;
+}
 .cs-publish-page { max-width: 1500px; margin: 0 auto; }
 .cs-publish-grid { display: grid; grid-template-columns: minmax(520px, 0.95fr) minmax(420px, 1.05fr); gap: 16px; align-items: start; }
 .cs-publish-form-card :deep(.el-form) { max-width: none !important; }

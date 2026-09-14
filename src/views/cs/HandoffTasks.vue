@@ -55,12 +55,14 @@
               v-if="getStyleImages(row.files).length"
               class="style-thumb-cell"
               draggable="true"
-              @dragstart="setupFileDrag($event, getStyleImages(row.files)[0])"
-              @mouseenter="preloadFilesForDrag(getStyleImages(row.files))"
+              @dragstart="setupFilesDrag($event, getStyleImages(row.files))"
+              @mousemove.once="preloadFilesForDrag(getStyleImages(row.files))"
             >
               <el-image
-                :src="getFileUrl(getStyleImages(row.files)[0])"
-                :preview-src-list="getStyleImages(row.files).map(getFileUrl)"
+                :src="getTaskListFileGroups(row.files).styleThumbnailUrl"
+                :preview-src-list="getTaskListFileGroups(row.files).stylePreviewUrls"
+                lazy
+                @load="preloadFilesForDrag(getStyleImages(row.files).slice(0, 1))"
                 preview-teleported
                 fit="contain"
               />
@@ -75,17 +77,34 @@
               v-if="getEffectImages(row.files).length"
               class="media-thumb-cell"
               draggable="true"
-              @dragstart="setupFileDrag($event, getEffectImages(row.files)[0])"
-              @mouseenter="preloadFilesForDrag(getEffectImages(row.files))"
+              @dragstart="setupFilesDrag($event, getEffectFiles(row.files))"
+              @mousemove.once="preloadFilesForDrag(getEffectFiles(row.files))"
             >
               <el-image
-                :src="getFileUrl(getEffectImages(row.files)[0])"
-                :preview-src-list="getEffectImages(row.files).map(getFileUrl)"
+                :src="getTaskListFileGroups(row.files).effectThumbnailUrl"
+                :preview-src-list="getTaskListFileGroups(row.files).effectPreviewUrls"
+                lazy
+                @load="preloadFilesForDrag(getEffectImages(row.files).slice(0, 1))"
                 preview-teleported
                 fit="contain"
               />
               <span>{{ getEffectImages(row.files).length }}张</span>
             </div>
+            <el-tooltip
+              v-else-if="getEffectFiles(row.files).length"
+              :content="getEffectFiles(row.files).map(file => file.file_name).join('\n')"
+              placement="top"
+            >
+              <div
+                class="file-badge"
+                draggable="true"
+                @dragstart="setupFilesDrag($event, getEffectFiles(row.files))"
+                @mousemove.once="preloadFilesForDrag(getEffectFiles(row.files))"
+              >
+                <el-icon :size="18"><Document /></el-icon>
+                <span>{{ getEffectFiles(row.files).length }}个文件</span>
+              </div>
+            </el-tooltip>
             <span v-else>-</span>
           </template>
         </el-table-column>
@@ -158,8 +177,8 @@
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
-import { Refresh, Search, UserFilled, View } from '@element-plus/icons-vue'
-import { claimCsHandoffTaskApi, getBasicDesignerListApi, getCsHandoffTasksApi, getFileUrl, preloadFilesForDrag, setupFileDrag } from '@/api'
+import { Document, Refresh, Search, UserFilled, View } from '@element-plus/icons-vue'
+import { claimCsHandoffTaskApi, getBasicDesignerListApi, getCsHandoffTasksApi, preloadFilesForDrag, setupFilesDrag } from '@/api'
 import { useUserStore } from '@/store'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
@@ -235,12 +254,13 @@ function statusLabel(status) {
 }
 
 function getStyleImages(files) {
-  return (files || []).filter(file => file.file_category === 'style' && file.file_type === 'image')
+  return getTaskListFileGroups(files).styleImages
 }
 
-const { getEffectFiles } = useFileHelpers()
+const { getTaskListFileGroups } = useFileHelpers()
+function getEffectFiles(files) { return getTaskListFileGroups(files).effectFiles }
 function getEffectImages(files) {
-  return getEffectFiles(files).filter(file => file.file_type === 'image')
+  return getTaskListFileGroups(files).effectImages
 }
 
 function statusType(status) {
@@ -288,6 +308,20 @@ async function claimTask(task) {
   font-size: 18px;
   line-height: 1.4;
   letter-spacing: 0;
+}
+
+.file-badge {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 0;
+  color: var(--dd-text-secondary);
+  cursor: grab;
+}
+
+.file-badge span {
+  font-size: 10px;
 }
 
 .page-header p {

@@ -126,6 +126,7 @@ const CREATE_TABLES_SQL = {
       quantity INTEGER DEFAULT 1,
       task_file_path TEXT DEFAULT '',
       work_path TEXT DEFAULT '',
+      selected_effect_file_ids TEXT DEFAULT '',
       handoff_status TEXT DEFAULT '',
       handoff_time TEXT
     )`,
@@ -331,7 +332,7 @@ const CREATE_TABLES_SQL = {
       title VARCHAR(500) NOT NULL,
       description TEXT,
       priority TINYINT DEFAULT 2,
-      status VARCHAR(20) DEFAULT 'wait',
+      status VARCHAR(50) DEFAULT 'wait',
       publisher_id INT,
       publisher_name VARCHAR(100) DEFAULT '',
       designer_id INT,
@@ -361,6 +362,7 @@ const CREATE_TABLES_SQL = {
       quantity INT DEFAULT 1,
       task_file_path VARCHAR(1000) DEFAULT '',
       work_path VARCHAR(1000) DEFAULT '',
+      selected_effect_file_ids VARCHAR(5000) DEFAULT '',
       handoff_status VARCHAR(20) DEFAULT '',
       handoff_time DATETIME NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
@@ -624,6 +626,9 @@ async function initDatabase() {
     const alterSqls = mode === 'mysql' ? [
       `ALTER TABLE sys_user ADD COLUMN store VARCHAR(100) DEFAULT '' AFTER role`,
       `ALTER TABLE sys_user MODIFY COLUMN role VARCHAR(20) DEFAULT 'operator'`,
+      // pending_original_review is longer than the legacy VARCHAR(20) column.
+      // MODIFY is safe to run on every startup and upgrades existing installs.
+      `ALTER TABLE task_info MODIFY COLUMN status VARCHAR(50) DEFAULT 'wait'`,
       `ALTER TABLE task_info ADD COLUMN score_item_id INT AFTER reject_reason`,
       `ALTER TABLE task_info ADD COLUMN score DECIMAL(10,2) DEFAULT 0 AFTER score_item_id`,
       `ALTER TABLE task_info ADD COLUMN ref_path VARCHAR(1000) DEFAULT '' AFTER score`,
@@ -673,6 +678,7 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN score_review_time DATETIME`,
       `ALTER TABLE task_info ADD COLUMN score_review_score DECIMAL(10,2) DEFAULT 0`,
       `ALTER TABLE task_info ADD COLUMN work_path VARCHAR(1000) DEFAULT ''`,
+      `ALTER TABLE task_info ADD COLUMN selected_effect_file_ids VARCHAR(5000) DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN submit_time DATETIME`,
       `ALTER TABLE task_info ADD COLUMN urge_time DATETIME`,
       `ALTER TABLE task_info ADD COLUMN handoff_status VARCHAR(20) DEFAULT ''`,
@@ -757,6 +763,7 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN score_review_time TEXT`,
       `ALTER TABLE task_info ADD COLUMN score_review_score REAL DEFAULT 0`,
       `ALTER TABLE task_info ADD COLUMN work_path TEXT DEFAULT ''`,
+      `ALTER TABLE task_info ADD COLUMN selected_effect_file_ids TEXT DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN submit_time TEXT`,
       `ALTER TABLE task_info ADD COLUMN urge_time TEXT`,
       `ALTER TABLE task_info ADD COLUMN handoff_status TEXT DEFAULT ''`,

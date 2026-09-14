@@ -746,29 +746,43 @@ ipcMain.handle('prepare-file-drags', async (event, { items = [], token }) => {
   return { success: true };
 });
 
+function normalizeDragRequests(request) {
+  const source = Array.isArray(request?.items) && request.items.length
+    ? request.items
+    : (request && typeof request === 'object' ? [request] : [{ fileId: request }]);
+  return source
+    .filter(item => item && typeof item === 'object' && item.fileId)
+    .map(item => ({
+      fileId: item.fileId,
+      fileName: item.fileName || '',
+      downloadPath: item.downloadPath || '',
+      token: item.token || request?.token || ''
+    }));
+}
+
 // 同步检查文件是否已缓存
 ipcMain.on('is-file-cached', (event, request) => {
-  const fileId = request && typeof request === 'object' ? request.fileId : request;
-  const fileName = request && typeof request === 'object' ? request.fileName : '';
-  const downloadPath = request && typeof request === 'object' ? request.downloadPath : '';
-  const token = request && typeof request === 'object' ? request.token : '';
-  event.returnValue = isDragFileCached(fileId, fileName, downloadPath, token);
+  const items = normalizeDragRequests(request);
+  event.returnValue = items.length > 0 && items.every(item => (
+    isDragFileCached(item.fileId, item.fileName, item.downloadPath, item.token)
+  ));
 });
 
 // 同步触发原生文件拖拽（必须在文件已缓存后调用）
 ipcMain.on('do-file-drag', (event, request) => {
-  const fileId = request && typeof request === 'object' ? request.fileId : request;
-  const fileName = request && typeof request === 'object' ? request.fileName : '';
-  const downloadPath = request && typeof request === 'object' ? request.downloadPath : '';
-  const token = request && typeof request === 'object' ? request.token : '';
-  const tempPath = getCachedDragPath(fileId, fileName, downloadPath, token);
-  if (!tempPath || !fs.existsSync(tempPath)) {
-    startupLog(`拖拽缓存未命中: fileId=${fileId} fileName=${fileName} downloadPath=${downloadPath}`);
+  const items = normalizeDragRequests(request);
+  const tempPaths = items.map(item => (
+    getCachedDragPath(item.fileId, item.fileName, item.downloadPath, item.token)
+  ));
+  if (!items.length || tempPaths.some(tempPath => !tempPath || !fs.existsSync(tempPath))) {
+    startupLog(`拖拽缓存未命中: items=${JSON.stringify(items.map(item => ({ fileId: item.fileId, fileName: item.fileName, downloadPath: item.downloadPath })))}`);
     event.returnValue = false;
     return;
   }
   try {
-    const dragItem = { file: tempPath };
+    const uniquePaths = Array.from(new Set(tempPaths));
+    const dragItem = { file: uniquePaths[0] };
+    if (uniquePaths.length > 1) dragItem.files = uniquePaths;
     const iconPath = getDragIconPath();
     if (iconPath) dragItem.icon = iconPath;
     mainWindow.webContents.startDrag(dragItem);

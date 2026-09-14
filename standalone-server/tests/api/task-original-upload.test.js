@@ -66,6 +66,16 @@ async function addOriginalFile(taskId, name = 'original.psd') {
   );
 }
 
+async function addWorkImage(taskId, name) {
+  const [result] = await execute(
+    `INSERT INTO task_file
+       (task_id, file_name, file_path, file_size, file_type, mime_type, uploader_id, file_category)
+     VALUES (?, ?, ?, 8, 'image', 'image/png', ?, 'work')`,
+    [taskId, name, `cs/test/${taskId}-${name}`, basicId]
+  );
+  return Number(result.insertId);
+}
+
 beforeAll(async () => {
   process.env.DISABLE_RATE_LIMIT = '1';
   app = await setupApp();
@@ -103,6 +113,34 @@ test('客服通过后进入待上传原图且不提前进入分值审核', async
     status: 'pending_original',
     score_review_status: ''
   });
+});
+
+test('客服单条通过可保存跨修改轮次的最终效果图选择', async () => {
+  const taskId = await createTask();
+  const firstId = await addWorkImage(taskId, '首次.png');
+  const secondId = await addWorkImage(taskId, '修改.png');
+  const [recordResult] = await execute(
+    `INSERT INTO task_reject_record
+       (task_id, reject_index, reviewer_id, reviewer_name, reject_reason, designer_complete_time)
+     VALUES (?, 1, ?, '客服甲', '调整构图', CURRENT_TIMESTAMP)`,
+    [taskId, publisherId]
+  );
+  await execute('UPDATE task_file SET reject_record_id = ? WHERE id = ?', [recordResult.insertId, secondId]);
+
+  const response = await request(app)
+    .post('/api/task/review')
+    .set('Authorization', `Bearer ${publisherToken}`)
+    .send({ taskId, action: 'pass', effectFileIds: [firstId, secondId] });
+
+  expect(response.body.code).toBe(0);
+  expect((await getTask(taskId)).selected_effect_file_ids).toBe(JSON.stringify([firstId, secondId]));
+  const detail = await request(app)
+    .get(`/api/task/detail?taskId=${taskId}`)
+    .set('Authorization', `Bearer ${publisherToken}`);
+  expect(detail.body.data.files).toEqual(expect.arrayContaining([
+    expect.objectContaining({ id: firstId, is_selected_effect: true }),
+    expect.objectContaining({ id: secondId, is_selected_effect: true })
+  ]));
 });
 
 test('原图可分批上传，完成上传后进入待审核原图且不提前进入分值审核', async () => {
@@ -270,7 +308,7 @@ test('客服审核原图不通过后回到待上传且保留原图文件', async
     `SELECT id FROM task_file WHERE task_id = ? AND file_category = 'original'`,
     [taskId]
   );
-  expect(files).toHaveLength(1);
+  expect(files).toHaveLength(0);
 });
 
 test('基础美工可在待审核原图时撤回且保留文件', async () => {
@@ -285,7 +323,23 @@ test('基础美工可在待审核原图时撤回且保留文件', async () => {
   expect(response.body.code).toBe(0);
   expect((await getTask(taskId)).status).toBe('pending_original');
   const [files] = await execute('SELECT id FROM task_file WHERE task_id = ?', [taskId]);
-  expect(files).toHaveLength(1);
+  expect(files).toHaveLength(0);
+
+  const uploaded = await request(app)
+    .post('/api/task/upload-original')
+    .set('Authorization', `Bearer ${basicToken}`)
+    .field('taskId', String(taskId))
+    .field('originalFileNames', JSON.stringify(['replacement-original.psd']))
+    .attach('files', Buffer.from('replacement'), 'replacement-upload.psd');
+  expect(uploaded.body.code).toBe(0);
+
+  const [replacementFiles] = await execute(
+    'SELECT file_name FROM task_file WHERE task_id = ? AND file_category = ? ORDER BY id',
+    [taskId, 'original']
+  );
+  expect(replacementFiles).toEqual([
+    expect.objectContaining({ file_name: 'replacement-original.psd' })
+  ]);
 });
 
 test('待审核原图不能转移给其他基础美工', async () => {

@@ -323,8 +323,13 @@ async function snapshotMaterialImages(taskId, materialStyleId, materialImageIds,
 }
 
 async function assertTaskViewAccess(task, user) {
+  // Review lists can expose cross-owner tasks according to the review scope.
+  // Keep detail/file access consistent for both effect-image and original-image review.
+  const canViewReviewTask = ['doing', 'pending_original_review'].includes(task?.status)
+    && canReviewTaskWithStatus(task, user);
   const canViewAllTaskDetail = hasPermission(user, 'task.view.all')
     || canViewByAllTasksPermission(task, user)
+    || canViewReviewTask
     || canOpenPaymentTask(task, user)
     || (task.task_group === 'cs'
       && task.handoff_status === 'pooled'
@@ -1149,6 +1154,9 @@ async function reviewOriginalTask(taskId, action, user) {
           score_review_score: 0
         });
       } else {
+        // A rejected original starts a replacement upload cycle. Do not mix
+        // rejected files into the next submission.
+        await taskDao.deleteFilesByCategory(conn, taskId, 'original');
         await taskDao.updateTaskStatus(conn, taskId, 'pending_original', {
           finish_time: null,
           urge_time: null
@@ -1181,6 +1189,9 @@ async function withdrawOriginalTask(taskId, user) {
       throw new AppError(403, '无权撤回此任务的原图审核');
     }
 
+    // Withdrawal starts a replacement upload cycle as well, so old originals
+    // must not remain alongside the next upload.
+    await taskDao.deleteFilesByCategory(conn, taskId, 'original');
     await taskDao.updateTaskStatus(conn, taskId, 'pending_original', {
       finish_time: null,
       urge_time: null
@@ -1492,7 +1503,19 @@ async function finishTask(taskId, actualQuantity, user) {
   return { msg: '作品已提交，等待运营审核' };
 }
 
-async function reviewTask(taskId, action, rejectReason, user) {
+function normalizeEffectFileIds(value) {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? (() => {
+          try { return JSON.parse(value); } catch (_) { return []; }
+        })()
+      : [];
+  if (!Array.isArray(raw)) return [];
+  return [...new Set(raw.map(Number).filter(id => Number.isInteger(id) && id > 0))];
+}
+
+async function reviewTask(taskId, action, rejectReason, user, effectFileIds) {
   if (!taskId || !action) throw new AppError(400, '参数不完整');
   if (!['pass', 'reject'].includes(action)) throw new AppError(400, '审核操作无效');
   await csHandoffService.assertCsActionAvailable(user, '审核任务');
@@ -1534,6 +1557,33 @@ async function reviewTask(taskId, action, rejectReason, user) {
           extra.score_review_reason = '';
           extra.score_review_time = null;
           extra.score_review_score = 0;
+          const workImages = await taskDao.getWorkImageFilesForUpdate(conn, taskId);
+          const imageIds = new Set(workImages.map(file => Number(file.id)));
+          let selectedIds;
+          if (effectFileIds !== undefined && effectFileIds !== null) {
+            selectedIds = normalizeEffectFileIds(effectFileIds);
+            if (selectedIds.some(id => !imageIds.has(id))) {
+              throw new AppError(400, '所选效果图不属于当前任务');
+            }
+            if (workImages.length && selectedIds.length === 0) {
+              throw new AppError(400, '请至少选择一张效果图');
+            }
+          } else if (workImages.length) {
+            const modifications = workImages.filter(file => Number(file.reject_record_id) > 0);
+            const latestRound = modifications.reduce((latest, file) => Math.max(
+              latest,
+              Number(file.reject_index) || Number(file.reject_record_id) || 0
+            ), 0);
+            const fallback = latestRound
+              ? modifications.filter(file => (
+                (Number(file.reject_index) || Number(file.reject_record_id) || 0) === latestRound
+              ))
+              : workImages.filter(file => !Number(file.reject_record_id));
+            selectedIds = fallback.map(file => Number(file.id));
+          } else {
+            selectedIds = [];
+          }
+          extra.selected_effect_file_ids = JSON.stringify(selectedIds);
         }
         await taskDao.updateTaskStatus(conn, taskId, task.task_group === 'cs' ? 'pending_original' : 'finished', extra);
       } else {

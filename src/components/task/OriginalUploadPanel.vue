@@ -35,9 +35,9 @@
       multiple
       :auto-upload="false"
       :limit="maxFileCount"
+      :show-file-list="false"
       accept="image/*,.psd,.ai,.zip,.rar,.7z"
       @change="handleChange"
-      @remove="handleRemove"
     >
       <el-icon class="el-icon--upload" :size="42"><UploadFilled /></el-icon>
       <div class="el-upload__text">拖拽原图或源文件到此处，或<em>点击选择</em></div>
@@ -46,13 +46,7 @@
       </template>
     </el-upload>
 
-    <div v-if="selectedFiles.length" class="original-selected-list">
-      <div v-for="item in selectedFiles" :key="item.uid" class="original-selected-item">
-        <el-icon><Document /></el-icon>
-        <span :title="item.name">{{ item.name }}</span>
-        <el-button circle text aria-label="移除文件" @click="removeSelected(item)">×</el-button>
-      </div>
-    </div>
+    <SelectedFilePreviewGrid :files="selectedFiles" @remove="removeSelected" />
 
     <el-progress v-if="uploading" :percentage="progress" :status="progress === 100 ? 'success' : undefined" />
     <div class="original-upload-actions">
@@ -66,6 +60,7 @@
 import { computed, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
 import { Document, UploadFilled } from '@element-plus/icons-vue'
+import SelectedFilePreviewGrid from '@/components/task/SelectedFilePreviewGrid.vue'
 import { completeOriginalUploadApi, getFileUrl, saveFileToDisk, setupFileDrag, uploadOriginalFilesApi } from '@/api'
 import { formatFileSize } from '@/utils/format'
 
@@ -91,7 +86,7 @@ const canComplete = computed(() => {
   return props.autoComplete ? hasPersistedFiles || rawFiles.value.length > 0 : hasPersistedFiles
 })
 
-watch(() => props.task.id, () => {
+watch(() => [props.task.id, props.task.status], () => {
   selectedFiles.value = []
   hasUploadedBatch.value = existingFiles.value.length > 0
   progress.value = 0
@@ -107,10 +102,6 @@ function handleChange(uploadFile, uploadFiles) {
     selectedFiles.value = uploadFiles.filter(item => item.uid !== uploadFile.uid)
     return
   }
-  selectedFiles.value = uploadFiles
-}
-
-function handleRemove(_uploadFile, uploadFiles) {
   selectedFiles.value = uploadFiles
 }
 
@@ -170,7 +161,7 @@ async function completeUpload() {
 
 <style scoped>
 .original-upload-panel { margin-top: 18px; padding-top: 16px; border-top: 1px solid var(--dd-border-light, #e4e7ed); }
-.original-upload-head, .original-upload-actions, .original-file-item, .original-selected-item { display: flex; align-items: center; }
+.original-upload-head, .original-upload-actions, .original-file-item { display: flex; align-items: center; }
 .original-upload-head { justify-content: space-between; gap: 12px; margin-bottom: 12px; }
 .original-upload-head h3 { margin: 0; font-size: 15px; }
 .original-upload-head p { margin: 4px 0 0; color: var(--dd-text-muted, #909399); font-size: 12px; }
@@ -179,14 +170,10 @@ async function completeUpload() {
 .original-file-thumb { width: 42px; height: 42px; flex: 0 0 auto; border-radius: 4px; }
 .original-file-icon { flex: 0 0 42px; color: var(--dd-text-muted, #909399); }
 .original-file-meta { display: flex; flex: 1; min-width: 0; flex-direction: column; gap: 2px; }
-.original-file-meta span, .original-selected-item span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.original-file-meta span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .original-file-meta small { color: var(--dd-text-muted, #909399); font-size: 11px; }
 .original-upload :deep(.el-upload), .original-upload :deep(.el-upload-dragger) { width: 100%; }
 .original-upload :deep(.el-upload-dragger) { padding: 18px 12px; }
-.original-selected-list { margin-top: 10px; border: 1px solid var(--dd-border-light, #e4e7ed); border-radius: 5px; }
-.original-selected-item { gap: 7px; min-height: 34px; padding: 0 8px; border-bottom: 1px solid var(--dd-border-light, #e4e7ed); }
-.original-selected-item:last-child { border-bottom: 0; }
-.original-selected-item span { flex: 1; min-width: 0; font-size: 12px; }
 .original-upload-actions { justify-content: flex-end; gap: 10px; margin-top: 14px; }
 .original-upload-panel :deep(.el-progress) { margin-top: 12px; }
 </style>

@@ -194,7 +194,12 @@ router.delete('/images/:imageId', requirePermission('material.library', 'admin')
 });
 
 router.get('/search', async (req, res, next) => {
-  try { send(res, await service.search(req.user, req.query.q)); } catch (err) { next(err); }
+  try {
+    send(res, await service.search(req.user, req.query.q, {
+      scope: req.query.scope,
+      limit: req.query.limit
+    }));
+  } catch (err) { next(err); }
 });
 
 module.exports = router;

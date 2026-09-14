@@ -126,8 +126,8 @@
         <el-table-column :label="isCsAgent ? '款式图' : '指定颜色'" width="140" align="center" show-overflow-tooltip>
           <template #default="{ row }">
             <template v-if="isCsAgent">
-              <div v-if="getStyleImages(row.files).length" class="style-thumb-cell" draggable="true" @dragstart="setupFileDrag($event, getStyleImages(row.files)[0])">
-                <el-image :src="getFileUrl(getStyleImages(row.files)[0])" :preview-src-list="getStyleImages(row.files).map(getFileUrl)" preview-teleported fit="contain" />
+              <div v-if="getStyleImages(row.files).length" class="style-thumb-cell" draggable="true" @dragstart="setupFilesDrag($event, getStyleImages(row.files))" @mousemove.once="preloadFilesForDrag(getStyleImages(row.files))">
+                <el-image :src="getTaskListFileGroups(row.files).styleThumbnailUrl" :preview-src-list="getTaskListFileGroups(row.files).stylePreviewUrls" lazy @load="preloadFilesForDrag(getStyleImages(row.files).slice(0, 1))" preview-teleported fit="contain" />
                 <span>{{ getStyleImages(row.files).length }}张</span>
               </div><span v-else>-</span>
             </template>
@@ -140,13 +140,16 @@
             <div
               v-if="getRefImages(row.files).length"
               draggable="true"
-              @dragstart="setupFileDrag($event, getRefImages(row.files)[0])"
+              @dragstart="setupListFileDrag($event, getRefFiles(row.files))"
+              @mousemove.once="preloadListFilesForDrag(getRefFiles(row.files))"
               style="display:inline-block;"
             >
               <el-image
-                :src="getFileUrl(getRefImages(row.files)[0])"
+                :src="getTaskListFileGroups(row.files).refThumbnailUrl"
                 fit="cover"
                 :preview-src-list="getRefImageSrcList(row.files)"
+                lazy
+                @load="preloadListFilesForDrag(getRefImages(row.files).slice(0, 1))"
                 preview-teleported
                 style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
               />
@@ -156,7 +159,7 @@
               :content="getRefAttachments(row.files).map(f => f.file_name).join('\n')"
               placement="top"
             >
-              <div class="file-badge" draggable="true" @dragstart="setupFileDrag($event, getRefAttachments(row.files)[0])" @mouseenter="preloadFilesForDrag(getRefAttachments(row.files))">
+              <div class="file-badge" draggable="true" @dragstart="setupListFileDrag($event, getRefFiles(row.files))" @mousemove.once="preloadListFilesForDrag(getRefFiles(row.files))">
                 <el-icon :size="18"><Document /></el-icon>
                 <span>{{ getRefAttachments(row.files).length }}个附件</span>
               </div>
@@ -170,14 +173,17 @@
               v-if="getTaskWorkImages(row.files).length"
               class="media-thumb-cell"
               draggable="true"
-              @dragstart="setupFileDrag($event, getTaskWorkImages(row.files)[0])"
+              @dragstart="setupListFileDrag($event, getTaskWorkFiles(row.files))"
+              @mousemove.once="preloadListFilesForDrag(getTaskWorkFiles(row.files))"
               style="display:inline-block;"
             >
               <el-image
-                :src="getFileUrl(getTaskWorkImages(row.files)[0])"
+                :src="getTaskWorkThumbnailUrl(row.files)"
                 fit="contain"
-                :preview-src-list="getTaskWorkImages(row.files).map(getFileUrl)"
+                :preview-src-list="getTaskWorkPreviewUrls(row.files)"
                 :initial-index="0"
+                lazy
+                @load="preloadListFilesForDrag(getTaskWorkImages(row.files).slice(0, 1))"
                 preview-teleported
                 style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
               />
@@ -187,7 +193,7 @@
               :content="getTaskWorkFiles(row.files).map(f => f.file_name).join('\n')"
               placement="top"
             >
-              <div class="file-badge" @click="viewDetail(row)" draggable="true" @dragstart="setupFileDrag($event, getTaskWorkFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getTaskWorkFiles(row.files))">
+              <div class="file-badge" @click="viewDetail(row)" draggable="true" @dragstart="setupListFileDrag($event, getTaskWorkFiles(row.files))" @mousemove.once="preloadListFilesForDrag(getTaskWorkFiles(row.files))">
                 <el-icon :size="18"><Document /></el-icon>
                 <span>{{ getTaskWorkFiles(row.files).length }}个附件</span>
               </div>
@@ -197,12 +203,12 @@
         </el-table-column>
         <el-table-column v-if="isCsAgent" label="原图" width="160" align="center">
           <template #default="{ row }">
-            <div v-if="getOriginalImages(row.files).length" class="media-thumb-cell" draggable="true" @dragstart="setupFileDrag($event, getOriginalImages(row.files)[0])" @mouseenter="preloadFilesForDrag(getOriginalImages(row.files))">
-              <el-image :src="getFileUrl(getOriginalImages(row.files)[0])" fit="contain" :preview-src-list="getOriginalImages(row.files).map(getFileUrl)" preview-teleported />
+            <div v-if="getOriginalImages(row.files).length" class="media-thumb-cell" draggable="true" @dragstart="setupFilesDrag($event, getOriginalFiles(row.files))" @mousemove.once="preloadFilesForDrag(getOriginalFiles(row.files))">
+              <el-image :src="getTaskListFileGroups(row.files).originalThumbnailUrl" fit="contain" :preview-src-list="getTaskListFileGroups(row.files).originalPreviewUrls" lazy @load="preloadFilesForDrag(getOriginalImages(row.files).slice(0, 1))" preview-teleported />
               <span>{{ getOriginalImages(row.files).length }}张</span>
             </div>
             <el-tooltip v-else-if="getOriginalFiles(row.files).length" :content="getOriginalFiles(row.files).map(f => f.file_name).join('\n')" placement="top">
-              <div class="file-badge" draggable="true" @dragstart="setupFileDrag($event, getOriginalFiles(row.files)[0])" @mouseenter="preloadFilesForDrag(getOriginalFiles(row.files))">
+              <div class="file-badge" draggable="true" @dragstart="setupFilesDrag($event, getOriginalFiles(row.files))" @mousemove.once="preloadFilesForDrag(getOriginalFiles(row.files))">
                 <el-icon :size="18"><Document /></el-icon>
                 <span>{{ getOriginalFiles(row.files).length }}个文件</span>
               </div>
@@ -346,7 +352,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Search, Plus } from '@element-plus/icons-vue'
-import { getMyPublishedApi, urgeTaskApi, getFileUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, reopenFinishedCsTaskApi, updateCsTaskNoApi, uploadFilesApi, setupFileDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
+import { getMyPublishedApi, urgeTaskApi, getFileUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, reopenFinishedCsTaskApi, updateCsTaskNoApi, uploadFilesApi, setupFileDrag, setupFilesDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
 import { getScoreItemsApi } from '@/api'
 import { getBasicDesignerListApi, getDesignerListApi, getOperatorAssistantListApi, getPublisherListApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, scoreReviewTagType } from '@/utils/format'
@@ -430,24 +436,47 @@ function statusType(s) { return STATUS_TAG_TYPE[s] || 'info' }
 const progressSteps = { wait: '20%', accepted: '40%', doing: '60%', pending_original: '80%', pending_original_review: '90%', finished: '100%', rejected: '60%', draft: '0%' }
 function progressWidth(s) { return progressSteps[s] || '0%' }
 
-const { getRefImages, getRefAttachments, getWorkFiles, getEffectFiles, getOriginalFiles, getRefImageSrcList, getImagePreviewIndex } = useFileHelpers()
+const { getTaskListFileGroups } = useFileHelpers()
+function getRefImages(files) { return getTaskListFileGroups(files).refImages }
+function getRefAttachments(files) { return getTaskListFileGroups(files).refAttachments }
+function getRefFiles(files) { return getTaskListFileGroups(files).refFiles }
+function getEffectFiles(files) { return getTaskListFileGroups(files).effectFiles }
+function getOriginalFiles(files) { return getTaskListFileGroups(files).originalFiles }
+function getRefImageSrcList(files) { return getTaskListFileGroups(files).refPreviewUrls }
 function getTaskWorkFiles(files) {
-  return isCsAgent.value ? getEffectFiles(files) : getWorkFiles(files)
+  const groups = getTaskListFileGroups(files)
+  return isCsAgent.value ? groups.effectFiles : groups.workFiles
 }
 function getTaskWorkImages(files) {
-  return getTaskWorkFiles(files).filter(file => file.file_type === 'image')
+  const groups = getTaskListFileGroups(files)
+  return isCsAgent.value ? groups.effectImages : groups.workImages
+}
+function getTaskWorkThumbnailUrl(files) {
+  const groups = getTaskListFileGroups(files)
+  return isCsAgent.value ? groups.effectThumbnailUrl : groups.workThumbnailUrl
+}
+function getTaskWorkPreviewUrls(files) {
+  const groups = getTaskListFileGroups(files)
+  return isCsAgent.value ? groups.effectPreviewUrls : groups.workPreviewUrls
 }
 function getOriginalImages(files) {
-  return getOriginalFiles(files).filter(file => file.file_type === 'image')
+  return getTaskListFileGroups(files).originalImages
+}
+function setupListFileDrag(event, files) {
+  if (isCsAgent.value) setupFilesDrag(event, files)
+  else setupFileDrag(event, files?.[0])
+}
+function preloadListFilesForDrag(files) {
+  preloadFilesForDrag(isCsAgent.value ? files : files?.slice(0, 1))
 }
 function isPaymentOpened(value) {
   return value === true || value === 1 || value === '1'
 }
 function getWorkImages(files) {
-  return getWorkFiles(files).filter(file => file.file_category !== 'style' && file.file_type === 'image')
+  return getTaskListFileGroups(files).workImages
 }
 function getStyleImages(files) {
-  return (files || []).filter(file => file.file_category === 'style' && file.file_type === 'image')
+  return getTaskListFileGroups(files).styleImages
 }
 const paymentOpenableSelected = computed(() => selectedRows.value.filter(row => (
   row.allowedActions?.openPayment

@@ -205,6 +205,10 @@ request.interceptors.response.use(
     return res
   },
   async error => {
+    if (axios.isCancel(error) || error.code === 'ERR_CANCELED') {
+      return Promise.reject(error)
+    }
+
     const config = error.config
     const httpStatus = error.response?.status
 

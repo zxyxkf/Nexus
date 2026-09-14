@@ -567,7 +567,7 @@ test('basic task routes keep status filters isolated and discard unsupported val
 
   await page.goto('/#/basic/tasks/todo')
   await waitForTaskTable(page)
-  await expect.poll(() => requestedStatuses.at(-1)).toBe('accepted,rejected,pending_original')
+  await expect.poll(() => requestedStatuses.at(-1)).toBe('accepted,rejected,pending_original,pending_original_review')
   const todoStatus = page.locator('.header-right .el-select').last()
   await todoStatus.click()
   await page.getByRole('option', { name: '修改中', exact: true }).click()
@@ -1159,7 +1159,7 @@ test('customer service work preview prefers the newest modification image', asyn
   await page.goto('/#/cs/review')
 
   const row = page.locator('.el-table__body tr').filter({ hasText: 'T-DOING' })
-  await expect(row.locator('[draggable="true"] .el-image img').last()).toHaveAttribute('src', /\/api\/task\/preview\/6012(?:\?|$)/)
+  await expect(row.locator('[draggable="true"] .el-image img').last()).toHaveAttribute('src', /\/api\/task\/thumbnail\/6012(?:\?|$)/)
 })
 
 test('customer service and basic designer task lists show style images without changing designer columns', async ({ page, browser }) => {
@@ -1193,6 +1193,33 @@ test('customer service and basic designer task lists show style images without c
   await expect(designerPage.getByRole('columnheader', { name: '指定颜色', exact: true })).toBeVisible()
   await expect(designerPage.getByRole('columnheader', { name: '款式图', exact: true })).toHaveCount(0)
   await designerPage.close()
+})
+
+test('customer service task lists use lazy thumbnails without preloading hidden preview files', async ({ page }) => {
+  await mockElectronDrag(page, { cached: false })
+  await loginAs(page, users.cs)
+  await page.goto('/#/cs/tasks')
+
+  const styleCell = page.locator('.style-thumb-cell').first()
+  const styleImage = styleCell.locator('.el-image img')
+  await expect(styleImage).toHaveAttribute('src', /\/api\/task\/thumbnail\/106(?:\?|$)/)
+
+  const preparedBeforeHover = await page.evaluate(() => window.__dragCalls
+    .filter(call => call.type === 'prepareFileDrags')
+    .flatMap(call => call.params.items)
+    .map(item => Number(item.fileId)))
+  expect(preparedBeforeHover).not.toContain(107)
+
+  await styleCell.hover()
+  await expect.poll(async () => page.evaluate(() => window.__dragCalls
+    .filter(call => call.type === 'prepareFileDrags')
+    .flatMap(call => call.params.items)
+    .map(item => Number(item.fileId))
+  )).toEqual(expect.arrayContaining([106, 107]))
+
+  await styleImage.click()
+  await expect(page.locator('.el-image-viewer__wrapper img').first())
+    .toHaveAttribute('src', /\/api\/task\/preview\/106(?:\?|$)/)
 })
 
 test('table and detail file drag writes browser download data', async ({ page }) => {
@@ -1888,7 +1915,7 @@ async function mockApis(page) {
       const task = [...taskRows, ...scoreRows].find(row => row.id === taskId) || taskRows[0]
       return json(route, { code: 0, data: { ...task, files: task.files || files, reject_records: task.reject_records || [] } })
     }
-    if (path.startsWith('/api/task/preview/')) {
+    if (path.startsWith('/api/task/preview/') || path.startsWith('/api/task/thumbnail/')) {
       return route.fulfill({
         status: 200,
         contentType: 'image/svg+xml',

@@ -8,7 +8,9 @@ describe('material color inference', () => {
     ['卡其A.jpg', '卡其'],
     ['白色薄款两件套.jpg', '白色'],
     ['白色拼秋香绿.jpg', '白色拼秋香绿'],
-    ['藏蓝拼酒红.jpg', '藏蓝拼酒红']
+    ['藏蓝拼酒红.jpg', '藏蓝拼酒红'],
+    ['YQF-0133长袖+黑色+(2).jpg', '黑色'],
+    ['5A333#200克50支桑蚕丝5A级抗菌间色AAAAAAAAAA二级翻领调货+大红色+(1).jpg', '大红色']
   ])('recognizes a color in %s', (filename, expected) => {
     expect(inferColor(filename)).toBe(expected);
   });

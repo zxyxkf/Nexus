@@ -54,12 +54,14 @@
               v-if="getStyleImages(row.files).length"
               class="style-thumb-cell"
               draggable="true"
-              @dragstart="setupFileDrag($event, getStyleImages(row.files)[0])"
-              @mouseenter="preloadFilesForDrag(getStyleImages(row.files))"
+              @dragstart="setupFilesDrag($event, getStyleImages(row.files))"
+              @mousemove.once="preloadFilesForDrag(getStyleImages(row.files))"
             >
               <el-image
-                :src="getFileUrl(getStyleImages(row.files)[0])"
-                :preview-src-list="getStyleImages(row.files).map(getFileUrl)"
+                :src="getTaskListFileGroups(row.files).styleThumbnailUrl"
+                :preview-src-list="getTaskListFileGroups(row.files).stylePreviewUrls"
+                lazy
+                @load="preloadFilesForDrag(getStyleImages(row.files).slice(0, 1))"
                 preview-teleported
                 fit="contain"
               />
@@ -79,13 +81,16 @@
             <div
               v-if="getRefImages(row.files).length"
               draggable="true"
-              @dragstart="setupFileDrag($event, getRefImages(row.files)[0])"
+              @dragstart="setupListFileDrag($event, getRefFiles(row.files))"
+              @mousemove.once="preloadListFilesForDrag(getRefFiles(row.files))"
               style="display:inline-block;"
             >
               <el-image
-                :src="getFileUrl(getRefImages(row.files)[0])"
+                :src="getTaskListFileGroups(row.files).refThumbnailUrl"
                 fit="cover"
                 :preview-src-list="getRefImageSrcList(row.files)"
+                lazy
+                @load="preloadListFilesForDrag(getRefImages(row.files).slice(0, 1))"
                 preview-teleported
                 style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
               />
@@ -95,7 +100,7 @@
               :content="getRefAttachments(row.files).map(f => f.file_name).join('\n')"
               placement="top"
             >
-              <div class="file-badge" draggable="true" @dragstart="setupFileDrag($event, getRefAttachments(row.files)[0])" @mouseenter="preloadFilesForDrag(getRefAttachments(row.files))">
+              <div class="file-badge" draggable="true" @dragstart="setupListFileDrag($event, getRefFiles(row.files))" @mousemove.once="preloadListFilesForDrag(getRefFiles(row.files))">
                 <el-icon :size="18"><Document /></el-icon>
                 <span>{{ getRefAttachments(row.files).length }}个附件</span>
               </div>
@@ -152,7 +157,7 @@ import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
 import TaskDetail from '@/components/TaskDetail.vue'
-import { getTaskHallApi, acceptTaskApi, getFileUrl, setupFileDrag, preloadFilesForDrag } from '@/api'
+import { getTaskHallApi, acceptTaskApi, getFileUrl, setupFileDrag, setupFilesDrag, preloadFilesForDrag } from '@/api'
 import { formatDate, formatFileSize } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
@@ -197,11 +202,24 @@ const { detailVisible, currentTask, openDetail: openTaskDetail } = useTaskDetail
   onError: () => {}
 })
 
-const { getRefImages, getRefAttachments, getRefImageSrcList, downloadFile } = useFileHelpers()
+const { getTaskListFileGroups, downloadFile } = useFileHelpers()
+function getRefImages(files) { return getTaskListFileGroups(files).refImages }
+function getRefAttachments(files) { return getTaskListFileGroups(files).refAttachments }
+function getRefFiles(files) { return getTaskListFileGroups(files).refFiles }
+function getRefImageSrcList(files) { return getTaskListFileGroups(files).refPreviewUrls }
 const formatSize = formatFileSize
 
+function setupListFileDrag(event, files) {
+  if (isBasicDesigner.value) setupFilesDrag(event, files)
+  else setupFileDrag(event, files?.[0])
+}
+
+function preloadListFilesForDrag(files) {
+  preloadFilesForDrag(isBasicDesigner.value ? files : files?.slice(0, 1))
+}
+
 function getStyleImages(files) {
-  return (files || []).filter(file => file.file_category === 'style' && file.file_type === 'image')
+  return getTaskListFileGroups(files).styleImages
 }
 
 const detailRefImages = computed(() => {

@@ -11,6 +11,7 @@ const { normalizeColor, inferColor, collectColors } = require('../utils/material
 const { withLock } = require('../utils/mutex');
 
 const MATERIAL_STORAGE_LOCK = 'material-library-storage';
+const WINDOWS_RESERVED_NAME = /^(CON|PRN|AUX|NUL|COM[1-9]|LPT[1-9])(?:\..*)?$/i;
 
 function withMaterialStorageLock(fn) {
   return withLock(MATERIAL_STORAGE_LOCK, fn);
@@ -32,7 +33,9 @@ function cleanName(value, label) {
   const name = String(value || '').trim();
   if (!name) throw new AppError(400, `${label}不能为空`);
   if (name.length > 200) throw new AppError(400, `${label}不能超过200个字符`);
-  if (/[\\/]/.test(name)) throw new AppError(400, `${label}包含非法字符`);
+  if (/[\u0000-\u001f<>:"/\\|?*]/.test(name) || /[. ]$/.test(name) || WINDOWS_RESERVED_NAME.test(name)) {
+    throw new AppError(400, `${label}包含 Windows 文件夹名不允许的字符`);
+  }
   return name;
 }
 
@@ -69,17 +72,38 @@ async function createProduct(user, name) {
 
 async function renameProduct(user, id, name) {
   assertAccess(user);
-  if (!await dao.getProduct(id)) throw new AppError(404, '商品库不存在');
-  return dao.renameProduct(id, cleanName(name, '商品库名称'));
+  const nextName = cleanName(name, '商品库名称');
+  return withMaterialStorageLock(async () => {
+    const product = await dao.getProduct(id);
+    if (!product) throw new AppError(404, '商品库不存在');
+    if (product.name === nextName) return product;
+
+    const images = await dao.listImagesByProduct(id);
+    const moved = moveMaterialDirectory(product.name, '', nextName, '', images.length > 0);
+    try {
+      return await executeTransaction(async conn => {
+        const updated = await dao.renameProduct(id, nextName, conn);
+        for (const image of images) {
+          await dao.updateImagePath(image.id, replaceMaterialPathSegment(image.file_path, 1, product.name, nextName), conn);
+        }
+        return updated;
+      });
+    } catch (error) {
+      rollbackMaterialDirectoryMove(moved);
+      throw error;
+    }
+  });
 }
 
 async function deleteProduct(user, id) {
   assertAccess(user);
   return withMaterialStorageLock(async () => {
     const filePaths = [];
+    let productName = '';
     await executeTransaction(async conn => {
       const product = await dao.getProduct(id, conn);
       if (!product) throw new AppError(404, '商品库不存在');
+      productName = product.name;
       const styles = await dao.listStyles(id, '', conn);
       // SQLite deployments may not enable PRAGMA foreign_keys; remove child rows explicitly.
       for (const style of styles) {
@@ -91,6 +115,7 @@ async function deleteProduct(user, id) {
       await dao.deleteProduct(id, conn);
     });
     filePaths.forEach(removePhysicalFile);
+    removeEmptyMaterialDirectory(productName);
     return { id: Number(id) };
   });
 }
@@ -109,23 +134,47 @@ async function createStyle(user, productId, name) {
 
 async function renameStyle(user, id, name) {
   assertAccess(user);
-  if (!await dao.getStyle(id)) throw new AppError(404, '款式不存在');
-  return dao.renameStyle(id, cleanName(name, '款式名称'));
+  const nextName = cleanName(name, '款式名称');
+  return withMaterialStorageLock(async () => {
+    const style = await dao.getStyle(id);
+    if (!style) throw new AppError(404, '款式不存在');
+    if (style.name === nextName) return style;
+
+    const images = await dao.listImages(id);
+    const moved = moveMaterialDirectory(style.product_name, style.name, style.product_name, nextName, images.length > 0);
+    try {
+      return await executeTransaction(async conn => {
+        const updated = await dao.renameStyle(id, nextName, conn);
+        for (const image of images) {
+          await dao.updateImagePath(image.id, replaceMaterialPathSegment(image.file_path, 2, style.name, nextName), conn);
+        }
+        return updated;
+      });
+    } catch (error) {
+      rollbackMaterialDirectoryMove(moved);
+      throw error;
+    }
+  });
 }
 
 async function deleteStyle(user, id) {
   assertAccess(user);
   return withMaterialStorageLock(async () => {
     const filePaths = [];
+    let productName = '';
+    let styleName = '';
     await executeTransaction(async conn => {
       const style = await dao.getStyle(id, conn);
       if (!style) throw new AppError(404, '款式不存在');
+      productName = style.product_name;
+      styleName = style.name;
       const images = await dao.listImages(id, '', conn);
       filePaths.push(...images.map(image => image.file_path).filter(Boolean));
       for (const image of images) await dao.deleteImage(image.id, conn);
       await dao.deleteStyle(id, conn);
     });
     filePaths.forEach(removePhysicalFile);
+    removeEmptyMaterialDirectory(productName, styleName);
     return { id: Number(id) };
   });
 }
@@ -142,10 +191,10 @@ async function listImages(user, styleId) {
   };
 }
 
-function safeMaterialRelativePath(productId, styleId, date, filename) {
+function safeMaterialRelativePath(productName, styleName, filename) {
   const safeFile = path.basename(filename);
   if (!safeFile || safeFile !== filename) throw new AppError(400, '文件名不合法');
-  return `material/${productId}/${styleId}/${date}/${safeFile}`;
+  return ['material', productName, styleName, safeFile].join('/');
 }
 
 function safeMaterialFilename(name, fallback = 'material-image.bin') {
@@ -157,13 +206,55 @@ function safeMaterialFilename(name, fallback = 'material-image.bin') {
   return value;
 }
 
-function copyUsingOriginalName(sourcePath, productId, styleId, date, originalName) {
+function materialDirectoryPath(productName, styleName = '') {
+  return path.join(getMaterialLibraryDir(), productName, ...(styleName ? [styleName] : []));
+}
+
+function replaceMaterialPathSegment(filePath, index, expectedName, nextName) {
+  const parts = String(filePath || '').replace(/\\/g, '/').split('/');
+  if (parts[0] !== 'material' || parts[index] !== expectedName || parts.length < 4) {
+    throw new AppError(409, '现有素材路径不是商品库名/款式名结构，无法随名称同步调整');
+  }
+  parts[index] = nextName;
+  return parts.join('/');
+}
+
+function moveMaterialDirectory(oldProductName, oldStyleName, nextProductName, nextStyleName, required) {
+  const source = materialDirectoryPath(oldProductName, oldStyleName);
+  const destination = materialDirectoryPath(nextProductName, nextStyleName);
+  if (source === destination) return null;
+  if (!fs.existsSync(source)) {
+    if (required) throw new AppError(409, '素材物理目录不存在，无法同步重命名');
+    return null;
+  }
+  if (fs.existsSync(destination)) throw new AppError(409, '目标素材目录已经存在，请更换名称');
+
+  try {
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.renameSync(source, destination);
+    return { source, destination };
+  } catch (error) {
+    throw new AppError(409, `素材物理目录重命名失败：${error.message}`);
+  }
+}
+
+function rollbackMaterialDirectoryMove(move) {
+  if (!move || !fs.existsSync(move.destination) || fs.existsSync(move.source)) return;
+  try {
+    fs.mkdirSync(path.dirname(move.source), { recursive: true });
+    fs.renameSync(move.destination, move.source);
+  } catch (error) {
+    console.error('[MaterialLibrary] 素材目录重命名回滚失败:', error.message);
+  }
+}
+
+function copyUsingOriginalName(sourcePath, productName, styleName, originalName) {
   const parsed = path.parse(originalName);
   for (let copyIndex = 1; copyIndex <= 10000; copyIndex++) {
     const filename = copyIndex === 1
       ? originalName
       : `${parsed.name} (${copyIndex})${parsed.ext}`;
-    const relative = safeMaterialRelativePath(productId, styleId, date, filename);
+    const relative = safeMaterialRelativePath(productName, styleName, filename);
     const absolute = resolvePath(relative);
     fs.mkdirSync(path.dirname(absolute), { recursive: true });
     try {
@@ -180,7 +271,6 @@ async function saveUploadedImages(user, styleId, files = []) {
   assertAccess(user);
   if (!files.length) throw new AppError(400, '请选择图片');
   return withMaterialStorageLock(async () => {
-    const date = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const created = [];
     const copiedPaths = [];
     try {
@@ -190,7 +280,7 @@ async function saveUploadedImages(user, styleId, files = []) {
         let order = await dao.getNextSortOrder(styleId, conn);
         for (const file of files) {
           const originalName = safeMaterialFilename(file.originalname, `material-image-${order}.bin`);
-          const relative = copyUsingOriginalName(file.path, style.product_id, styleId, date, originalName);
+          const relative = copyUsingOriginalName(file.path, style.product_name, style.name, originalName);
           copiedPaths.push(relative);
           const image = await dao.createImage({
             styleId,
@@ -390,11 +480,17 @@ async function updateMaterialStorageConfig(configId, newRootValue) {
   });
 }
 
-async function search(user, keyword) {
+async function search(user, keyword, options = {}) {
   assertReadAccess(user);
   const q = String(keyword || '').trim();
-  if (!q) return { products: [], styles: [] };
-  return dao.search(q);
+  if (!q) return { products: [], styles: [], hasMore: false };
+
+  const stylesOnly = options.scope === 'styles';
+  const parsedLimit = Number.parseInt(options.limit, 10);
+  const limit = stylesOnly
+    ? Math.min(Math.max(Number.isFinite(parsedLimit) ? parsedLimit : 50, 1), 50)
+    : null;
+  return dao.search(q, { stylesOnly, limit });
 }
 
 async function getReadableImage(user, imageId) {
@@ -408,7 +504,26 @@ function removePhysicalFile(filePath) {
   try {
     const absolute = resolvePath(filePath);
     if (absolute && fs.existsSync(absolute)) fs.unlinkSync(absolute);
+    removeEmptyMaterialAncestors(absolute ? path.dirname(absolute) : '');
   } catch (_) {}
+}
+
+function removeEmptyMaterialDirectory(productName, styleName = '') {
+  if (!productName) return;
+  removeEmptyMaterialAncestors(materialDirectoryPath(productName, styleName));
+}
+
+function removeEmptyMaterialAncestors(startDirectory) {
+  const root = path.resolve(getMaterialLibraryDir());
+  let current = path.resolve(String(startDirectory || root));
+  while (current !== root && current.startsWith(root + path.sep)) {
+    try {
+      fs.rmdirSync(current);
+    } catch (_) {
+      break;
+    }
+    current = path.dirname(current);
+  }
 }
 
 function resolveImagePath(image) {

@@ -43,9 +43,9 @@ async function createProduct(name, userId) {
   return getProduct(result.insertId);
 }
 
-async function renameProduct(id, name) {
-  await execute('UPDATE material_product SET name = ?, update_time = CURRENT_TIMESTAMP WHERE id = ?', [name, id]);
-  return getProduct(id);
+async function renameProduct(id, name, executor = null) {
+  await run(executor, 'UPDATE material_product SET name = ?, update_time = CURRENT_TIMESTAMP WHERE id = ?', [name, id]);
+  return getProduct(id, executor);
 }
 
 async function deleteProduct(id, executor = null) {
@@ -90,9 +90,9 @@ async function createStyle(productId, name, userId) {
   return getStyle(result.insertId);
 }
 
-async function renameStyle(id, name) {
-  await execute('UPDATE material_style SET name = ?, update_time = CURRENT_TIMESTAMP WHERE id = ?', [name, id]);
-  return getStyle(id);
+async function renameStyle(id, name, executor = null) {
+  await run(executor, 'UPDATE material_style SET name = ?, update_time = CURRENT_TIMESTAMP WHERE id = ?', [name, id]);
+  return getStyle(id, executor);
 }
 
 async function deleteStyle(id, executor = null) {
@@ -121,6 +121,16 @@ async function getImagesByIds(ids, executor = null) {
   if (!ids.length) return [];
   const [rows] = await run(executor,
     `SELECT * FROM material_image WHERE id IN (${placeholders(ids)}) ORDER BY sort_order, id`, ids
+  );
+  return rows;
+}
+
+async function listImagesByProduct(productId, executor = null) {
+  const [rows] = await run(executor,
+    `SELECT i.* FROM material_image i
+     INNER JOIN material_style s ON s.id = i.style_id
+     WHERE s.product_id = ? ORDER BY s.id, i.sort_order, i.id`,
+    [productId]
   );
   return rows;
 }
@@ -165,22 +175,50 @@ async function setImageOrder(id, sortOrder, executor = null) {
   return run(executor, 'UPDATE material_image SET sort_order = ?, update_time = CURRENT_TIMESTAMP WHERE id = ?', [sortOrder, id]);
 }
 
-async function search(keyword) {
+async function updateImagePath(id, filePath, executor = null) {
+  return run(executor, 'UPDATE material_image SET file_path = ?, update_time = CURRENT_TIMESTAMP WHERE id = ?', [filePath, id]);
+}
+
+async function search(keyword, { stylesOnly = false, limit = null } = {}) {
   const term = `%${keyword}%`;
-  const [products] = await execute(
-    'SELECT id, name FROM material_product WHERE name LIKE ? ORDER BY name, id', [term]
-  );
+  let products = [];
+  if (!stylesOnly) {
+    [products] = await execute(
+      'SELECT id, name FROM material_product WHERE name LIKE ? ORDER BY name, id', [term]
+    );
+  }
+
+  const boundedLimit = Number.isInteger(limit) && limit > 0 ? limit : null;
+  const params = [term];
+  let orderBy = 'ORDER BY p.name, s.name, s.id';
+  let limitSql = '';
+  if (boundedLimit) {
+    orderBy = `ORDER BY CASE
+      WHEN s.name = ? THEN 0
+      WHEN s.name LIKE ? THEN 1
+      ELSE 2
+    END, p.name, s.name, s.id`;
+    params.push(keyword, `${keyword}%`);
+    limitSql = ` LIMIT ${boundedLimit + 1}`;
+  }
+
   const [styles] = await execute(
     `SELECT s.id, s.product_id, s.name, p.name AS product_name
      FROM material_style s INNER JOIN material_product p ON p.id = s.product_id
-     WHERE s.name LIKE ? ORDER BY p.name, s.name, s.id`, [term]
+     WHERE s.name LIKE ? ${orderBy}${limitSql}`,
+    params
   );
-  return { products, styles };
+  const hasMore = Boolean(boundedLimit && styles.length > boundedLimit);
+  return {
+    products,
+    styles: boundedLimit ? styles.slice(0, boundedLimit) : styles,
+    hasMore
+  };
 }
 
 module.exports = {
   listProducts, getProduct, createProduct, renameProduct, deleteProduct,
   listStyles, getStyle, createStyle, renameStyle, deleteStyle,
-  listImages, getImage, getImagesByIds, getNextSortOrder, createImage,
-  renameImage, updateImageColor, deleteImage, setImageOrder, search
+  listImages, getImage, getImagesByIds, listImagesByProduct, getNextSortOrder, createImage,
+  renameImage, updateImageColor, deleteImage, setImageOrder, updateImagePath, search
 };
