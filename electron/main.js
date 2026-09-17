@@ -12,6 +12,12 @@ const fs = require('fs');
 const crypto = require('crypto');
 const { execSync } = require('child_process');
 const { autoUpdater } = require('electron-updater');
+const { applyDragWatermark } = require('./drag-watermark');
+const {
+  getDragCacheVariantKeyPart,
+  normalizeDragWatermarkRequest,
+  replaceDragFileExtension
+} = require('./drag-cache-variant');
 
 // 禁止Electron安全警告
 process.env.ELECTRON_DISABLE_SECURITY_WARNINGS = 'true';
@@ -380,12 +386,21 @@ function getDragAuthScope(token) {
   return crypto.createHash('sha256').update(String(token)).digest('hex');
 }
 
-function normalizeDragCacheKey(fileId, fileName = '', downloadPath = '', serverUrl = getServerConfig().serverUrl, authScope = '') {
+function normalizeDragCacheKey(
+  fileId,
+  fileName = '',
+  downloadPath = '',
+  serverUrl = getServerConfig().serverUrl,
+  authScope = '',
+  watermarkText = '',
+  watermarkVariant = ''
+) {
   const id = normalizeDragFileId(fileId);
   const server = normalizeDragServerUrl(serverUrl);
-  if (!fileName) return `${server}:${authScope}:${id}`;
+  const variantKey = getDragCacheVariantKeyPart({ fileName, watermarkText, watermarkVariant });
+  if (!fileName) return `${server}:${authScope}:${id}:${variantKey}`;
   const resolvedDownloadPath = downloadPath ? resolveDragDownloadPath(id, downloadPath) : '';
-  return `${server}:${authScope}:${id}:${sanitizeDragFileName(fileName, id)}:${resolvedDownloadPath}`;
+  return `${server}:${authScope}:${id}:${sanitizeDragFileName(fileName, id)}:${resolvedDownloadPath}:${variantKey}`;
 }
 
 function isDragCachePath(pathName) {
@@ -393,16 +408,33 @@ function isDragCachePath(pathName) {
   return path.resolve(pathName).startsWith(root);
 }
 
-function findCachedDragEntry(fileId, fileName = '', downloadPath = '', token = '') {
+function findCachedDragEntry(
+  fileId,
+  fileName = '',
+  downloadPath = '',
+  token = '',
+  watermarkText = '',
+  watermarkVariant = ''
+) {
   const authScope = getDragAuthScope(token);
   if (!authScope) return '';
   const id = normalizeDragFileId(fileId);
   const serverUrl = normalizeDragServerUrl();
   const safeFileName = fileName ? sanitizeDragFileName(fileName, id) : '';
   const resolvedDownloadPath = downloadPath ? resolveDragDownloadPath(id, downloadPath) : '';
+  const watermark = normalizeDragWatermarkRequest({ fileName: safeFileName, watermarkText, watermarkVariant });
+  if (!watermark.valid) return '';
 
   if (fileName && downloadPath) {
-    const exactKey = normalizeDragCacheKey(id, fileName, resolvedDownloadPath, serverUrl, authScope);
+    const exactKey = normalizeDragCacheKey(
+      id,
+      fileName,
+      resolvedDownloadPath,
+      serverUrl,
+      authScope,
+      watermark.watermarkText,
+      watermark.watermarkVariant
+    );
     const exactMetadata = dragFileMetaCache.get(exactKey);
     const exactPath = dragFileCache.get(exactKey);
     if (exactMetadata && exactPath && fs.existsSync(exactPath)) {
@@ -414,14 +446,24 @@ function findCachedDragEntry(fileId, fileName = '', downloadPath = '', token = '
   for (const [key, metadata] of dragFileMetaCache) {
     if (metadata.serverUrl !== serverUrl || metadata.authScope !== authScope || metadata.fileId !== id) continue;
     if (resolvedDownloadPath && metadata.downloadPath !== resolvedDownloadPath) continue;
+    if ((metadata.watermarkText || '') !== watermark.watermarkText ||
+        (metadata.watermarkVariant || '') !== watermark.watermarkVariant) continue;
+    if (watermark.requested && safeFileName && metadata.fileName !== safeFileName) continue;
     if (safeFileName && metadata.fileName !== safeFileName) candidates.push({ key, metadata, tempPath: dragFileCache.get(key) });
     else candidates.unshift({ key, metadata, tempPath: dragFileCache.get(key) });
   }
   return candidates.find(entry => entry.tempPath && fs.existsSync(entry.tempPath)) || '';
 }
 
-function getCachedDragPath(fileId, fileName = '', downloadPath = '', token = '') {
-  return findCachedDragEntry(fileId, fileName, downloadPath, token)?.tempPath || '';
+function getCachedDragPath(fileId, fileName = '', downloadPath = '', token = '', watermarkText = '', watermarkVariant = '') {
+  return findCachedDragEntry(
+    fileId,
+    fileName,
+    downloadPath,
+    token,
+    watermarkText,
+    watermarkVariant
+  )?.tempPath || '';
 }
 
 function persistDragManifest() {
@@ -431,7 +473,7 @@ function persistDragManifest() {
     const manifestPath = getDragManifestPath();
     const tempManifestPath = `${manifestPath}.tmp`;
     fs.writeFileSync(tempManifestPath, JSON.stringify({
-      version: 1,
+      version: 2,
       entries: Array.from(dragFileMetaCache.values())
     }, null, 2), 'utf8');
     try {
@@ -450,7 +492,7 @@ function loadDragManifest() {
     const manifestPath = getDragManifestPath();
     if (!fs.existsSync(manifestPath)) return { entries: [], corrupted: false };
     const parsed = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
-    if (parsed?.version !== 1 || !Array.isArray(parsed.entries)) {
+    if (![1, 2].includes(parsed?.version) || !Array.isArray(parsed.entries)) {
       return { entries: [], corrupted: true };
     }
     return { entries: parsed.entries, corrupted: false };
@@ -477,8 +519,15 @@ function restoreDragCache() {
     const updatedAt = Number(entry?.updatedAt || 0);
     const serverUrl = typeof entry?.serverUrl === 'string' ? normalizeDragServerUrl(entry.serverUrl) : '';
     const authScope = typeof entry?.authScope === 'string' ? entry.authScope : '';
+    const watermarkText = typeof entry?.watermarkText === 'string' ? entry.watermarkText : '';
+    const watermarkVariant = typeof entry?.watermarkVariant === 'string' ? entry.watermarkVariant : '';
+    const watermark = normalizeDragWatermarkRequest({
+      fileName: safeFileName,
+      watermarkText,
+      watermarkVariant
+    });
     const valid = fileId && entry?.fileName && authScope && serverUrl === currentServerUrl && isDragCachePath(tempPath) &&
-      fs.existsSync(tempPath) && updatedAt > 0 && now - updatedAt <= dragCacheTtlMs;
+      watermark.valid && fs.existsSync(tempPath) && updatedAt > 0 && now - updatedAt <= dragCacheTtlMs;
     if (!valid) {
       if (tempPath && isDragCachePath(tempPath) && fs.existsSync(tempPath)) {
         try { fs.unlinkSync(tempPath); } catch (_) {}
@@ -499,15 +548,28 @@ function restoreDragCache() {
       continue;
     }
     const downloadPath = resolveDragDownloadPath(fileId, entry.downloadPath);
-    const cacheKey = normalizeDragCacheKey(fileId, safeFileName, downloadPath, serverUrl, authScope);
-    dragFileCache.set(cacheKey, tempPath);
-    dragFileNameCache.set(cacheKey, safeFileName);
-    dragFileMetaCache.set(cacheKey, {
+    const outputFileName = sanitizeDragFileName(entry?.outputFileName || safeFileName, fileId);
+    const cacheKey = normalizeDragCacheKey(
       fileId,
-      fileName: safeFileName,
+      safeFileName,
       downloadPath,
       serverUrl,
       authScope,
+      watermark.watermarkText,
+      watermark.watermarkVariant
+    );
+    dragFileCache.set(cacheKey, tempPath);
+    dragFileNameCache.set(cacheKey, outputFileName);
+    dragFileMetaCache.set(cacheKey, {
+      fileId,
+      fileName: safeFileName,
+      outputFileName,
+      downloadPath,
+      serverUrl,
+      authScope,
+      watermarkText: watermark.watermarkText,
+      watermarkVariant: watermark.watermarkVariant,
+      outputExtension: watermark.outputExtension,
       tempPath,
       size: stat.size,
       updatedAt
@@ -535,16 +597,35 @@ function chooseDragTempPath(cacheKey, safeFileName) {
   return tempPath;
 }
 
-function cacheDragFile(fileId, fileName, buffer, downloadPath = '', token = '') {
+function cacheDragFile(fileId, fileName, buffer, downloadPath = '', token = '', options = {}) {
   const tempDir = getDragCacheDir();
   if (!fs.existsSync(tempDir)) fs.mkdirSync(tempDir, { recursive: true });
   const safeFileName = sanitizeDragFileName(fileName, fileId);
+  const watermark = normalizeDragWatermarkRequest({
+    fileName: safeFileName,
+    watermarkText: options.watermarkText,
+    watermarkVariant: options.watermarkVariant
+  });
+  if (!watermark.valid) {
+    const error = new Error('水印请求无效，无法写入拖拽缓存');
+    error.code = 'DRAG_WATERMARK_INVALID_REQUEST';
+    throw error;
+  }
+  const outputFileName = sanitizeDragFileName(options.outputFileName || safeFileName, fileId);
   const resolvedDownloadPath = resolveDragDownloadPath(fileId, downloadPath);
   const serverUrl = normalizeDragServerUrl();
   const authScope = getDragAuthScope(token);
   if (!authScope) return;
-  const cacheKey = normalizeDragCacheKey(fileId, safeFileName, resolvedDownloadPath, serverUrl, authScope);
-  const tempPath = chooseDragTempPath(cacheKey, safeFileName);
+  const cacheKey = normalizeDragCacheKey(
+    fileId,
+    safeFileName,
+    resolvedDownloadPath,
+    serverUrl,
+    authScope,
+    watermark.watermarkText,
+    watermark.watermarkVariant
+  );
+  const tempPath = chooseDragTempPath(cacheKey, outputFileName);
   try {
     fs.writeFileSync(tempPath, buffer);
   } catch (err) {
@@ -554,13 +635,17 @@ function cacheDragFile(fileId, fileName, buffer, downloadPath = '', token = '') 
     dragReservedPaths.delete(tempPath);
   }
   dragFileCache.set(cacheKey, tempPath);
-  dragFileNameCache.set(cacheKey, safeFileName);
+  dragFileNameCache.set(cacheKey, outputFileName);
   dragFileMetaCache.set(cacheKey, {
     fileId: normalizeDragFileId(fileId),
     fileName: safeFileName,
+    outputFileName,
     downloadPath: resolvedDownloadPath,
     serverUrl,
     authScope,
+    watermarkText: watermark.watermarkText,
+    watermarkVariant: watermark.watermarkVariant,
+    outputExtension: watermark.outputExtension,
     tempPath,
     size: buffer.length,
     updatedAt: Date.now()
@@ -568,11 +653,28 @@ function cacheDragFile(fileId, fileName, buffer, downloadPath = '', token = '') 
   persistDragManifest();
 }
 
-function removeCachedDragFile(fileId, fileName = '', downloadPath = '', cacheServerUrl = getServerConfig().serverUrl, cacheAuthScope = '', shouldPersist = true) {
+function removeCachedDragFile(
+  fileId,
+  fileName = '',
+  downloadPath = '',
+  cacheServerUrl = getServerConfig().serverUrl,
+  cacheAuthScope = '',
+  watermarkText = '',
+  watermarkVariant = '',
+  shouldPersist = true
+) {
   const id = normalizeDragFileId(fileId);
   const serverUrl = normalizeDragServerUrl(cacheServerUrl);
   const requestedKey = fileName && downloadPath && cacheAuthScope
-    ? normalizeDragCacheKey(id, fileName, downloadPath, serverUrl, cacheAuthScope)
+    ? normalizeDragCacheKey(
+      id,
+      fileName,
+      downloadPath,
+      serverUrl,
+      cacheAuthScope,
+      watermarkText,
+      watermarkVariant
+    )
     : '';
   const safeFileName = fileName ? sanitizeDragFileName(fileName, id) : '';
   const keys = Array.from(dragFileMetaCache.entries()).filter(([key, metadata]) => {
@@ -599,7 +701,16 @@ function cleanExpiredCache() {
   let changed = false;
   for (const metadata of Array.from(dragFileMetaCache.values())) {
     if (now - Number(metadata.updatedAt || 0) <= dragCacheTtlMs && fs.existsSync(metadata.tempPath)) continue;
-    removeCachedDragFile(metadata.fileId, metadata.fileName, metadata.downloadPath, metadata.serverUrl, metadata.authScope, false);
+    removeCachedDragFile(
+      metadata.fileId,
+      metadata.fileName,
+      metadata.downloadPath,
+      metadata.serverUrl,
+      metadata.authScope,
+      metadata.watermarkText,
+      metadata.watermarkVariant,
+      false
+    );
     changed = true;
   }
   try {
@@ -621,8 +732,8 @@ function cleanExpiredCache() {
 }
 setInterval(cleanExpiredCache, 30 * 60 * 1000);
 
-function isDragFileCached(fileId, fileName = '', downloadPath = '', token = '') {
-  const entry = findCachedDragEntry(fileId, fileName, downloadPath, token);
+function isDragFileCached(fileId, fileName = '', downloadPath = '', token = '', watermarkText = '', watermarkVariant = '') {
+  const entry = findCachedDragEntry(fileId, fileName, downloadPath, token, watermarkText, watermarkVariant);
   if (!entry || Date.now() - Number(entry.metadata.updatedAt || 0) > dragCacheTtlMs) return false;
   return true;
 }
@@ -637,14 +748,61 @@ function drainDragPrepareQueue() {
     dragPrepareActive += 1;
     if (job.priority !== 'high') dragPrepareNormalActive += 1;
     Promise.resolve().then(async () => {
-      if (isDragFileCached(job.fileId, job.fileName, job.downloadPath, job.token)) return true;
-      removeCachedDragFile(job.fileId, job.fileName, job.downloadPath, getServerConfig().serverUrl, job.authScope);
+      const watermark = normalizeDragWatermarkRequest(job);
+      if (!watermark.valid) {
+        const error = new Error('水印参数不完整或不匹配');
+        error.code = 'DRAG_WATERMARK_INVALID_REQUEST';
+        throw error;
+      }
+      if (isDragFileCached(
+        job.fileId,
+        job.fileName,
+        job.downloadPath,
+        job.token,
+        watermark.watermarkText,
+        watermark.watermarkVariant
+      )) {
+        return { success: true, fileId: job.fileId };
+      }
+      removeCachedDragFile(
+        job.fileId,
+        job.fileName,
+        job.downloadPath,
+        getServerConfig().serverUrl,
+        job.authScope,
+        watermark.watermarkText,
+        watermark.watermarkVariant
+      );
       const config = getServerConfig();
       const url = `${config.serverUrl}${resolveDragDownloadPath(job.fileId, job.downloadPath)}`;
       const { buffer } = await httpGetBuffer(url, job.token);
-      cacheDragFile(job.fileId, job.fileName, buffer, job.downloadPath, job.token);
-      return true;
-    }).catch(() => false).then(result => job.resolve(result)).finally(() => {
+      let outputBuffer = buffer;
+      let outputFileName = job.fileName;
+      if (watermark.requested) {
+        const watermarked = await applyDragWatermark(
+          buffer,
+          watermark.watermarkText,
+          path.extname(job.fileName)
+        );
+        outputBuffer = watermarked.buffer;
+        outputFileName = replaceDragFileExtension(job.fileName, watermarked.extension);
+      }
+      cacheDragFile(job.fileId, job.fileName, outputBuffer, job.downloadPath, job.token, {
+        outputFileName,
+        watermarkText: watermark.watermarkText,
+        watermarkVariant: watermark.watermarkVariant
+      });
+      return { success: true, fileId: job.fileId };
+    }).catch(error => {
+      const watermarkFailure = String(error?.code || '').startsWith('DRAG_WATERMARK');
+      startupLog(`拖拽文件准备失败: fileId=${job.fileId} code=${error?.code || 'UNKNOWN'} message=${error?.message || error}`);
+      return {
+        success: false,
+        fileId: job.fileId,
+        code: watermarkFailure ? 'watermark' : 'prepare',
+        message: watermarkFailure ? '水印生成失败' : '文件准备失败'
+      };
+    }).then(result => job.resolve(result)).finally(() => {
       dragPrepareActive -= 1;
       if (job.priority !== 'high') dragPrepareNormalActive -= 1;
       if (dragPrepareJobs.get(job.key) === job) dragPrepareJobs.delete(job.key);
@@ -658,9 +816,34 @@ function enqueueDragPreparation(item, token) {
   const fileName = sanitizeDragFileName(item.fileName, fileId);
   const downloadPath = resolveDragDownloadPath(fileId, item.downloadPath);
   const authScope = getDragAuthScope(token);
-  if (!authScope) return Promise.resolve(false);
-  const key = normalizeDragCacheKey(fileId, fileName, downloadPath, getServerConfig().serverUrl, authScope);
-  if (isDragFileCached(fileId, fileName, downloadPath, token)) return Promise.resolve(true);
+  const watermark = normalizeDragWatermarkRequest({
+    fileName,
+    watermarkText: item.watermarkText,
+    watermarkVariant: item.watermarkVariant
+  });
+  if (!authScope) return Promise.resolve({ success: false, fileId, code: 'auth', message: '缺少登录凭证' });
+  if (!watermark.valid) {
+    return Promise.resolve({ success: false, fileId, code: 'watermark', message: '水印生成失败' });
+  }
+  const key = normalizeDragCacheKey(
+    fileId,
+    fileName,
+    downloadPath,
+    getServerConfig().serverUrl,
+    authScope,
+    watermark.watermarkText,
+    watermark.watermarkVariant
+  );
+  if (isDragFileCached(
+    fileId,
+    fileName,
+    downloadPath,
+    token,
+    watermark.watermarkText,
+    watermark.watermarkVariant
+  )) {
+    return Promise.resolve({ success: true, fileId });
+  }
   const existing = dragPrepareJobs.get(key);
   if (existing) {
     if (item.priority === 'high') existing.priority = 'high';
@@ -673,6 +856,8 @@ function enqueueDragPreparation(item, token) {
     key, fileId, fileName,
     downloadPath,
     token, authScope,
+    watermarkText: watermark.watermarkText,
+    watermarkVariant: watermark.watermarkVariant,
     priority: item.priority === 'high' ? 'high' : 'normal',
     order: Date.now() + Math.random(),
     promise,
@@ -735,15 +920,18 @@ ipcMain.handle('prepare-file-drags', async (event, { items = [], token }) => {
       item.fileName,
       item.downloadPath,
       getServerConfig().serverUrl,
-      getDragAuthScope(token)
+      getDragAuthScope(token),
+      item.watermarkText,
+      item.watermarkVariant
     );
     const previous = uniqueItems.get(key);
     if (!previous || item.priority === 'high') {
       uniqueItems.set(key, { ...item, priority: item.priority || 'normal' });
     }
   }
-  await Promise.all(Array.from(uniqueItems.values()).map(item => enqueueDragPreparation(item, token)));
-  return { success: true };
+  const results = await Promise.all(Array.from(uniqueItems.values()).map(item => enqueueDragPreparation(item, token)));
+  const failures = results.filter(result => !result?.success);
+  return { success: failures.length === 0, failures };
 });
 
 function normalizeDragRequests(request) {
@@ -756,7 +944,9 @@ function normalizeDragRequests(request) {
       fileId: item.fileId,
       fileName: item.fileName || '',
       downloadPath: item.downloadPath || '',
-      token: item.token || request?.token || ''
+      token: item.token || request?.token || '',
+      watermarkText: item.watermarkText || '',
+      watermarkVariant: item.watermarkVariant || ''
     }));
 }
 
@@ -764,7 +954,14 @@ function normalizeDragRequests(request) {
 ipcMain.on('is-file-cached', (event, request) => {
   const items = normalizeDragRequests(request);
   event.returnValue = items.length > 0 && items.every(item => (
-    isDragFileCached(item.fileId, item.fileName, item.downloadPath, item.token)
+    isDragFileCached(
+      item.fileId,
+      item.fileName,
+      item.downloadPath,
+      item.token,
+      item.watermarkText,
+      item.watermarkVariant
+    )
   ));
 });
 
@@ -772,7 +969,14 @@ ipcMain.on('is-file-cached', (event, request) => {
 ipcMain.on('do-file-drag', (event, request) => {
   const items = normalizeDragRequests(request);
   const tempPaths = items.map(item => (
-    getCachedDragPath(item.fileId, item.fileName, item.downloadPath, item.token)
+    getCachedDragPath(
+      item.fileId,
+      item.fileName,
+      item.downloadPath,
+      item.token,
+      item.watermarkText,
+      item.watermarkVariant
+    )
   ));
   if (!items.length || tempPaths.some(tempPath => !tempPath || !fs.existsSync(tempPath))) {
     startupLog(`拖拽缓存未命中: items=${JSON.stringify(items.map(item => ({ fileId: item.fileId, fileName: item.fileName, downloadPath: item.downloadPath })))}`);

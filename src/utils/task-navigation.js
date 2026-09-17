@@ -97,6 +97,10 @@ function isTodoEvent(task = {}) {
     eventType === 'task_transfer'
 }
 
+function isPublicTaskCreatedEvent(task = {}) {
+  return rawEventType(task) === 'task_public_created'
+}
+
 export function getTaskListPath(task = {}, user = getUser()) {
   const role = user?.role
   const group = normalizeGroup(task.task_group || task.taskGroup || 'design')
@@ -107,6 +111,10 @@ export function getTaskListPath(task = {}, user = getUser()) {
 
   if (role === 'admin' || role === 'sub_admin') {
     return ADMIN_TASK_ROUTES[group] || ADMIN_TASK_ROUTES.design
+  }
+
+  if (role === 'basic_designer' && isPublicTaskCreatedEvent(task)) {
+    return canUse('basic.hall.cs', user) ? '/basic/hall' : '/dashboard'
   }
 
   if (isSubmitEvent(task)) {
@@ -143,6 +151,10 @@ export function getTaskListPath(task = {}, user = getUser()) {
 
 export function openTask(task = {}) {
   const path = getTaskListPath(task)
+  if (isPublicTaskCreatedEvent(task)) {
+    router.push(path)
+    return
+  }
   if (!task.id && !task.taskId && !task.task_id) {
     router.push(path)
     return

@@ -3,6 +3,7 @@
  */
 
 const { execute } = require('../config/database');
+const { isUserOnline } = require('./online');
 
 function roleLabel(role) {
   const map = {
@@ -24,7 +25,7 @@ function roleLabel(role) {
  */
 function notificationPriority(type) {
   if (['task_urge', 'task_reject', 'task_transfer', 'score_review', 'score_reject'].includes(type)) return 3;
-  if (['task_submit', 'task_review', 'task_assigned'].includes(type)) return 2;
+  if (['task_submit', 'task_review', 'task_assigned', 'task_public_created'].includes(type)) return 2;
   return 1;
 }
 
@@ -45,7 +46,8 @@ async function sendNotification({ userId, type, title, content, taskId, taskTitl
         task_reject: 'task_rejected',
         task_review: 'task_accepted',
         task_transfer: 'task_transferred',
-        task_assigned: 'task_assigned'
+        task_assigned: 'task_assigned',
+        task_public_created: 'task_public_created'
       };
       global.io.to(`user:${userId}`).emit('notification:new', {
         type: wsTypeMap[type] || 'info',
@@ -66,6 +68,35 @@ async function sendNotification({ userId, type, title, content, taskId, taskTitl
     console.error('[Notify] 发送通知失败:', err);
     return false;
   }
+}
+
+/**
+ * 通知所有启用的基础美工：客服公共任务大厅新增任务。
+ * 通知失败不应影响已经创建成功的任务，因此调用方可异步触发并自行记录错误。
+ */
+async function notifyPublicTaskCreated(task, actor) {
+  const [users] = await execute(
+    `SELECT id FROM sys_user WHERE role = 'basic_designer' AND status = 1`
+  );
+  const candidates = Array.isArray(users) ? users : [];
+  // Do not persist a notification for an offline user. Online means the
+  // user currently has an authenticated Socket.IO connection.
+  const onlineUsers = await Promise.all(candidates.map(async user => (
+    await isUserOnline(user.id) ? user : null
+  )));
+  const recipients = onlineUsers.filter(Boolean);
+  await Promise.all(recipients.map(user => sendNotification({
+    userId: user.id,
+    type: 'task_public_created',
+    title: '公共任务新增一条',
+    content: `${actor?.realName || actor?.username || '客服'} 发布了一条公共任务，请及时前往基础美工任务大厅接单`,
+    taskId: task?.id,
+    taskTitle: task?.title || '公共任务',
+    taskGroup: 'cs',
+    publisherId: task?.publisher_id,
+    designerId: null
+  })));
+  return recipients.length;
 }
 
 /**
@@ -184,4 +215,4 @@ async function notifyTaskEvent(eventType, task, actor) {
   }
 }
 
-module.exports = { sendNotification, notifyTaskEvent };
+module.exports = { sendNotification, notifyTaskEvent, notifyPublicTaskCreated };

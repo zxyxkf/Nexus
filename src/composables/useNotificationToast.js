@@ -69,7 +69,7 @@ function getToastPriority(type, payload = {}) {
   if (priority > 0) return priority
   const eventType = payload.eventType || payload.rawType || payload.type || type
   if (type === 'warning' || type === 'error' || ['task_urge', 'task_reject', 'score_review', 'score_reject'].includes(eventType)) return 3
-  if (['task_submit', 'task_review', 'task_assigned'].includes(eventType)) return 2
+  if (['task_submit', 'task_review', 'task_assigned', 'task_public_created'].includes(eventType)) return 2
   return 1
 }
 
@@ -263,6 +263,7 @@ function setupWebSocket() {
       task_transferred: 'info',
       task_submitted: 'info',
       task_assigned: 'info',
+      task_public_created: 'info',
       task_comment: 'info'
     }
     notify(

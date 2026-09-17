@@ -62,7 +62,7 @@
         <el-table-column prop="task_no" label="任务编号" min-width="140" />
         <el-table-column v-if="taskGroup !== 'cs'" prop="title" label="工作项目" min-width="140" show-overflow-tooltip />
         <el-table-column v-if="taskGroup !== 'cs'" label="分值" align="center">
-          <template #default="{ row }">{{ row.score || '-' }}</template>
+          <template #default="{ row }">{{ formatTaskScore(row, taskGroup) }}</template>
         </el-table-column>
         <el-table-column label="状态">
           <template #default="{ row }">
@@ -205,7 +205,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Document } from '@element-plus/icons-vue'
 import { getAllTasksApi, getTaskPublisherListApi, getTaskDesignerListApi, getFileUrl, saveFileToDisk, deleteTaskApi, batchDeleteApi, batchDownloadFilesApi, setupFileDrag, setupFilesDrag, preloadFilesForDrag } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, scoreReviewTagType } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskScore, scoreReviewTagType } from '@/utils/format'
 import TaskDetail from '@/components/TaskDetail.vue'
 import TaskEmptyState from '@/components/TaskEmptyState.vue'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'

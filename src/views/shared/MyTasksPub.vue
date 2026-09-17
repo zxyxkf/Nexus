@@ -98,44 +98,8 @@
       <el-table ref="tableRef" :default-sort="defaultSort" data-nexus-sort="off" @sort-change="handleSortChange" @selection-change="onSelectChange" :data="list" v-loading="loading" stripe style="width:100%" empty-text="暂无任务数据" highlight-current-row>
         <el-table-column v-if="canOpenPayment" type="selection" width="45" />
         <el-table-column prop="task_no" label="任务编号" width="95" align="center" sortable="custom" />
-        <el-table-column prop="publisher_name" label="发布人" width="100" align="center" show-overflow-tooltip />
-        <el-table-column prop="title" label="工作项目" min-width="100" align="center" show-overflow-tooltip />
-        <el-table-column label="分值" width="120" align="center">
-          <template #default="{ row }">{{ row.score || '-' }}</template>
-        </el-table-column>
-        <el-table-column label="状态" width="130" prop="status" align="center" sortable="custom">
-          <template #default="{ row }">
-            <div class="status-cell">
-              <el-tag :type="statusType(row.status)" size="small" effect="plain">
-                {{ statusLabel(row.status) }}
-              </el-tag>
-              <div class="task-progress-bar">
-                <div class="task-progress-fill" :style="{ width: progressWidth(row.status) }"></div>
-              </div>
-            </div>
-          </template>
-        </el-table-column>
         <template v-if="isCsAgent">
-          <el-table-column label="旺旺ID" width="100" align="center" show-overflow-tooltip>
-            <template #default="{ row }">{{ row.wangwang_id || row.ref_path || '-' }}</template>
-          </el-table-column>
-        </template>
-        <el-table-column label="款号" width="140" align="center" show-overflow-tooltip>
-          <template #default="{ row }">{{ row.style_number || '-' }}</template>
-        </el-table-column>
-        <el-table-column :label="isCsAgent ? '款式图' : '指定颜色'" width="140" align="center" show-overflow-tooltip>
-          <template #default="{ row }">
-            <template v-if="isCsAgent">
-              <div v-if="getStyleImages(row.files).length" class="style-thumb-cell" draggable="true" @dragstart="setupFilesDrag($event, getStyleImages(row.files))" @mousemove.once="preloadFilesForDrag(getStyleImages(row.files))">
-                <el-image :src="getTaskListFileGroups(row.files).styleThumbnailUrl" :preview-src-list="getTaskListFileGroups(row.files).stylePreviewUrls" lazy @load="preloadFilesForDrag(getStyleImages(row.files).slice(0, 1))" preview-teleported fit="contain" />
-                <span>{{ getStyleImages(row.files).length }}张</span>
-              </div><span v-else>-</span>
-            </template>
-            <span v-else>{{ row.specified_color || '-' }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="designer_name" :label="designerLabel" width="105" align="center" />
-        <el-table-column label="参考图" width="160" align="center">
+          <el-table-column label="参考图" width="160" align="center">
           <template #default="{ row }">
             <div
               v-if="getRefImages(row.files).length"
@@ -166,8 +130,8 @@
             </el-tooltip>
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
           </template>
-        </el-table-column>
-        <el-table-column :label="isCsAgent ? '效果图' : '作品预览'" width="200" align="center">
+          </el-table-column>
+          <el-table-column label="效果图" width="200" align="center">
           <template #default="{ row }">
             <div
               v-if="getTaskWorkImages(row.files).length"
@@ -200,8 +164,8 @@
             </el-tooltip>
             <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
           </template>
-        </el-table-column>
-        <el-table-column v-if="isCsAgent" label="原图" width="160" align="center">
+          </el-table-column>
+          <el-table-column label="原图" width="160" align="center">
           <template #default="{ row }">
             <div v-if="getOriginalImages(row.files).length" class="media-thumb-cell" draggable="true" @dragstart="setupFilesDrag($event, getOriginalFiles(row.files))" @mousemove.once="preloadFilesForDrag(getOriginalFiles(row.files))">
               <el-image :src="getTaskListFileGroups(row.files).originalThumbnailUrl" fit="contain" :preview-src-list="getTaskListFileGroups(row.files).originalPreviewUrls" lazy @load="preloadFilesForDrag(getOriginalImages(row.files).slice(0, 1))" preview-teleported />
@@ -215,10 +179,138 @@
             </el-tooltip>
             <span v-else>-</span>
           </template>
-        </el-table-column>
-        <el-table-column prop="create_time" label="发布时间" width="170" align="center" sortable="custom" show-overflow-tooltip>
-          <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
-        </el-table-column>
+          </el-table-column>
+          <el-table-column label="状态" width="130" prop="status" align="center" sortable="custom">
+            <template #default="{ row }">
+              <div class="status-cell">
+                <el-tag :type="statusType(row.status)" size="small" effect="plain">
+                  {{ statusLabel(row.status) }}
+                </el-tag>
+                <div class="task-progress-bar">
+                  <div class="task-progress-fill" :style="{ width: progressWidth(row.status) }"></div>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="旺旺ID" width="100" align="center" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.wangwang_id || row.ref_path || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="款号" width="140" align="center" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.style_number || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="款式图" width="140" align="center" show-overflow-tooltip>
+            <template #default="{ row }">
+              <div v-if="getStyleImages(row.files).length" class="style-thumb-cell" draggable="true" @dragstart="setupFilesDrag($event, getStyleImages(row.files))" @mousemove.once="preloadFilesForDrag(getStyleImages(row.files))">
+                <el-image :src="getTaskListFileGroups(row.files).styleThumbnailUrl" :preview-src-list="getTaskListFileGroups(row.files).stylePreviewUrls" lazy @load="preloadFilesForDrag(getStyleImages(row.files).slice(0, 1))" preview-teleported fit="contain" />
+                <span>{{ getStyleImages(row.files).length }}张</span>
+              </div><span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="designer_name" :label="designerLabel" width="105" align="center" />
+          <el-table-column prop="publisher_name" label="发布人" width="100" align="center" show-overflow-tooltip />
+          <el-table-column prop="title" label="工作项目" min-width="100" align="center" show-overflow-tooltip />
+          <el-table-column label="分值" width="120" align="center">
+            <template #default="{ row }">{{ row.score || '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="create_time" label="发布时间" width="170" align="center" sortable="custom" show-overflow-tooltip>
+            <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
+          </el-table-column>
+        </template>
+        <template v-else>
+          <el-table-column prop="publisher_name" label="发布人" width="100" align="center" show-overflow-tooltip />
+          <el-table-column prop="title" label="工作项目" min-width="100" align="center" show-overflow-tooltip />
+          <el-table-column label="分值" width="120" align="center">
+            <template #default="{ row }">{{ formatTaskScore(row, taskGroup) }}</template>
+          </el-table-column>
+          <el-table-column label="状态" width="130" prop="status" align="center" sortable="custom">
+            <template #default="{ row }">
+              <div class="status-cell">
+                <el-tag :type="statusType(row.status)" size="small" effect="plain">
+                  {{ statusLabel(row.status) }}
+                </el-tag>
+                <div class="task-progress-bar">
+                  <div class="task-progress-fill" :style="{ width: progressWidth(row.status) }"></div>
+                </div>
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column label="款号" width="140" align="center" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.style_number || '-' }}</template>
+          </el-table-column>
+          <el-table-column label="指定颜色" width="140" align="center" show-overflow-tooltip>
+            <template #default="{ row }">{{ row.specified_color || '-' }}</template>
+          </el-table-column>
+          <el-table-column prop="designer_name" :label="designerLabel" width="105" align="center" />
+          <el-table-column label="参考图" width="160" align="center">
+            <template #default="{ row }">
+              <div
+                v-if="getRefImages(row.files).length"
+                draggable="true"
+                @dragstart="setupListFileDrag($event, getRefFiles(row.files))"
+                @mousemove.once="preloadListFilesForDrag(getRefFiles(row.files))"
+                style="display:inline-block;"
+              >
+                <el-image
+                  :src="getTaskListFileGroups(row.files).refThumbnailUrl"
+                  fit="cover"
+                  :preview-src-list="getRefImageSrcList(row.files)"
+                  lazy
+                  @load="preloadListFilesForDrag(getRefImages(row.files).slice(0, 1))"
+                  preview-teleported
+                  style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
+                />
+              </div>
+              <el-tooltip
+                v-else-if="getRefAttachments(row.files).length"
+                :content="getRefAttachments(row.files).map(f => f.file_name).join('\n')"
+                placement="top"
+              >
+                <div class="file-badge" draggable="true" @dragstart="setupListFileDrag($event, getRefFiles(row.files))" @mousemove.once="preloadListFilesForDrag(getRefFiles(row.files))">
+                  <el-icon :size="18"><Document /></el-icon>
+                  <span>{{ getRefAttachments(row.files).length }}个附件</span>
+                </div>
+              </el-tooltip>
+              <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="作品预览" width="200" align="center">
+            <template #default="{ row }">
+              <div
+                v-if="getTaskWorkImages(row.files).length"
+                class="media-thumb-cell"
+                draggable="true"
+                @dragstart="setupListFileDrag($event, getTaskWorkFiles(row.files))"
+                @mousemove.once="preloadListFilesForDrag(getTaskWorkFiles(row.files))"
+                style="display:inline-block;"
+              >
+                <el-image
+                  :src="getTaskWorkThumbnailUrl(row.files)"
+                  fit="contain"
+                  :preview-src-list="getTaskWorkPreviewUrls(row.files)"
+                  :initial-index="0"
+                  lazy
+                  @load="preloadListFilesForDrag(getTaskWorkImages(row.files).slice(0, 1))"
+                  preview-teleported
+                  style="width:48px;height:48px;border-radius:6px;cursor:pointer;border:1px solid #e4e7ed;"
+                />
+              </div>
+              <el-tooltip
+                v-else-if="getTaskWorkFiles(row.files).length"
+                :content="getTaskWorkFiles(row.files).map(f => f.file_name).join('\n')"
+                placement="top"
+              >
+                <div class="file-badge" @click="viewDetail(row)" draggable="true" @dragstart="setupListFileDrag($event, getTaskWorkFiles(row.files))" @mousemove.once="preloadListFilesForDrag(getTaskWorkFiles(row.files))">
+                  <el-icon :size="18"><Document /></el-icon>
+                  <span>{{ getTaskWorkFiles(row.files).length }}个附件</span>
+                </div>
+              </el-tooltip>
+              <span v-else style="color:#c0c4cc;font-size:12px;">-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="create_time" label="发布时间" width="170" align="center" sortable="custom" show-overflow-tooltip>
+            <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
+          </el-table-column>
+        </template>
         <el-table-column label="操作" :width="canOpenPayment ? 330 : 260" align="center" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
@@ -355,7 +447,7 @@ import { Document, Search, Plus } from '@element-plus/icons-vue'
 import { getMyPublishedApi, urgeTaskApi, getFileUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, reopenFinishedCsTaskApi, updateCsTaskNoApi, uploadFilesApi, setupFileDrag, setupFilesDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
 import { getScoreItemsApi } from '@/api'
 import { getBasicDesignerListApi, getDesignerListApi, getOperatorAssistantListApi, getPublisherListApi } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, scoreReviewTagType } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskScore, scoreReviewTagType } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedFilters } from '@/composables/usePersistedFilters'

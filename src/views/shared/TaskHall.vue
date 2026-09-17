@@ -31,7 +31,7 @@
         </el-table-column>
         <el-table-column prop="title" label="工作项目" min-width="90" show-overflow-tooltip />
         <el-table-column label="分值" width="100" align="center">
-          <template #default="{ row }">{{ row.score || '-' }}</template>
+          <template #default="{ row }">{{ formatTaskScore(row, taskGroup) }}</template>
         </el-table-column>
         <el-table-column v-if="isOperatorAssistant" label="数量" width="70" align="center">
           <template #default="{ row }">{{ row.quantity || 1 }}</template>
@@ -158,7 +158,7 @@ import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
 import TaskDetail from '@/components/TaskDetail.vue'
 import { getTaskHallApi, acceptTaskApi, getFileUrl, setupFileDrag, setupFilesDrag, preloadFilesForDrag } from '@/api'
-import { formatDate, formatFileSize } from '@/utils/format'
+import { formatDate, formatFileSize, formatTaskScore } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedTableSort } from '@/composables/usePersistedTableSort'

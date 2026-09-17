@@ -151,6 +151,13 @@
           <el-table data-nexus-column-key="admin-config-score-design" :data="scoreList" v-loading="scoreLoading" stripe style="width:100%" empty-text="暂无积分项目" :max-height="550">
             <el-table-column prop="name" label="项目名称" min-width="200" show-overflow-tooltip />
             <el-table-column prop="score" label="分值" width="100" align="center" sortable />
+            <el-table-column label="计分方式" width="110" align="center">
+              <template #default="{ row }">
+                <el-tag :type="isManualScoreValue(row.requires_manual_score) ? 'warning' : 'success'" size="small">
+                  {{ isManualScoreValue(row.requires_manual_score) ? '审核时打分' : '固定分值' }}
+                </el-tag>
+              </template>
+            </el-table-column>
             <el-table-column prop="score_desc" label="备注" min-width="200" show-overflow-tooltip />
             <el-table-column label="操作" width="120" fixed="right" align="center">
               <template #default="{ row }">
@@ -285,12 +292,15 @@
 
     <!-- 设计积分项目弹窗 -->
     <el-dialog v-model="scoreDialogVisible" :title="scoreForm.id ? '编辑积分项目' : '新增积分项目'" width="460px" :close-on-click-modal="false">
-      <el-form ref="scoreFormRef" :model="scoreForm" :rules="scoreRules" label-width="80px">
+      <el-form ref="scoreFormRef" :model="scoreForm" :rules="scoreRules" label-width="120px">
         <el-form-item label="项目名称" prop="name">
           <el-input v-model="scoreForm.name" placeholder="如：主图、SKU AI图" maxlength="100" />
         </el-form-item>
         <el-form-item label="分值" prop="score">
           <el-input-number v-model="scoreForm.score" :min="0" :max="100" :precision="1" style="width:100%;" />
+        </el-form-item>
+        <el-form-item label="审核时手动打分">
+          <el-switch v-model="scoreForm.requiresManualScore" active-text="审核时打分" inactive-text="固定分值" />
         </el-form-item>
         <el-form-item label="备注">
           <el-input v-model="scoreForm.score_desc" placeholder="选填" maxlength="200" />
@@ -506,7 +516,7 @@ const scoreList = ref([])
 const scoreDialogVisible = ref(false)
 const scoreFormRef = ref(null)
 const scoreSaving = ref(false)
-const scoreForm = ref({ id: null, name: '', score: 0, score_desc: '' })
+const scoreForm = ref({ id: null, name: '', score: 0, score_desc: '', requiresManualScore: false })
 
 // ===== 运营积分项目 =====
 const scoreOpLoading = ref(false)
@@ -532,11 +542,21 @@ async function loadScoreItems() {
   } finally { scoreLoading.value = false }
 }
 
+function isManualScoreValue(value) {
+  return value === 1 || value === '1' || value === true
+}
+
 function openScoreDialog(row) {
   if (row) {
-    scoreForm.value = { id: row.id, name: row.name, score: row.score, score_desc: row.score_desc || '' }
+    scoreForm.value = {
+      id: row.id,
+      name: row.name,
+      score: row.score,
+      score_desc: row.score_desc || '',
+      requiresManualScore: isManualScoreValue(row.requires_manual_score)
+    }
   } else {
-    scoreForm.value = { id: null, name: '', score: 0, score_desc: '' }
+    scoreForm.value = { id: null, name: '', score: 0, score_desc: '', requiresManualScore: false }
   }
   scoreDialogVisible.value = true
 }
@@ -551,7 +571,8 @@ async function handleScoreSave() {
       name: scoreForm.value.name,
       score: scoreForm.value.score,
       scoreDesc: scoreForm.value.score_desc,
-      taskGroup: 'design'
+      taskGroup: 'design',
+      requiresManualScore: scoreForm.value.requiresManualScore
     })
     if (res.code === 0) {
       ElMessage.success(res.msg)

@@ -50,7 +50,7 @@
         <el-table-column prop="task_no" label="编号" width="130" show-overflow-tooltip />
         <el-table-column prop="title" label="工作项目" min-width="100" show-overflow-tooltip />
         <el-table-column label="分值" width="80" align="center">
-          <template #default="{ row }">{{ row.score || '-' }}</template>
+          <template #default="{ row }">{{ formatTaskScore(row, 'design') }}</template>
         </el-table-column>
         <el-table-column label="款号" min-width="90" show-overflow-tooltip>
           <template #default="{ row }">{{ row.style_number || '-' }}</template>
@@ -248,7 +248,7 @@ import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Search } from '@element-plus/icons-vue'
 import { getMyAcceptedApi, getTaskDetailApi, uploadFilesApi, finishTaskApi, undoSubmitApi, getFileUrl, setupFileDrag, preloadFilesForDrag, getPublisherListApi, getScoreItemsApi } from '@/api'
-import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize } from '@/utils/format'
+import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatTaskScore } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
 import { useConfig } from '@/composables/useConfig'
 import { useFileHelpers } from '@/composables/useFileHelpers'

@@ -396,6 +396,7 @@ const TYPE_LABELS = {
   task_review: '审核通过',
   task_reject: '审核驳回',
   task_assigned: '任务分配',
+  task_public_created: '公共任务新增',
   task_transfer: '任务转移',
   task_comment: '任务评论',
   score_review: '分值审核',
@@ -524,7 +525,9 @@ async function handleNotifyClick(item) {
     notifyPopoverVisible.value = false
     try {
       const res = await getTaskDetailApi({ taskId: item.task_id })
-      openTask(res.code === 0 ? res.data : { ...item, id: item.task_id })
+      openTask(res.code === 0
+        ? { ...res.data, eventType: item.type }
+        : { ...item, id: item.task_id })
     } catch {
       openTask({ ...item, id: item.task_id })
     }

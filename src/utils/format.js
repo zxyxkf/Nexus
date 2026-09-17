@@ -61,6 +61,16 @@ export function formatScoreValue(value) {
   return Math.round(num * 100) / 100
 }
 
+export function formatTaskScore(task, taskGroup) {
+  if (taskGroup === 'design') {
+    if (task?.manual_score_pending) return '待审核打分'
+    if (task?.score === null || task?.score === undefined || task?.score === '') return '-'
+    const score = Number(task.score)
+    return Number.isFinite(score) && score >= 0 ? Math.round(score * 100) / 100 : '-'
+  }
+  return task?.score || '-'
+}
+
 export function formatScoreReviewStatus(status, task = null) {
   if (!status && task && (task.score_review_time || Number(task.score_review_score) > 0)) return '已撤销'
   return SCORE_REVIEW_STATUS_MAP[status] || '无需审核'

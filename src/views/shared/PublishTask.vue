@@ -21,7 +21,37 @@
 
         <!-- 共享字段：款号 + 指定颜色；客服任务使用素材库款式选择器 -->
         <el-form-item label="款号" :prop="isOperatorDesignTask ? 'styleNumber' : undefined">
-          <StylePicker v-if="isCsAgent" v-model="materialStyleId" v-model:color="form.specifiedColor" v-model:selected-image-ids="selectedMaterialImageIds" :show-images="false" @change="onMaterialStyleChange" />
+          <template v-if="isCsAgent">
+            <StylePicker
+              v-model="materialPickerValue"
+              :color="form.specifiedColor"
+              :selected-image-ids="selectedMaterialImageIds"
+              :show-images="false"
+              @change="onMaterialStyleChange"
+            />
+            <div v-if="styleSelections.length" class="cs-style-selection-list">
+              <div
+                v-for="selection in styleSelections"
+                :key="selection.key"
+                class="cs-style-selection"
+                :class="{ active: selection.key === activeStyleKey }"
+              >
+                <button type="button" class="cs-style-selection-main" @click="activateStyleSelection(selection.key)">
+                  <span>{{ selection.styleName }}</span>
+                  <span class="cs-image-count">{{ selection.selectedImageIds.length }}张</span>
+                </button>
+                <button
+                  type="button"
+                  class="cs-style-selection-remove"
+                  :aria-label="`移除款式 ${selection.styleName}`"
+                  title="移除款式"
+                  @click="removeStyleSelection(selection.key)"
+                >
+                  <el-icon><Close /></el-icon>
+                </button>
+              </div>
+            </div>
+          </template>
           <el-input v-else v-model="form.styleNumber" :placeholder="isOperatorDesignTask ? '请输入款号' : '款号（可选）'" />
         </el-form-item>
         <el-form-item v-if="!isCsAgent" label="指定颜色">
@@ -189,10 +219,10 @@
           <span v-if="materialImages.length" class="cs-image-count">{{ selectedMaterialImageIds.length }}/{{ filteredMaterialImages.length }} 已选择</span>
         </div>
       </template>
-      <div v-if="materialStyleId" class="cs-style-preview-body">
+      <div v-if="activeStyleKey" class="cs-style-preview-body">
         <div class="cs-style-preview-toolbar">
           <span>{{ selectedMaterialStyleName || form.styleNumber }}</span>
-          <el-select v-if="materialColors.length" v-model="form.specifiedColor" clearable placeholder="指定颜色" size="small" style="width:130px">
+          <el-select v-if="materialColors.length" v-model="form.specifiedColor" clearable placeholder="指定颜色" size="small" style="width:130px" @change="saveActiveStyleSelection">
             <el-option v-for="item in materialColors" :key="item" :label="item" :value="item" />
           </el-select>
         </div>
@@ -221,7 +251,7 @@
 import { ref, reactive, computed, nextTick, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
-import { Plus, Delete, Document } from '@element-plus/icons-vue'
+import { Plus, Delete, Document, Close } from '@element-plus/icons-vue'
 import PersonSelect from '@/components/PersonSelect.vue'
 import { publishTaskApi, getScoreItemsApi, getDesignerListApi, getBasicDesignerListApi, getOperatorAssistantListApi } from '@/api'
 import { useConfig } from '@/composables/useConfig'
@@ -256,6 +286,9 @@ const selectedMaterialImageIds = ref([])
 const materialImages = ref([])
 const materialColors = ref([])
 const selectedMaterialStyleName = ref('')
+const materialPickerValue = ref('')
+const styleSelections = ref([])
+const activeStyleKey = ref('')
 const materialViewerVisible = ref(false)
 const materialViewerImage = ref(null)
 const editedMaterialImages = reactive(new Map())
@@ -264,7 +297,10 @@ const descriptionShortcuts = [
   '左手臂', '右手臂', '正面左下摆', '正面右下摆', '后面左下摆', '后面右下摆'
 ]
 const filteredMaterialImages = computed(() => form.specifiedColor ? materialImages.value.filter(image => image.color === form.specifiedColor) : materialImages.value)
-const selectedMaterialImages = computed(() => materialImages.value.filter(image => selectedMaterialImageIds.value.includes(image.id)))
+const selectedMaterialImages = computed(() => styleSelections.value.flatMap(selection => (
+  selection.images.filter(image => selection.selectedImageIds.includes(image.id))
+)))
+const activeStyleSelection = computed(() => styleSelections.value.find(selection => selection.key === activeStyleKey.value) || null)
 const currentEditedMaterialImage = computed(() => editedMaterialImages.get(materialViewerImage.value?.id))
 const editorImage = computed(() => materialViewerImage.value
   ? { ...materialViewerImage.value, editorUrl: materialImageUrl(materialViewerImage.value) }
@@ -334,15 +370,117 @@ function toggleMaterialImage(image) {
   selectedMaterialImageIds.value = selectedMaterialImageIds.value.includes(image.id)
     ? selectedMaterialImageIds.value.filter(id => id !== image.id)
     : [...selectedMaterialImageIds.value, image.id]
+  saveActiveStyleSelection()
 }
 
 function onMaterialStyleChange(style, images = [], colors = []) {
-  clearEditedMaterialImages()
-  materialStyleId.value = style?.id || ''
-  form.styleNumber = style?.name || ''
-  selectedMaterialStyleName.value = style?.name || ''
-  materialImages.value = images
-  materialColors.value = colors
+  saveActiveStyleSelection()
+  if (!style) {
+    activeStyleKey.value = ''
+    materialPickerValue.value = ''
+    materialStyleId.value = ''
+    selectedMaterialImageIds.value = []
+    materialImages.value = []
+    materialColors.value = []
+    selectedMaterialStyleName.value = ''
+    form.specifiedColor = ''
+    updateStyleNumber()
+    return
+  }
+
+  const styleId = style.id ? String(style.id) : ''
+  const styleName = String(style.name || materialPickerValue.value || '').trim()
+  const key = styleId ? `style:${styleId}` : `text:${styleName.toLocaleLowerCase()}`
+  let selection = styleSelections.value.find(item => item.key === key)
+  if (!selection) {
+    selection = {
+      key,
+      styleId: styleId || null,
+      styleName,
+      productName: style.product_name || '',
+      images: (images || []).map(image => ({ ...image, materialStyleId: styleId || null })),
+      colors: [...(colors || [])],
+      selectedImageIds: [],
+      color: ''
+    }
+    styleSelections.value.push(selection)
+  } else if (images?.length) {
+    selection.images = images.map(image => ({ ...image, materialStyleId: styleId || null }))
+    selection.colors = [...(colors || [])]
+  }
+  activeStyleKey.value = key
+  applyStyleSelection(selection)
+  updateStyleNumber()
+}
+
+function saveActiveStyleSelection() {
+  const selection = activeStyleSelection.value
+  if (!selection) return
+  selection.images = materialImages.value
+  selection.colors = [...materialColors.value]
+  selection.selectedImageIds = [...selectedMaterialImageIds.value]
+  selection.color = form.specifiedColor || ''
+}
+
+function applyStyleSelection(selection) {
+  materialStyleId.value = selection.styleId || ''
+  materialPickerValue.value = selection.styleId || selection.styleName
+  selectedMaterialStyleName.value = selection.styleName
+  materialImages.value = selection.images || []
+  materialColors.value = selection.colors || []
+  selectedMaterialImageIds.value = [...(selection.selectedImageIds || [])]
+  form.specifiedColor = selection.color || ''
+}
+
+function activateStyleSelection(key) {
+  saveActiveStyleSelection()
+  const selection = styleSelections.value.find(item => item.key === key)
+  if (!selection) return
+  activeStyleKey.value = key
+  applyStyleSelection(selection)
+}
+
+function removeStyleSelection(key) {
+  saveActiveStyleSelection()
+  const index = styleSelections.value.findIndex(selection => selection.key === key)
+  if (index < 0) return
+
+  const [removed] = styleSelections.value.splice(index, 1)
+  const removedImageIds = new Set((removed.images || []).map(image => image.id))
+  removedImageIds.forEach(imageId => {
+    const edited = editedMaterialImages.get(imageId)
+    if (edited?.previewUrl?.startsWith('blob:')) URL.revokeObjectURL(edited.previewUrl)
+    editedMaterialImages.delete(imageId)
+  })
+
+  if (materialViewerImage.value && removedImageIds.has(materialViewerImage.value.id)) {
+    materialViewerVisible.value = false
+    materialViewerImage.value = null
+  }
+
+  if (activeStyleKey.value === key) {
+    const nextSelection = styleSelections.value[Math.min(index, styleSelections.value.length - 1)]
+    if (nextSelection) {
+      activeStyleKey.value = nextSelection.key
+      applyStyleSelection(nextSelection)
+    } else {
+      activeStyleKey.value = ''
+      materialPickerValue.value = ''
+      materialStyleId.value = ''
+      selectedMaterialImageIds.value = []
+      materialImages.value = []
+      materialColors.value = []
+      selectedMaterialStyleName.value = ''
+      form.specifiedColor = ''
+    }
+  }
+
+  updateStyleNumber()
+  markUnsaved()
+}
+
+function updateStyleNumber() {
+  form.styleNumber = styleSelections.value.map(selection => selection.styleName).filter(Boolean).join('、')
 }
 
 const IMG_EXTS = ['.jpg','.jpeg','.png','.gif','.webp','.bmp','.svg','.tiff','.tif','.ico','.avif','.heic']
@@ -534,6 +672,14 @@ function disabledDate(time) {
 }
 
 async function handlePublish() {
+  if (isCsAgent.value) {
+    saveActiveStyleSelection()
+    updateStyleNumber()
+    if (form.styleNumber.length > 2000) {
+      ElMessage.warning('款号内容不能超过2000个字符')
+      return
+    }
+  }
   const valid = await formRef.value.validate().catch(() => false)
   if (!valid) return
 
@@ -566,7 +712,7 @@ async function handlePublish() {
           scoreItemId: form.scoreItemId,
           wangwangId: form.wangwangId,
           styleNumber: form.styleNumber,
-          specifiedColor: form.specifiedColor,
+          specifiedColor: styleSelections.value.length > 1 ? '' : form.specifiedColor,
           designerId: form.designerId || undefined,
           taskGroup: taskGroup.value
         }
@@ -586,17 +732,25 @@ async function handlePublish() {
     const rawFiles = refRawFiles.value.length
       ? refRawFiles.value
       : refImages.value.map(file => file.raw).filter(Boolean)
-    const styleImages = isCsAgent.value && materialStyleId.value
-      ? selectedMaterialImages.value.map((image, position) => ({
-          image,
-          position,
-          edited: editedMaterialImages.get(image.id)
-        }))
+    saveActiveStyleSelection()
+    let stylePosition = 0
+    const styleImages = isCsAgent.value
+      ? styleSelections.value.flatMap(selection => {
+          if (!selection.styleId) return []
+          return selection.images
+            .filter(image => selection.selectedImageIds.includes(image.id))
+            .map(image => ({
+              image,
+              position: stylePosition++,
+              edited: editedMaterialImages.get(image.id),
+              materialStyleId: selection.styleId
+            }))
+        })
       : []
     const res = await publishTaskApi({
       task: payload,
       referenceFiles: rawFiles,
-      materialStyleId: materialStyleId.value,
+      materialStyleId: styleImages[0]?.materialStyleId || '',
       images: styleImages
     })
 
@@ -621,6 +775,9 @@ function resetForm() {
   form.styleNumber = ''
   form.specifiedColor = ''
   materialStyleId.value = ''
+  materialPickerValue.value = ''
+  styleSelections.value = []
+  activeStyleKey.value = ''
   selectedMaterialImageIds.value = []
   materialImages.value = []
   materialColors.value = []
@@ -696,6 +853,12 @@ function resetForm() {
 .cs-sub-label { margin-bottom: 8px; font-size: 13px; color: var(--dd-text-secondary); font-weight: 600; }
 .cs-reference-field :deep(.el-upload), .cs-reference-field :deep(.el-upload-list) { max-width: 100%; }
 .cs-style-field { min-width: 0; }
+.cs-style-selection-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.cs-style-selection { display: inline-flex; align-items: stretch; overflow: hidden; border: 1px solid var(--el-border-color); border-radius: 4px; background: var(--el-fill-color-blank); color: var(--dd-text-secondary); font-size: 12px; }
+.cs-style-selection.active { border-color: var(--el-color-primary); color: var(--el-color-primary); background: var(--el-color-primary-light-9); }
+.cs-style-selection-main { display: inline-flex; align-items: center; gap: 6px; min-width: 0; padding: 5px 8px; border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+.cs-style-selection-remove { display: grid; place-items: center; width: 24px; min-width: 24px; padding: 0; border: 0; border-left: 1px solid var(--el-border-color-lighter); background: transparent; color: var(--el-text-color-placeholder); cursor: pointer; }
+.cs-style-selection-remove:hover { color: var(--el-color-danger); background: var(--el-color-danger-light-9); }
 .cs-selected-image-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 6px; max-height: 180px; overflow-y: auto; }
 .cs-selected-image { min-width: 0; aspect-ratio: 1; overflow: hidden; border: 1px solid var(--el-border-color-lighter); border-radius: 4px; cursor: zoom-in; }
 .cs-selected-image img { display: block; width: 100%; height: 100%; object-fit: contain; }

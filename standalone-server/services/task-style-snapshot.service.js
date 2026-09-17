@@ -9,7 +9,7 @@ const { resolvePath, saveImage } = require('../utils/share');
 
 const MAX_MANIFEST_ITEMS = 200;
 
-function normalizeManifest(manifest) {
+function normalizeManifest(manifest, fallbackStyleId = '') {
   if (!Array.isArray(manifest) || manifest.length === 0) {
     throw new AppError(400, '请选择款式图片');
   }
@@ -22,11 +22,15 @@ function normalizeManifest(manifest) {
   const editedFields = new Set();
   const normalized = manifest.map(item => {
     const materialImageId = Number(item?.materialImageId);
+    const materialStyleId = Number(item?.materialStyleId ?? fallbackStyleId);
     const position = Number(item?.position);
     const editedField = String(item?.editedField || '').trim();
     const editedOriginalName = String(item?.editedOriginalName || '').trim();
     if (!Number.isInteger(materialImageId) || materialImageId <= 0) {
       throw new AppError(400, '款式图片ID无效');
+    }
+    if (!Number.isInteger(materialStyleId) || materialStyleId <= 0) {
+      throw new AppError(400, '款式ID无效');
     }
     if (!Number.isInteger(position) || position < 0) {
       throw new AppError(400, '款式图片顺序无效');
@@ -39,7 +43,7 @@ function normalizeManifest(manifest) {
     imageIds.add(materialImageId);
     positions.add(position);
     if (editedField) editedFields.add(editedField);
-    return { materialImageId, position, editedField, editedOriginalName };
+    return { materialStyleId, materialImageId, position, editedField, editedOriginalName };
   });
 
   return normalized.sort((left, right) => left.position - right.position);
@@ -75,12 +79,10 @@ function removePhysicalFile(filePath) {
 
 async function persistTaskStyleSnapshots({ conn, task, taskId, materialStyleId, manifest, files, user, writtenPaths = [] }) {
   const normalizedTaskId = Number(taskId);
-  const normalizedStyleId = Number(materialStyleId);
   if (!Number.isInteger(normalizedTaskId) || normalizedTaskId <= 0) throw new AppError(400, '任务ID无效');
-  if (!Number.isInteger(normalizedStyleId) || normalizedStyleId <= 0) throw new AppError(400, '款式ID无效');
   if (user?.role !== 'cs_agent' && user?.role !== 'admin') throw new AppError(403, '仅客服可关联款式素材');
 
-  const orderedManifest = normalizeManifest(manifest);
+  const orderedManifest = normalizeManifest(manifest, materialStyleId);
   const editedFiles = indexEditedFiles(files, orderedManifest);
   const lockedTask = task || await taskDao.getTaskForUpdate(conn, normalizedTaskId);
   if (!lockedTask || lockedTask.task_group !== 'cs') throw new AppError(400, '仅客服任务支持款式素材');
@@ -88,8 +90,13 @@ async function persistTaskStyleSnapshots({ conn, task, taskId, materialStyleId, 
     throw new AppError(403, '无权操作此任务');
   }
 
-  const [styles] = await conn.execute('SELECT id FROM material_style WHERE id = ?', [normalizedStyleId]);
-  if (!styles.length) throw new AppError(404, '款式不存在');
+  const styleIds = [...new Set(orderedManifest.map(item => item.materialStyleId))];
+  const stylePlaceholders = styleIds.map(() => '?').join(',');
+  const [styles] = await conn.execute(
+    `SELECT id FROM material_style WHERE id IN (${stylePlaceholders})`,
+    styleIds
+  );
+  if (styles.length !== styleIds.length) throw new AppError(404, '款式不存在');
 
   const imageIds = orderedManifest.map(item => item.materialImageId);
   const placeholders = imageIds.map(() => '?').join(',');
@@ -99,7 +106,7 @@ async function persistTaskStyleSnapshots({ conn, task, taskId, materialStyleId, 
   );
   if (images.length !== imageIds.length) throw new AppError(404, '部分款式图片不存在');
   const imagesById = new Map(images.map(image => [Number(image.id), image]));
-  if (images.some(image => Number(image.style_id) !== normalizedStyleId)) {
+  if (orderedManifest.some(item => Number(imagesById.get(item.materialImageId)?.style_id) !== item.materialStyleId)) {
     throw new AppError(400, '所选素材图片与款式不匹配');
   }
 

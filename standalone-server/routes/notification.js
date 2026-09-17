@@ -9,7 +9,7 @@ const { requireAuth } = require('../middleware/auth');
 const { createLogMiddleware } = require('../utils/operLog');
 
 const HIGH_PRIORITY_TYPES = ['task_urge', 'task_reject', 'task_transfer', 'score_review', 'score_reject'];
-const MEDIUM_PRIORITY_TYPES = ['task_submit', 'task_review', 'task_assigned'];
+const MEDIUM_PRIORITY_TYPES = ['task_submit', 'task_review', 'task_assigned', 'task_public_created'];
 const LOW_PRIORITY_TYPES = ['task_accept', 'task_comment', 'system'];
 const KNOWN_TYPES = new Set([...HIGH_PRIORITY_TYPES, ...MEDIUM_PRIORITY_TYPES, ...LOW_PRIORITY_TYPES]);
 const TYPE_ALIASES = {

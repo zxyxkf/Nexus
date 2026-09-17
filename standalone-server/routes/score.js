@@ -7,6 +7,7 @@ const express = require('express');
 const router = express.Router();
 const { execute } = require('../config/database');
 const { requireAuth, requireAnyPermission } = require('../middleware/auth');
+const { decorateTaskFilesWithWatermarkLabels } = require('../utils/task-file-watermark');
 
 router.use(requireAuth);
 
@@ -63,7 +64,7 @@ router.get('/records', async (req, res) => {
 // 新增/修改积分项目（仅管理员）
 router.post('/save', requireAnyPermission(['admin.config'], 'admin'), async (req, res) => {
   try {
-    const { id, name, score, scoreDesc, taskGroup } = req.body;
+    const { id, name, score, scoreDesc, taskGroup, requiresManualScore } = req.body;
     if (!name || !name.trim()) {
       return res.json({ code: 400, msg: '项目名称不能为空' });
     }
@@ -72,26 +73,40 @@ router.post('/save', requireAnyPermission(['admin.config'], 'admin'), async (req
     }
 
     const table = scoreTable(taskGroup);
+    const isDesignItem = table === 'sys_score_item';
+    const manualScore = requiresManualScore === true || requiresManualScore === 1 || requiresManualScore === '1' ? 1 : 0;
 
     if (id) {
       const [existing] = await execute(`SELECT id FROM ${table} WHERE name = ? AND id != ?`, [name.trim(), id]);
       if (existing.length > 0) {
         return res.json({ code: 400, msg: `项目名称「${name.trim()}」已存在` });
       }
-      await execute(
-        `UPDATE ${table} SET name = ?, score = ?, score_desc = ? WHERE id = ?`,
-        [name.trim(), Number(score), scoreDesc || '', id]
-      );
+      if (isDesignItem) {
+        await execute(
+          `UPDATE ${table} SET name = ?, score = ?, score_desc = ?, requires_manual_score = ? WHERE id = ?`,
+          [name.trim(), Number(score), scoreDesc || '', manualScore, id]
+        );
+      } else {
+        await execute(
+          `UPDATE ${table} SET name = ?, score = ?, score_desc = ? WHERE id = ?`,
+          [name.trim(), Number(score), scoreDesc || '', id]
+        );
+      }
       res.json({ code: 0, msg: '更新成功' });
     } else {
       const [existing] = await execute(`SELECT id FROM ${table} WHERE name = ?`, [name.trim()]);
       if (existing.length > 0) {
         return res.json({ code: 400, msg: `项目名称「${name.trim()}」已存在` });
       }
-      const [result] = await execute(
-        `INSERT INTO ${table} (name, score, score_desc) VALUES (?, ?, ?)`,
-        [name.trim(), Number(score), scoreDesc || '']
-      );
+      const [result] = isDesignItem
+        ? await execute(
+          `INSERT INTO ${table} (name, score, score_desc, requires_manual_score) VALUES (?, ?, ?, ?)`,
+          [name.trim(), Number(score), scoreDesc || '', manualScore]
+        )
+        : await execute(
+          `INSERT INTO ${table} (name, score, score_desc) VALUES (?, ?, ?)`,
+          [name.trim(), Number(score), scoreDesc || '']
+        );
       res.json({ code: 0, msg: '添加成功', data: { id: result.insertId || result.lastID } });
     }
   } catch (err) {
@@ -155,11 +170,15 @@ router.get('/review/list', requireAnyPermission(['score.review.basic'], 'admin',
       const taskIds = list.map(r => r.id);
       const placeholders = taskIds.map(() => '?').join(',');
       const [files] = await execute(
-        `SELECT * FROM task_file WHERE task_id IN (${placeholders}) ORDER BY create_time ASC`,
+        `SELECT tf.*, tr.reject_index
+         FROM task_file tf
+         LEFT JOIN task_reject_record tr ON tr.id = tf.reject_record_id
+         WHERE tf.task_id IN (${placeholders})
+         ORDER BY tf.create_time ASC, tf.id ASC`,
         taskIds
       );
       const filesByTask = {};
-      for (const f of files) {
+      for (const f of decorateTaskFilesWithWatermarkLabels(files)) {
         (filesByTask[f.task_id] = filesByTask[f.task_id] || []).push(f);
       }
       for (const row of list) {
@@ -213,11 +232,15 @@ router.get('/review/records', requireAnyPermission(['score.records.basic'], 'adm
       const taskIds = list.map(r => r.id);
       const placeholders = taskIds.map(() => '?').join(',');
       const [files] = await execute(
-        `SELECT * FROM task_file WHERE task_id IN (${placeholders}) ORDER BY create_time ASC`,
+        `SELECT tf.*, tr.reject_index
+         FROM task_file tf
+         LEFT JOIN task_reject_record tr ON tr.id = tf.reject_record_id
+         WHERE tf.task_id IN (${placeholders})
+         ORDER BY tf.create_time ASC, tf.id ASC`,
         taskIds
       );
       const filesByTask = {};
-      for (const f of files) {
+      for (const f of decorateTaskFilesWithWatermarkLabels(files)) {
         (filesByTask[f.task_id] = filesByTask[f.task_id] || []).push(f);
       }
       for (const row of list) {

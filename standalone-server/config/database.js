@@ -191,6 +191,7 @@ const CREATE_TABLES_SQL = {
       name TEXT NOT NULL UNIQUE,
       score REAL DEFAULT 0,
       score_desc TEXT DEFAULT '',
+      requires_manual_score INTEGER NOT NULL DEFAULT 0,
       create_time TEXT DEFAULT (datetime('now', 'localtime'))
     )`,
     `CREATE TABLE IF NOT EXISTS sys_score_item_operator (
@@ -428,6 +429,7 @@ const CREATE_TABLES_SQL = {
       name VARCHAR(200) NOT NULL UNIQUE,
       score DECIMAL(10,2) DEFAULT 0,
       score_desc VARCHAR(500) DEFAULT '',
+      requires_manual_score TINYINT NOT NULL DEFAULT 0,
       create_time DATETIME DEFAULT CURRENT_TIMESTAMP
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     `CREATE TABLE IF NOT EXISTS sys_score_item_operator (
@@ -633,6 +635,7 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN score DECIMAL(10,2) DEFAULT 0 AFTER score_item_id`,
       `ALTER TABLE task_info ADD COLUMN ref_path VARCHAR(1000) DEFAULT '' AFTER score`,
       `ALTER TABLE task_info ADD COLUMN style_number VARCHAR(100) DEFAULT '' AFTER ref_path`,
+      `ALTER TABLE task_info MODIFY COLUMN style_number VARCHAR(2000) DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN wangwang_id VARCHAR(100) DEFAULT '' AFTER style_number`,
       `ALTER TABLE task_info ADD COLUMN publisher_name VARCHAR(100) DEFAULT '' AFTER publisher_id`,
       `ALTER TABLE task_info ADD COLUMN designer_name VARCHAR(100) DEFAULT '' AFTER designer_id`,
@@ -664,6 +667,7 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN task_group VARCHAR(20) DEFAULT 'design'`,
       `ALTER TABLE task_info ADD COLUMN specified_color VARCHAR(100) DEFAULT ''`,
       `ALTER TABLE sys_score_item ADD COLUMN task_group VARCHAR(20) DEFAULT NULL`,
+      `ALTER TABLE sys_score_item ADD COLUMN requires_manual_score TINYINT NOT NULL DEFAULT 0`,
       `ALTER TABLE task_info ADD COLUMN shop_name VARCHAR(100) DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN quantity INT DEFAULT 1`,
       `ALTER TABLE task_info ADD COLUMN actual_quantity INT DEFAULT 0`,
@@ -749,6 +753,7 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN task_group TEXT DEFAULT 'design'`,
       `ALTER TABLE task_info ADD COLUMN specified_color TEXT DEFAULT ''`,
       `ALTER TABLE sys_score_item ADD COLUMN task_group TEXT DEFAULT NULL`,
+      `ALTER TABLE sys_score_item ADD COLUMN requires_manual_score INTEGER NOT NULL DEFAULT 0`,
       `ALTER TABLE task_info ADD COLUMN shop_name TEXT DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN quantity INTEGER DEFAULT 1`,
       `ALTER TABLE task_info ADD COLUMN actual_quantity INTEGER DEFAULT 0`,

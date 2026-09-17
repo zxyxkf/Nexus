@@ -54,6 +54,7 @@ onMounted(async () => {
   userStore.bindAuthStorage()
   setupUpdateListeners()
   window.addEventListener('nexus:file-drag-pending', handleFileDragPending)
+  window.addEventListener('nexus:file-drag-watermark-error', handleFileDragWatermarkError)
 })
 
 function handleFileDragPending() {
@@ -65,7 +66,17 @@ function handleFileDragPending() {
   })
 }
 
+function handleFileDragWatermarkError() {
+  ElMessage({
+    type: 'error',
+    message: '水印生成失败，未拖出文件',
+    grouping: true,
+    duration: 3000
+  })
+}
+
 onUnmounted(() => {
   window.removeEventListener('nexus:file-drag-pending', handleFileDragPending)
+  window.removeEventListener('nexus:file-drag-watermark-error', handleFileDragWatermarkError)
 })
 </script>

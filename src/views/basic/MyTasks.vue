@@ -199,7 +199,7 @@
               v-if="row.status === 'rejected'"
               type="warning"
               link size="small"
-              @click="viewDetail(row)"
+              @click="openModification(row)"
             >处理修改</el-button>
             <el-button
               v-if="row.status === 'doing'"
@@ -252,6 +252,7 @@
         </template>
         <template #modifications>
           <CsModificationRecords
+            ref="modificationRef"
             :task="currentTask"
             mode="designer"
             :submit-designer="submitDesignerModification"
@@ -393,7 +394,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, watch } from 'vue'
+import { ref, computed, nextTick, onMounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Delete, Document, Search, UploadFilled } from '@element-plus/icons-vue'
@@ -475,6 +476,15 @@ const originalUploadTask = ref(null)
 const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
   onError: error => console.error('[MyTasks] 加载任务详情失败:', error)
 })
+const modificationRef = ref(null)
+
+async function openModification(row) {
+  if (row?.status !== 'rejected') return
+  const loaded = await viewDetail(row)
+  if (!loaded || loaded.code !== 0) return
+  await nextTick()
+  await modificationRef.value?.focusPendingModification?.()
+}
 
 // 逾期检测 + 置顶排序
 const { isOverdue, sortedList, tableRowClassName } = useOverdueSort(list)

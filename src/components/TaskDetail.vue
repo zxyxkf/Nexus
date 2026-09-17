@@ -194,6 +194,7 @@ import {
   formatScoreReviewApprovedScore,
   formatScoreReviewStatus,
   formatScoreValue,
+  formatTaskScore,
   scoreReviewTagType
 } from '@/utils/format'
 import { useTaskStatus } from '@/composables/useTaskStatus'
@@ -379,7 +380,7 @@ const detailFields = computed(() => {
   if (currentContext.value === 'source-task') {
     add('任务编号', task.task_no)
     add('状态', statusLabel(task.status))
-    add('分值', task.score || '-')
+    add('分值', formatTaskScore(task, props.taskGroup))
     add('数量', task.quantity || 1)
     if (task.actual_quantity !== undefined) add('实际完成', task.actual_quantity || 0)
     if (task.shop_name) add('店铺', task.shop_name)
@@ -397,7 +398,7 @@ const detailFields = computed(() => {
   } else if (currentContext.value === 'hall') {
     addPeople('-', '接单人', '未接单')
     add('工作项目', task.score_item_name || task.title || '-')
-    add('分值', task.score || '-')
+    add('分值', formatTaskScore(task, props.taskGroup))
     if (props.taskGroup === 'operator') {
       add('店铺', task.shop_name || '-')
       add('任务数量', task.quantity || 1)
@@ -416,14 +417,14 @@ const detailFields = computed(() => {
     add('发布人', '暂存')
     add('基础美工', task.designer_name || '未接单')
     add('工作项目', task.title)
-    add('分值', task.score || '-')
+    add('分值', formatTaskScore(task, props.taskGroup))
     add('款号', task.style_number || '无')
     add('旺旺ID', task.wangwang_id || task.ref_path || '无')
     addScoreReview()
   } else if (currentContext.value === 'published') {
     addPeople('我', props.taskGroup === 'cs' ? '基础美工' : '美工', '未接单')
     add('工作项目', task.title)
-    add('分值', task.score || '-')
+    add('分值', formatTaskScore(task, props.taskGroup))
     add('款号', task.style_number || '无')
     if (props.taskGroup === 'cs') {
       add('旺旺ID', task.wangwang_id || task.ref_path || '无')
@@ -455,7 +456,7 @@ const detailFields = computed(() => {
     add('店铺', task.shop_name || '-')
     add('任务数量', task.quantity || 1)
     add('工作项目', task.title)
-    add('分值', task.score || '-')
+    add('分值', formatTaskScore(task, props.taskGroup))
     add('任务文件地址', task.task_file_path || '-', { span: 3 })
     add('完成次数', task.actual_quantity || 0)
     add('上传路径', task.work_path || '无', { span: 3 })
@@ -465,7 +466,7 @@ const detailFields = computed(() => {
     add('店铺', task.shop_name || '-')
     add('任务数量', task.quantity || 1)
     add('工作项目', task.title)
-    add('分值', task.score || '-')
+    add('分值', formatTaskScore(task, props.taskGroup))
     add('任务文件地址', task.task_file_path || '-', { span: 3 })
     add('完成次数', task.actual_quantity || 0)
     if (task.status === 'rejected') addTaskRejectReason()
@@ -473,7 +474,7 @@ const detailFields = computed(() => {
     const label = props.taskGroup === 'cs' ? '基础美工' : props.taskGroup === 'operator' ? '运营助理' : '美工'
     addPeople('', label, '未接单')
     add('工作项目', task.title || '-')
-    add('分值', task.score || '-')
+    add('分值', formatTaskScore(task, props.taskGroup))
     if (props.taskGroup === 'design') {
       add('款号', task.style_number || '无')
       add('指定颜色', task.specified_color || '无')
@@ -503,7 +504,7 @@ const detailFields = computed(() => {
       add('款号', task.style_number || '无')
       addScoreReview()
     } else {
-      add('分值', task.score || '-')
+      add('分值', formatTaskScore(task, props.taskGroup))
       add('款号', task.style_number || '无')
       add('指定颜色', task.specified_color || '无')
     }

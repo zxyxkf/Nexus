@@ -3,6 +3,7 @@
  * 非事务方法自管连接；事务方法接受 conn 参数共享 FOR UPDATE 锁
  */
 const { getPool, executeTransaction, execute } = require('../config/database');
+const { decorateTaskFilesWithWatermarkLabels } = require('../utils/task-file-watermark');
 
 const MIME_MAP = {
   '.jpg': 'image/jpeg', '.jpeg': 'image/jpeg', '.png': 'image/png',
@@ -85,7 +86,8 @@ async function attachFilesToTasks(taskIds) {
      ORDER BY tf.create_time ASC, tf.id ASC`,
     taskIds
   );
-  for (const f of files) {
+  const decoratedFiles = decorateTaskFilesWithWatermarkLabels(files);
+  for (const f of decoratedFiles) {
     if (!filesByTask[f.task_id]) filesByTask[f.task_id] = [];
     const selectedEffectFileIds = parseSelectedEffectFileIds(f.selected_effect_file_ids);
     filesByTask[f.task_id].push({
@@ -148,10 +150,13 @@ async function getTaskDetail(taskId) {
   const pool = getPool();
   const [tasks] = await pool.execute(
     `SELECT t.*, u1.real_name as publisher_name, COALESCE(u1.store, '') as publisher_store,
-            u2.real_name as designer_name
+            u2.real_name as designer_name,
+            COALESCE(si.requires_manual_score, 0) AS requires_manual_score
      FROM task_info t
      LEFT JOIN sys_user u1 ON t.publisher_id = u1.id
      LEFT JOIN sys_user u2 ON t.designer_id = u2.id
+     LEFT JOIN sys_score_item si ON t.score_item_id = si.id
+       AND COALESCE(NULLIF(t.task_group, ''), 'design') = 'design'
      WHERE t.id = ?`, [taskId]
   );
   return tasks[0] || null;
@@ -169,7 +174,7 @@ async function getTaskFiles(taskId) {
      ORDER BY tf.create_time ASC, tf.id ASC`,
     [taskId]
   );
-  return files.map(f => ({
+  return decorateTaskFilesWithWatermarkLabels(files).map(f => ({
     ...f,
     is_selected_effect: parseSelectedEffectFileIds(f.selected_effect_file_ids).has(Number(f.id)),
     fileUrl: `/api/task/preview/${f.id}`,
@@ -212,8 +217,13 @@ async function getTaskRejectRecords(taskId) {
      ORDER BY tf.create_time ASC, tf.id ASC`,
     ids
   );
+  const rejectIndexes = new Map(rows.map(row => [String(row.id), row.reject_index]));
+  const decoratedFiles = decorateTaskFilesWithWatermarkLabels((files || []).map(file => ({
+    ...file,
+    reject_index: rejectIndexes.get(String(file.reject_record_id))
+  })));
   const filesByReject = {};
-  for (const f of files || []) {
+  for (const f of decoratedFiles) {
     if (!filesByReject[f.reject_record_id]) filesByReject[f.reject_record_id] = [];
     filesByReject[f.reject_record_id].push({
       ...f,
@@ -233,7 +243,7 @@ async function getTaskForUpdate(conn, taskId) {
   const [rows] = await conn.execute(
     `SELECT t.id, t.title, t.task_no, t.status, t.publisher_id, t.publisher_name,
             t.designer_id, t.designer_name, t.task_group,
-            t.score, t.applied_score, t.score_review_status, t.score_review_score,
+            t.score_item_id, t.score, t.applied_score, t.score_review_status, t.score_review_score,
             t.handoff_status, t.handoff_time,
             COALESCE(u.store, '') AS publisher_store
      FROM task_info t
@@ -242,6 +252,22 @@ async function getTaskForUpdate(conn, taskId) {
     [taskId]
   );
   return rows[0] || null;
+}
+
+async function getDesignScoreItemsForUpdate(conn, scoreItemIds) {
+  const ids = [...new Set((scoreItemIds || [])
+    .map(Number)
+    .filter(id => Number.isInteger(id) && id > 0))];
+  if (!ids.length) return [];
+  const placeholders = ids.map(() => '?').join(',');
+  const [rows] = await conn.execute(
+    `SELECT id, name, COALESCE(requires_manual_score, 0) AS requires_manual_score
+     FROM sys_score_item
+     WHERE id IN (${placeholders})
+     FOR UPDATE`,
+    ids
+  );
+  return rows;
 }
 
 /** 更新任务字段（事务内） */
@@ -488,12 +514,15 @@ async function getTaskBrief(taskId) {
 const TASK_SELECT = `t.*, u1.real_name as publisher_name, u1.username as publisher_username,
   COALESCE(u1.store, '') as publisher_store,
   u2.real_name as designer_name, u2.username as designer_username,
+  COALESCE(si.requires_manual_score, 0) AS requires_manual_score,
   EXISTS (
     SELECT 1 FROM payment_selection_record ptr
     WHERE ptr.source_task_id = t.id AND ptr.deleted_at IS NULL
   ) AS payment_tracking_opened`;
 const TASK_JOIN = `LEFT JOIN sys_user u1 ON t.publisher_id = u1.id
-                    LEFT JOIN sys_user u2 ON t.designer_id = u2.id`;
+                    LEFT JOIN sys_user u2 ON t.designer_id = u2.id
+                    LEFT JOIN sys_score_item si ON t.score_item_id = si.id
+                      AND COALESCE(NULLIF(t.task_group, ''), 'design') = 'design'`;
 
 function taskDateColumn(dateField) {
   if (dateField === 'finish') return 't.finish_time';
@@ -693,10 +722,12 @@ async function queryTaskHall({ role, permissions = [], taskGroup, keyword, sortF
   const [rows] = await pool.execute(
     `SELECT t.*, u1.real_name as publisher_name,
             COALESCE(si.name, cs.name, op.name) as score_item_name,
-            COALESCE(si.score, cs.score, op.score) as item_score
+            COALESCE(si.score, cs.score, op.score) as item_score,
+            COALESCE(si.requires_manual_score, 0) AS requires_manual_score
      FROM task_info t
      LEFT JOIN sys_user u1 ON t.publisher_id = u1.id
-     LEFT JOIN sys_score_item si ON t.score_item_id = si.id AND t.task_group IN ('design')
+     LEFT JOIN sys_score_item si ON t.score_item_id = si.id
+       AND COALESCE(NULLIF(t.task_group, ''), 'design') = 'design'
      LEFT JOIN sys_score_item_cs cs ON t.score_item_id = cs.id AND t.task_group = 'cs'
      LEFT JOIN sys_score_item_operator op ON t.score_item_id = op.id AND t.task_group = 'operator'
      ${where}
@@ -910,13 +941,26 @@ async function getDesignerSummary(userId) {
   const pool = getPool();
   const [rows] = await pool.execute(
     `SELECT COUNT(*) as total,
-            SUM(CASE WHEN status = 'accepted' THEN 1 ELSE 0 END) as accepted_count,
-            SUM(CASE WHEN status = 'doing' THEN 1 ELSE 0 END) as doing_count,
-            SUM(CASE WHEN status = 'finished' THEN 1 ELSE 0 END) as finished_count,
-            SUM(CASE WHEN status = 'rejected' THEN 1 ELSE 0 END) as rejected_count,
-            COALESCE(SUM(CASE WHEN status = 'doing' THEN score * CASE WHEN COALESCE(actual_quantity, 0) > 0 THEN actual_quantity ELSE 1 END ELSE 0 END), 0) as pending_review_score,
-            COALESCE(SUM(CASE WHEN status = 'finished' AND COALESCE(score_review_status, '') <> 'pending' THEN score * CASE WHEN COALESCE(actual_quantity, 0) > 0 THEN actual_quantity ELSE 1 END ELSE 0 END), 0) as total_score
-     FROM task_info WHERE designer_id = ?`, [userId]
+            SUM(CASE WHEN t.status = 'accepted' THEN 1 ELSE 0 END) as accepted_count,
+            SUM(CASE WHEN t.status = 'doing' THEN 1 ELSE 0 END) as doing_count,
+            SUM(CASE WHEN t.status = 'finished' THEN 1 ELSE 0 END) as finished_count,
+            SUM(CASE WHEN t.status = 'rejected' THEN 1 ELSE 0 END) as rejected_count,
+            COALESCE(SUM(CASE
+              WHEN t.status <> 'doing' THEN 0
+              WHEN COALESCE(NULLIF(t.task_group, ''), 'design') = 'design'
+                AND COALESCE(si.requires_manual_score, 0) = 1 THEN 0
+              WHEN COALESCE(NULLIF(t.task_group, ''), 'design') = 'design' THEN t.score
+              ELSE t.score * CASE WHEN COALESCE(t.actual_quantity, 0) > 0 THEN t.actual_quantity ELSE 1 END
+            END), 0) as pending_review_score,
+            COALESCE(SUM(CASE
+              WHEN t.status <> 'finished' OR COALESCE(t.score_review_status, '') = 'pending' THEN 0
+              WHEN COALESCE(NULLIF(t.task_group, ''), 'design') = 'design' THEN t.score
+              ELSE t.score * CASE WHEN COALESCE(t.actual_quantity, 0) > 0 THEN t.actual_quantity ELSE 1 END
+            END), 0) as total_score
+     FROM task_info t
+     LEFT JOIN sys_score_item si ON t.score_item_id = si.id
+       AND COALESCE(NULLIF(t.task_group, ''), 'design') = 'design'
+     WHERE t.designer_id = ?`, [userId]
   );
   return rows[0];
 }
@@ -924,8 +968,13 @@ async function getDesignerSummary(userId) {
 async function getDesignerDetailRows(userId) {
   const pool = getPool();
   const [rows] = await pool.execute(
-    `SELECT finish_time, create_time, score, actual_quantity, status, score_review_status, score_item_id, task_group
-     FROM task_info WHERE designer_id = ?`, [userId]
+    `SELECT t.finish_time, t.create_time, t.score, t.actual_quantity, t.status,
+            t.score_review_status, t.score_item_id, t.task_group,
+            COALESCE(si.requires_manual_score, 0) AS requires_manual_score
+     FROM task_info t
+     LEFT JOIN sys_score_item si ON t.score_item_id = si.id
+       AND COALESCE(NULLIF(t.task_group, ''), 'design') = 'design'
+     WHERE t.designer_id = ?`, [userId]
   );
   return rows;
 }
@@ -979,7 +1028,7 @@ async function getFinishedDesignerScores(role) {
   const pool = getPool();
   const [rows] = await pool.execute(
     `SELECT u.id, u.real_name as name, t.score, t.actual_quantity,
-            t.finish_time
+            t.finish_time, t.task_group
      FROM sys_user u
      INNER JOIN task_info t ON u.id = t.designer_id AND t.status = 'finished'
        AND COALESCE(t.score_review_status, '') <> 'pending'
@@ -1037,11 +1086,14 @@ async function getAllTasksForStats() {
     `SELECT t.id, t.designer_id, t.publisher_id, t.status, t.score, t.actual_quantity,
             t.score_item_id, t.create_time, t.finish_time, t.update_time, t.submit_time,
             t.task_group, t.score_review_status,
+            COALESCE(si.requires_manual_score, 0) AS requires_manual_score,
             COALESCE(u.real_name, t.publisher_name, u.username, '') AS publisher_name,
             u.username AS publisher_username,
             u.role AS publisher_role
      FROM task_info t
      LEFT JOIN sys_user u ON t.publisher_id = u.id
+     LEFT JOIN sys_score_item si ON t.score_item_id = si.id
+       AND COALESCE(NULLIF(t.task_group, ''), 'design') = 'design'
      WHERE (t.designer_id IS NOT NULL OR t.publisher_id IS NOT NULL)`
   );
   return rows;
@@ -1106,6 +1158,7 @@ module.exports = {
   getTaskTransferRecords,
   getTaskRejectRecords,
   getTaskForUpdate,
+  getDesignScoreItemsForUpdate,
   updateTaskFields,
   insertTransferRecord,
   insertRejectRecord,

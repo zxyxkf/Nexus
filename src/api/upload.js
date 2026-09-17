@@ -25,6 +25,7 @@ const taskDragNextIndexes = new Map()
 let imageDragBridgeReady = false
 
 const TASK_NUMBER_ROLES = new Set(['cs_agent', 'basic_designer'])
+const DRAG_WATERMARK_VERSION = 'wm-v1'
 
 function normalizeDragUrl(url) {
   if (!url || url.startsWith('data:') || url.startsWith('blob:')) return url || ''
@@ -134,6 +135,28 @@ function getDragFileName(file, options = {}) {
   return dragName
 }
 
+function getDragWatermarkMetadata(file) {
+  const role = getUser()?.role
+  const label = String(file?.drag_watermark_label || '').trim()
+  if (!TASK_NUMBER_ROLES.has(role) || file?.file_category !== 'work' || file?.file_type !== 'image' || !label) {
+    return {}
+  }
+  return {
+    watermarkText: label,
+    watermarkVariant: `${DRAG_WATERMARK_VERSION}:${label}`
+  }
+}
+
+function getElectronDragItem(file, options = {}, extra = {}) {
+  return {
+    fileId: file.id,
+    fileName: getDragFileName(file, options),
+    downloadPath: getFileDownloadPath(file),
+    ...getDragWatermarkMetadata(file),
+    ...extra
+  }
+}
+
 function applyFileDragData(event, file) {
   if (!event?.dataTransfer) return ''
 
@@ -152,7 +175,8 @@ function applyFileDragData(event, file) {
 
 function getDragPreloadKey(file, options = {}) {
   if (!file?.id || !file.file_name) return ''
-  return `${String(file.id)}:${getDragFileName(file, options)}:${getFileDownloadPath(file)}`
+  const item = getElectronDragItem(file, options)
+  return `${String(item.fileId)}:${item.fileName}:${item.downloadPath}:${item.watermarkVariant || ''}`
 }
 
 function dispatchDragPreload(entry) {
@@ -204,13 +228,11 @@ function prepareFileDragCache(file, options = {}) {
 
 function tryElectronFileDrag(file, options = {}) {
   if (!file?.id || !file.file_name || !window.electronAPI) return false
-  const fileName = getDragFileName(file, options)
-  const downloadPath = getFileDownloadPath(file)
-  const token = getToken()
+  const item = getElectronDragItem(file, options, { token: getToken() })
 
   try {
-    if (window.electronAPI.isFileCached?.({ fileId: file.id, fileName, downloadPath, token })) {
-      const dragged = window.electronAPI.doFileDrag?.({ fileId: file.id, fileName, downloadPath, token })
+    if (window.electronAPI.isFileCached?.(item)) {
+      const dragged = window.electronAPI.doFileDrag?.(item)
       if (dragged) return true
     }
   } catch (e) {
@@ -225,13 +247,8 @@ function getElectronDragItems(files, options = {}) {
   const uniqueItems = new Map()
   for (const file of Array.isArray(files) ? files : []) {
     if (!file?.id || !file.file_name) continue
-    const item = {
-      fileId: file.id,
-      fileName: getDragFileName(file, options),
-      downloadPath: getFileDownloadPath(file),
-      token: getToken()
-    }
-    const key = `${item.fileId}:${item.fileName}:${item.downloadPath}`
+    const item = getElectronDragItem(file, options, { token: getToken() })
+    const key = `${item.fileId}:${item.fileName}:${item.downloadPath}:${item.watermarkVariant || ''}`
     if (!uniqueItems.has(key)) uniqueItems.set(key, item)
   }
   return Array.from(uniqueItems.values())
@@ -444,20 +461,29 @@ export async function preloadFilesForDrag(files, options = {}) {
 
   const items = files
     .filter(f => f.id && f.file_name)
-    .map(f => ({
-      fileId: f.id,
-      fileName: getDragFileName(f, options),
-      downloadPath: getFileDownloadPath(f),
+    .map(f => getElectronDragItem(f, options, {
       priority: options.priority === 'high' ? 'high' : 'normal'
     }))
 
   if (items.length === 0) return false
 
   try {
-    await window.electronAPI.prepareFileDrags({ items, token })
+    const result = await window.electronAPI.prepareFileDrags({ items, token })
+    if (result?.success === false) {
+      const watermarkFailed = Array.isArray(result.failures)
+        && (result.failures.some(failure => failure?.code === 'watermark')
+          || items.some(item => item.watermarkVariant))
+      if (watermarkFailed && options.priority === 'high') {
+        window.dispatchEvent(new CustomEvent('nexus:file-drag-watermark-error'))
+      }
+      return false
+    }
     return true
   } catch (e) {
     console.warn('[API] 预加载拖拽文件失败:', e.message)
+    if (options.priority === 'high' && items.some(item => item.watermarkVariant)) {
+      window.dispatchEvent(new CustomEvent('nexus:file-drag-watermark-error'))
+    }
     return false
   }
 }

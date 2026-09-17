@@ -296,8 +296,16 @@ router.post('/finish', requireAnyPermission(['task.upload.work'], 'designer', 'b
 
 router.post('/review', requireAnyPermission(['task.review.own', 'task.review.store', 'task.review.all'], 'operator', 'admin', 'cs_agent'), async (req, res, next) => {
   try {
-    const { taskId, action, rejectReason, effectFileIds } = req.body;
-    const result = await taskService.reviewTask(taskId, action, rejectReason, req.user, effectFileIds);
+    const { taskId, action, rejectReason, effectFileIds, manualScore, reviewMode } = req.body;
+    const result = await taskService.reviewTask(
+      taskId,
+      action,
+      rejectReason,
+      req.user,
+      effectFileIds,
+      manualScore,
+      reviewMode
+    );
     res.json({ code: 0, ...result });
   } catch (err) { next(err); }
 });

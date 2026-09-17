@@ -12,7 +12,7 @@ const { saveImage, saveAttachment, resolvePath } = require('../utils/share');
 const { withLock } = require('../utils/mutex');
 const { IMAGE_EXTS, fixFilenameEncoding } = require('../utils/upload');
 const logger = require('../utils/business-logger');
-const { sendNotification, notifyTaskEvent } = require('../utils/notification');
+const { sendNotification, notifyTaskEvent, notifyPublicTaskCreated } = require('../utils/notification');
 const { isUserOnline } = require('../utils/online');
 const { defaultPermissionsFor } = require('../config/permissions');
 const {
@@ -26,6 +26,12 @@ const {
 } = require('./payment-tracking/access');
 const csHandoffService = require('./cs-handoff.service');
 const taskStyleSnapshotService = require('./task-style-snapshot.service');
+const {
+  requiresManualScore,
+  isManualScorePending,
+  scoreForStats,
+  parseManualReviewScore
+} = require('../utils/design-task-score');
 
 // ==================== 辅助 ====================
 
@@ -98,14 +104,26 @@ function canWithdrawOriginalTask(task, user) {
 }
 
 function attachAllowedActions(task, user) {
+  const manualScorePending = isManualScorePending(task);
   return {
     ...task,
+    manual_score_pending: manualScorePending,
     allowedActions: {
       review: canReviewTask(task, user),
+      manualScorePass: manualScorePending
+        && ['admin', 'sub_admin'].includes(user?.role)
+        && canReviewTask(task, user),
       reviewOriginal: canReviewOriginalTask(task, user),
       withdrawOriginal: canWithdrawOriginalTask(task, user),
       openPayment: canOpenPaymentTask(task, user)
     }
+  };
+}
+
+function attachScoreMetadata(task) {
+  return {
+    ...task,
+    manual_score_pending: isManualScorePending(task)
   };
 }
 
@@ -119,6 +137,9 @@ async function prepareTaskCreation(body, user) {
     throw new AppError(400, '\u8bf7\u586b\u5199\u6b3e\u53f7');
   }
   if (taskGroup === 'cs') await csHandoffService.assertCsActionAvailable(user, '发布任务');
+  if (taskGroup === 'cs' && String(body?.styleNumber || '').trim().length > 2000) {
+    throw new AppError(400, '款号内容不能超过2000个字符');
+  }
   return { title, taskGroup };
 }
 
@@ -185,6 +206,9 @@ function announceCreatedTask(result, user) {
       publisherId: user.id,
       designerId: actualDesignerId
     }).catch(() => {});
+  } else if (taskGroup === 'cs') {
+    notifyPublicTaskCreated({ id: taskId, title, task_group: taskGroup, publisher_id: user.id }, user)
+      .catch(error => logger.warn('公共任务新增通知发送失败', { taskId, error: error.message }));
   }
 
   const msg = actualDesignerId
@@ -237,7 +261,6 @@ async function publishTask(body, referenceFiles, styleOptions, user) {
   const manifest = Array.isArray(styleOptions?.manifest) ? styleOptions.manifest : [];
   const materialStyleId = styleOptions?.materialStyleId;
   const editedFiles = styleOptions?.files || [];
-  if (manifest.length && !materialStyleId) throw new AppError(400, '缺少款式素材信息');
 
   return withLock(`task-no:${taskGroup}`, async () => {
     for (let retry = 0; retry < 3; retry++) {
@@ -578,6 +601,19 @@ async function getMyPublished(query, user) {
     && hasPermission(user, 'payment.open')
     && (!selfOnly || allPaymentTasks);
 
+  let requestedStatus = query.status;
+  if (reviewView && group === 'cs') {
+    const allowedStatuses = new Set(['doing', 'pending_original_review']);
+    const requested = String(requestedStatus || '')
+      .split(',')
+      .map(value => value.trim())
+      .filter(Boolean);
+    const filtered = requested.filter(value => allowedStatuses.has(value));
+    requestedStatus = requested.length === 0
+      ? 'doing,pending_original_review'
+      : filtered.join(',') || '__no_cs_review_status_match__';
+  }
+
   const result = await taskDao.queryMyPublished({
     userId: user.id, role: user.role,
     store: user.store || '',
@@ -588,7 +624,7 @@ async function getMyPublished(query, user) {
     reviewScope,
     paymentOpenView,
     canViewAllPaymentTasks: allPaymentTasks,
-    status: query.status, styleNumber: query.styleNumber,
+    status: requestedStatus, styleNumber: query.styleNumber,
     keyword: query.keyword, taskNo: query.taskNo, designerId: query.designerId,
     publisherId: query.publisherId,
     dateStart: query.dateStart, dateEnd: query.dateEnd,
@@ -616,6 +652,7 @@ async function getMyAccepted(query, user) {
     shopName: query.shopName,
     page, pageSize
   });
+  result.list = result.list.map(attachScoreMetadata);
   return result;
 }
 
@@ -623,7 +660,7 @@ async function getTaskHall(query, user) {
   const page = parseInt(query.page) || 1;
   const pageSize = parseInt(query.pageSize) || 15;
 
-  return taskDao.queryTaskHall({
+  const result = await taskDao.queryTaskHall({
     role: user.role,
     permissions: user.permissions || [],
     taskGroup: query.taskGroup,
@@ -631,13 +668,15 @@ async function getTaskHall(query, user) {
     sortField: query.sortField, sortOrder: query.sortOrder,
     page, pageSize
   });
+  result.list = result.list.map(attachScoreMetadata);
+  return result;
 }
 
 async function getAllTasks(query) {
   const page = parseInt(query.page) || 1;
   const pageSize = parseInt(query.pageSize) || 15;
 
-  return taskDao.queryAllTasks({
+  const result = await taskDao.queryAllTasks({
     status: query.status, keyword: query.keyword,
     publisherId: query.publisherId, designerId: query.designerId,
     startDate: query.startDate, endDate: query.endDate,
@@ -646,6 +685,8 @@ async function getAllTasks(query) {
     sortField: query.sortField, sortOrder: query.sortOrder,
     page, pageSize
   });
+  result.list = result.list.map(attachScoreMetadata);
+  return result;
 }
 
 function allowedAdminTaskGroups(user) {
@@ -1515,7 +1556,7 @@ function normalizeEffectFileIds(value) {
   return [...new Set(raw.map(Number).filter(id => Number.isInteger(id) && id > 0))];
 }
 
-async function reviewTask(taskId, action, rejectReason, user, effectFileIds) {
+async function reviewTask(taskId, action, rejectReason, user, effectFileIds, manualScore, reviewMode) {
   if (!taskId || !action) throw new AppError(400, '参数不完整');
   if (!['pass', 'reject'].includes(action)) throw new AppError(400, '审核操作无效');
   await csHandoffService.assertCsActionAvailable(user, '审核任务');
@@ -1530,8 +1571,8 @@ async function reviewTask(taskId, action, rejectReason, user, effectFileIds) {
     let reviewedTaskGroup = '';
     await executeTransaction(async (conn) => {
       const task = await taskDao.getTaskForUpdate(conn, taskId);
-      reviewedTaskGroup = task?.task_group || 'design';
       if (!task) throw new AppError(400, '任务不存在');
+      reviewedTaskGroup = task.task_group || 'design';
 
       if (!canReviewTaskWithStatus(task, user)) throw new AppError(403, '无权审核此任务');
       if (task.status === 'finished' && action === 'pass') {
@@ -1547,7 +1588,43 @@ async function reviewTask(taskId, action, rejectReason, user, effectFileIds) {
 
       if (action === 'pass') {
         const extra = { finish_time: new Date(), urge_time: null };
-        if (task.task_group === 'cs') {
+        if (reviewedTaskGroup === 'design') {
+          const [scoreItem] = await taskDao.getDesignScoreItemsForUpdate(conn, [task.score_item_id]);
+          const hasReferencedScoreItem = task.score_item_id !== null
+            && task.score_item_id !== undefined
+            && String(task.score_item_id).trim() !== '';
+          if (hasReferencedScoreItem && !scoreItem) {
+            throw new AppError(409, '该任务关联的设计积分项目不存在，请联系管理员处理后重试');
+          }
+          const reviewTaskWithConfig = {
+            ...task,
+            task_group: reviewedTaskGroup,
+            requires_manual_score: scoreItem?.requires_manual_score || 0
+          };
+          const currentMode = requiresManualScore(reviewTaskWithConfig) ? 'manual' : 'fixed';
+          const requestedMode = reviewMode === undefined || reviewMode === null || reviewMode === ''
+            ? ''
+            : String(reviewMode).trim();
+          if (requestedMode && !['manual', 'fixed'].includes(requestedMode)) {
+            throw new AppError(400, '审核模式无效');
+          }
+          if (requestedMode && requestedMode !== currentMode) {
+            throw new AppError(409, '工作项目的打分方式已变更，请刷新后重新审核');
+          }
+          if (currentMode === 'manual' && requestedMode !== 'manual') {
+            throw new AppError(409, '该任务需要手动打分，请刷新后重新审核');
+          }
+          if (currentMode === 'manual') {
+            if (!['admin', 'sub_admin'].includes(user?.role)) {
+              throw new AppError(403, '该任务需管理员手动打分');
+            }
+            const parsedScore = parseManualReviewScore(manualScore);
+            if (parsedScore === null) {
+              throw new AppError(400, '请填写不小于0且最多两位小数的最终分值');
+            }
+            extra.score = parsedScore;
+          }
+        } else if (task.task_group === 'cs') {
           if (await taskDao.countIncompleteRejectRecords(conn, taskId)) {
             throw new AppError(400, '当前仍有待处理的修改，不能通过');
           }
@@ -1633,22 +1710,64 @@ async function batchReview(taskIds, user) {
   }
   await csHandoffService.assertCsActionAvailable(user, '批量审核任务');
 
-  const count = await executeTransaction(async (conn) => {
-    const placeholders = taskIds.map(() => '?').join(',');
+  const normalizedIds = [...new Set(taskIds.map(Number))];
+  if (normalizedIds.some(id => !Number.isInteger(id) || id <= 0)) {
+    throw new AppError(400, '任务ID无效');
+  }
+
+  const result = await executeTransaction(async (conn) => {
+    const placeholders = normalizedIds.map(() => '?').join(',');
     const [rows] = await conn.execute(
-      `SELECT t.id, t.status, t.publisher_id, t.task_group, t.applied_score,
+      `SELECT t.id, t.task_no, t.title, t.status, t.publisher_id, t.task_group,
+              t.score_item_id, t.applied_score,
               t.score_review_status, t.score_review_score,
               COALESCE(u.store, '') AS publisher_store
        FROM task_info t
        LEFT JOIN sys_user u ON u.id = t.publisher_id
-       WHERE t.id IN (${placeholders})`, taskIds
+       WHERE t.id IN (${placeholders})
+       FOR UPDATE`, normalizedIds
     );
-    if (rows.some(row => !canReviewTaskWithStatus(row, user))) throw new AppError(403, '无权审核所选任务');
-    const validIds = rows.filter(r => r.status === 'doing').map(r => r.id);
-    if (validIds.length === 0) throw new AppError(400, '所选任务均不可审核');
+    if (rows.length !== normalizedIds.length) throw new AppError(400, '所选任务中存在无效任务');
+    const rowsById = new Map(rows.map(row => [Number(row.id), row]));
+    const orderedRows = normalizedIds.map(id => rowsById.get(id));
+    if (orderedRows.some(row => !canReviewTaskWithStatus(row, user))) {
+      throw new AppError(403, '无权审核所选任务');
+    }
 
-    const csIds = rows
-      .filter(row => row.status === 'doing' && row.task_group === 'cs')
+    const reviewableRows = orderedRows.filter(row => row.status === 'doing');
+    if (reviewableRows.length === 0) throw new AppError(400, '所选任务均不可审核');
+
+    const scoreItems = await taskDao.getDesignScoreItemsForUpdate(
+      conn,
+      reviewableRows
+        .filter(row => (row.task_group || 'design') === 'design')
+        .map(row => row.score_item_id)
+    );
+    const scoreItemById = new Map(scoreItems.map(item => [Number(item.id), item]));
+    const missingDesignScoreItem = reviewableRows.find(row => {
+      if ((row.task_group || 'design') !== 'design') return false;
+      const hasReferencedScoreItem = row.score_item_id !== null
+        && row.score_item_id !== undefined
+        && String(row.score_item_id).trim() !== '';
+      return hasReferencedScoreItem && !scoreItemById.has(Number(row.score_item_id));
+    });
+    if (missingDesignScoreItem) {
+      throw new AppError(409, '所选任务中存在缺失的设计积分项目配置，请联系管理员处理后重试');
+    }
+    const skippedRows = reviewableRows.filter(row => {
+      const scoreItem = scoreItemById.get(Number(row.score_item_id));
+      return requiresManualScore({
+        ...row,
+        task_group: row.task_group || 'design',
+        requires_manual_score: scoreItem?.requires_manual_score || 0
+      });
+    });
+    const skippedIds = new Set(skippedRows.map(row => Number(row.id)));
+    const approvedRows = reviewableRows.filter(row => !skippedIds.has(Number(row.id)));
+    const approvedIds = approvedRows.map(row => Number(row.id));
+
+    const csIds = approvedRows
+      .filter(row => row.task_group === 'cs')
       .map(row => Number(row.id));
     if (csIds.length) {
       const csPlaceholders = csIds.map(() => '?').join(',');
@@ -1660,31 +1779,56 @@ async function batchReview(taskIds, user) {
       if (pendingRounds.length) throw new AppError(400, '所选任务中存在待处理的修改，不能通过');
     }
 
-    const vPlaceholders = validIds.map(() => '?').join(',');
-    await conn.execute(
-      `UPDATE task_info
-       SET status = CASE WHEN task_group = 'cs' THEN 'pending_original' ELSE 'finished' END,
-            score = CASE
-              WHEN task_group = 'cs' THEN 1
-              ELSE score
-            END,
-            score_review_status = CASE
-              WHEN task_group = 'cs' THEN ''
-             ELSE score_review_status
-           END,
-           score_review_reason = CASE WHEN task_group = 'cs' THEN '' ELSE score_review_reason END,
-           score_review_time = CASE WHEN task_group = 'cs' THEN NULL ELSE score_review_time END,
-           score_review_score = CASE WHEN task_group = 'cs' THEN 0 ELSE score_review_score END,
-           finish_time = CASE WHEN task_group = 'cs' THEN NULL ELSE NOW() END,
-           urge_time = NULL,
-           update_time = NOW()
-       WHERE id IN (${vPlaceholders})`,
-      validIds
-    );
-    return validIds.length;
+    if (approvedIds.length) {
+      const approvedPlaceholders = approvedIds.map(() => '?').join(',');
+      await conn.execute(
+        `UPDATE task_info
+         SET status = CASE WHEN task_group = 'cs' THEN 'pending_original' ELSE 'finished' END,
+              score = CASE
+                WHEN task_group = 'cs' THEN 1
+                ELSE score
+              END,
+              score_review_status = CASE
+                WHEN task_group = 'cs' THEN ''
+               ELSE score_review_status
+             END,
+             score_review_reason = CASE WHEN task_group = 'cs' THEN '' ELSE score_review_reason END,
+             score_review_time = CASE WHEN task_group = 'cs' THEN NULL ELSE score_review_time END,
+             score_review_score = CASE WHEN task_group = 'cs' THEN 0 ELSE score_review_score END,
+             finish_time = CASE WHEN task_group = 'cs' THEN NULL ELSE NOW() END,
+             urge_time = NULL,
+             update_time = NOW()
+         WHERE id IN (${approvedPlaceholders})`,
+        approvedIds
+      );
+    }
+
+    return {
+      approvedCount: approvedIds.length,
+      skipped: skippedRows.map(row => ({
+        taskId: Number(row.id),
+        taskNo: row.task_no || '',
+        projectName: scoreItemById.get(Number(row.score_item_id))?.name || '',
+        reason: '需要单独手动打分'
+      }))
+    };
   });
 
-  return { msg: `成功审核通过 ${count} 个任务`, data: { count } };
+  const skippedCount = result.skipped.length;
+  const msg = result.approvedCount === 0 && skippedCount > 0
+    ? '所选任务均需单独手动打分'
+    : skippedCount > 0
+      ? `成功通过 ${result.approvedCount} 条，跳过 ${skippedCount} 条`
+      : `成功审核通过 ${result.approvedCount} 个任务`;
+  return {
+    msg,
+    data: {
+      approvedCount: result.approvedCount,
+      skippedCount,
+      skipped: result.skipped,
+      count: result.approvedCount
+    }
+  };
 }
 
 async function withdrawTask(taskId, user) {
@@ -1870,9 +2014,7 @@ async function getMyStats(user) {
   for (const row of detailRows) {
     const ft = row.finish_time ? new Date(row.finish_time.replace(' ', 'T')) : null;
     const isValidFt = ft && !isNaN(ft.getTime());
-    const actualQty = Number(row.actual_quantity) || 0;
-    const scorePending = row.score_review_status === 'pending';
-    const score = scorePending ? 0 : Math.round((Number(row.score) || 0) * (actualQty > 0 ? actualQty : 1) * 100) / 100;
+    const score = scoreForStats(row);
 
     if (isValidFt && row.status === 'finished') {
       if (ft.getFullYear() === thisYear && ft.getMonth() + 1 === thisMonth) currentMonthScore += score;
@@ -1951,7 +2093,7 @@ function buildProjectCompletionStats(tasks, scoreItems, refDate = new Date()) {
   return [...rows.values()];
 }
 
-function buildDesignerStats(users, tasks, scoreItems, refDate, taskGroup) {
+function buildDesignerStats(users, tasks, scoreItems, refDate, taskGroup = 'design') {
   const now = refDate || new Date();
   const thisYear = now.getFullYear();
   const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
@@ -1978,9 +2120,7 @@ function buildDesignerStats(users, tasks, scoreItems, refDate, taskGroup) {
     }
 
     for (const task of userTasks) {
-      const actualQty = Number(task.actual_quantity) || 0;
-      const scorePending = task.score_review_status === 'pending';
-      const score = scorePending ? 0 : Math.round((Number(task.score) || 0) * (actualQty > 0 ? actualQty : 1) * 100) / 100;
+      const score = scoreForStats(task, taskGroup);
       // 已完成积分按审核通过时间统计；finish_time 在审核通过时写入。
       const timeStr = task.finish_time;
       const ft = timeStr ? new Date(timeStr.replace(' ', 'T')) : null;
@@ -2130,7 +2270,7 @@ function buildPublisherMonthlyStats(tasks, refYear) {
   }).sort((a, b) => String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN'));
 }
 
-function buildDailyScoreStats(users, tasks, refDate, taskGroup) {
+function buildDailyScoreStats(users, tasks, refDate, taskGroup = 'design') {
   const now = refDate || new Date();
   const year = now.getFullYear();
   const month = now.getMonth();
@@ -2146,8 +2286,7 @@ function buildDailyScoreStats(users, tasks, refDate, taskGroup) {
 
   function scoreOf(task, zeroWhenReviewPending = false) {
     if (zeroWhenReviewPending && task.score_review_status === 'pending') return 0;
-    const actualQty = Number(task.actual_quantity) || 0;
-    return Math.round((Number(task.score) || 0) * (actualQty > 0 ? actualQty : 1) * 100) / 100;
+    return scoreForStats(task, taskGroup);
   }
 
   function parseTaskDate(task) {
@@ -2235,8 +2374,7 @@ async function getDashboardStats(user = null) {
     for (const r of scores) {
       const ft = (r.finish_time || '').toString();
       if (ft >= startStr && ft < endStr) {
-        const actualQty = Number(r.actual_quantity) || 0;
-        const score = Math.round((Number(r.score) || 0) * (actualQty > 0 ? actualQty : 1) * 100) / 100;
+        const score = scoreForStats(r);
         if (!map[r.id]) map[r.id] = { id: r.id, name: r.name, [key]: 0 };
         map[r.id][key] += score;
       }

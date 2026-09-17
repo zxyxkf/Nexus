@@ -1,6 +1,6 @@
 /**
  * 数据库引擎 - 双模式支持
- * 自动检测 MySQL 可用性，否则回退 SQLite
+ * 显式启用 MySQL 时尝试连接；生产环境失败则停止，其他环境可回退 SQLite
  */
 
 const mysql = require('mysql2/promise');
@@ -14,10 +14,67 @@ let mysqlPool = null;
 let sqliteDb = null;
 let SQL = null; // sql.js 库引用
 
+const PRODUCTION_MYSQL_STARTUP_ATTEMPTS = 10;
+const PRODUCTION_MYSQL_RETRY_DELAY_MS = 3000;
+
+function wait(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+async function verifyMySqlConnection(config) {
+  let tempConn = null;
+  try {
+    tempConn = await mysql.createConnection({
+      host: config.mysql.host,
+      port: config.mysql.port,
+      user: config.mysql.user,
+      password: config.mysql.password,
+      charset: 'utf8mb4',
+      connectTimeout: 3000
+    });
+
+    await tempConn.execute(
+      `CREATE DATABASE IF NOT EXISTS \`${config.mysql.database}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
+    );
+  } finally {
+    if (tempConn) {
+      try {
+        await tempConn.end();
+      } catch (cleanupError) {
+        console.warn('[DB] 关闭 MySQL 临时连接失败，继续按初始化结果处理:', cleanupError.message);
+      }
+    }
+  }
+}
+
+async function activateMySql(config) {
+  const { type: _configType, ...mysqlPoolConfig } = config.mysql;
+  const pool = mysql.createPool(mysqlPoolConfig);
+
+  try {
+    // 确保连接池中每个新连接都使用 utf8mb4
+    pool.on('connection', async (conn) => {
+      await conn.execute('SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci');
+    });
+  } catch (error) {
+    try {
+      await pool.end();
+    } catch (cleanupError) {
+      console.warn('[DB] 关闭未完成初始化的 MySQL 连接池失败:', cleanupError.message);
+    }
+    throw error;
+  }
+
+  mysqlPool = pool;
+  dbMode = 'mysql';
+  console.log('[DB] MySQL 模式已激活（高并发生产模式）');
+  return { mode: 'mysql', pool: mysqlPool };
+}
+
 /**
  * 初始化数据库引擎
- * 1. 先尝试 MySQL 连接
- * 2. 失败则自动回退 SQLite
+ * 1. 显式启用时尝试 MySQL 连接
+ * 2. 生产环境重试后仍失败则停止；其他环境失败可回退 SQLite
  */
 async function initEngine() {
   const config = getDbConfig();
@@ -27,34 +84,42 @@ async function initEngine() {
 
   // MySQL 模式（需显式开启）
   if (useMySQL) {
-    try {
-      const tempConn = await mysql.createConnection({
-        host: config.mysql.host,
-        port: config.mysql.port,
-        user: config.mysql.user,
-        password: config.mysql.password,
-        charset: 'utf8mb4',
-        connectTimeout: 3000
-      });
-      
-      await tempConn.execute(
-        `CREATE DATABASE IF NOT EXISTS \`${config.mysql.database}\` DEFAULT CHARACTER SET utf8mb4 COLLATE utf8mb4_unicode_ci`
-      );
-      await tempConn.end();
+    const production = process.env.NODE_ENV === 'production';
+    const attempts = production ? PRODUCTION_MYSQL_STARTUP_ATTEMPTS : 1;
+    let lastError;
+    let connectionReady = false;
 
-      const { type: _configType, ...mysqlPoolConfig } = config.mysql;
-      mysqlPool = mysql.createPool(mysqlPoolConfig);
+    for (let attempt = 1; attempt <= attempts; attempt++) {
+      try {
+        await verifyMySqlConnection(config);
+        connectionReady = true;
+        break;
+      } catch (err) {
+        lastError = err;
+        if (production && attempt < attempts) {
+          console.warn(`[DB] MySQL 连接失败（${attempt}/${attempts}），${PRODUCTION_MYSQL_RETRY_DELAY_MS / 1000} 秒后重试:`, err.message);
+          await wait(PRODUCTION_MYSQL_RETRY_DELAY_MS);
+        }
+      }
+    }
 
-      // 确保连接池中每个新连接都使用 utf8mb4
-      mysqlPool.on('connection', async (conn) => {
-        await conn.execute('SET NAMES utf8mb4 COLLATE utf8mb4_unicode_ci');
-      });
+    if (!connectionReady) {
+      if (production) {
+        console.error(`[DB] MySQL 连续 ${attempts} 次连接失败，生产环境拒绝回退 SQLite:`, lastError.message);
+        throw lastError;
+      }
 
-      dbMode = 'mysql';
-      console.log('[DB] MySQL 模式已激活（高并发生产模式）');
-      return { mode: 'mysql', pool: mysqlPool };
-    } catch (err) {
-      console.error('[DB] MySQL 连接失败，回退 SQLite:', err.message);
+      console.error('[DB] MySQL 连接失败，回退 SQLite:', lastError.message);
+    } else {
+      try {
+        return await activateMySql(config);
+      } catch (err) {
+        if (production) {
+          console.error('[DB] MySQL 连接池初始化失败，生产环境拒绝回退 SQLite:', err.message);
+          throw err;
+        }
+        console.error('[DB] MySQL 连接池初始化失败，回退 SQLite:', err.message);
+      }
     }
   }
 

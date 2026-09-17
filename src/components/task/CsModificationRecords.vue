@@ -18,6 +18,7 @@
         v-for="(record, index) in records"
         :key="recordKey(record, index)"
         :name="recordKey(record, index)"
+        :ref="element => setRecordItemRef(recordKey(record, index), element)"
       >
         <template #title>
           <div class="modification-record-head">
@@ -88,7 +89,7 @@
         </div>
       </el-collapse-item>
 
-      <el-collapse-item v-if="customerDraftOpen" name="customer-draft">
+      <el-collapse-item v-if="customerDraftOpen" ref="customerDraftItemRef" name="customer-draft">
         <template #title>
           <div class="modification-record-head">
             <span>第 {{ nextRoundIndex }} 次修改</span>
@@ -135,7 +136,7 @@
 </template>
 
 <script setup>
-import { computed, defineComponent, h, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, defineComponent, h, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElButton, ElIcon, ElImage, ElMessage, ElUpload } from 'element-plus'
 import { Delete, Document, UploadFilled } from '@element-plus/icons-vue'
 import { getFileUrl, saveFileToDisk, setupFileDrag } from '@/api'
@@ -181,9 +182,31 @@ const designerUploadFiles = ref([])
 const retainedDesignerFiles = ref([])
 const submitting = ref(false)
 const pasteTarget = ref('')
+const customerDraftItemRef = ref(null)
+const recordItemRefs = new Map()
 
 function recordKey(record, index) {
   return String(record.id ?? `record-${index}`)
+}
+
+function setRecordItemRef(key, element) {
+  if (element) recordItemRefs.set(key, element)
+  else recordItemRefs.delete(key)
+}
+
+async function scrollToModificationItem(item) {
+  await nextTick()
+  await new Promise(resolve => requestAnimationFrame(resolve))
+  const target = item?.$el || item
+  const scrollBody = target?.closest?.('.task-detail-body')
+  if (!target || !scrollBody) return false
+  const targetRect = target.getBoundingClientRect()
+  const scrollBodyRect = scrollBody.getBoundingClientRect()
+  scrollBody.scrollTo({
+    top: Math.max(0, scrollBody.scrollTop + targetRect.top - scrollBodyRect.top - 12),
+    behavior: 'auto'
+  })
+  return true
 }
 
 function customerFiles(record) {
@@ -238,11 +261,26 @@ function openCustomerDraft() {
   expandedRecords.value = ['customer-draft']
 }
 
-function openNewModification() {
-  if (canCreateCustomerRound.value) openCustomerDraft()
+async function openNewModification(options = {}) {
+  if (!customerDraftOpen.value) {
+    if (!canCreateCustomerRound.value) return false
+    openCustomerDraft()
+  }
+  await nextTick()
+  if (options.focus !== false) await scrollToModificationItem(customerDraftItemRef.value)
+  return true
 }
 
-defineExpose({ openNewModification })
+async function focusPendingModification() {
+  const record = pendingRecord.value
+  if (!record) return false
+  const key = recordKey(record, records.value.length - 1)
+  expandedRecords.value = [key]
+  await nextTick()
+  return scrollToModificationItem(recordItemRefs.get(key))
+}
+
+defineExpose({ openNewModification, focusPendingModification })
 
 function cancelCustomerDraft() {
   customerDraftOpen.value = false

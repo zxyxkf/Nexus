@@ -21,11 +21,12 @@ export const publishTaskApi = ({ task, referenceFiles = [], materialStyleId = ''
     formData.append('references', file, safeMultipartFilename(file?.name, index))
   })
 
-  const manifest = images.map(({ image, position, edited }) => {
+  const manifest = images.map(({ image, position, edited, materialStyleId: imageStyleId }) => {
     const editedField = edited?.file ? `edited-${image.id}` : ''
     if (editedField) formData.append(editedField, edited.file, safeMultipartFilename(edited.file.name, position))
     return {
       materialImageId: image.id,
+      materialStyleId: imageStyleId || image.materialStyleId || materialStyleId || undefined,
       position,
       editedField,
       editedOriginalName: edited?.file?.name || ''
@@ -54,11 +55,12 @@ function appendSafeFiles(formData, files, fieldName = 'files') {
 
 export const saveStyleSnapshotsApi = ({ taskId, materialStyleId, images = [] }) => {
   const formData = new FormData()
-  const manifest = images.map(({ image, position, edited }) => {
+  const manifest = images.map(({ image, position, edited, materialStyleId: imageStyleId }) => {
     const editedField = edited?.file ? `edited-${image.id}` : ''
     if (editedField) formData.append(editedField, edited.file, safeMultipartFilename(edited.file.name, position))
     return {
       materialImageId: image.id,
+      materialStyleId: imageStyleId || image.materialStyleId || materialStyleId || undefined,
       position,
       editedField,
       editedOriginalName: edited?.file?.name || ''
