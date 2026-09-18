@@ -103,6 +103,7 @@ const sqlite = [
   `CREATE TABLE IF NOT EXISTS payment_selection_monitoring (
     record_id INTEGER PRIMARY KEY,
     link_optimized INTEGER,
+    link_optimization_items TEXT DEFAULT '[]',
     link_status TEXT DEFAULT '',
     domestic_sales_count INTEGER,
     added_reviews INTEGER,
@@ -182,6 +183,14 @@ const sqlite = [
     update_time TEXT DEFAULT (datetime('now', 'localtime'))
   )`,
   `CREATE TABLE IF NOT EXISTS payment_promotion_method (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL UNIQUE,
+    sort_order INTEGER DEFAULT 0,
+    active INTEGER DEFAULT 1,
+    create_time TEXT DEFAULT (datetime('now', 'localtime')),
+    update_time TEXT DEFAULT (datetime('now', 'localtime'))
+  )`,
+  `CREATE TABLE IF NOT EXISTS payment_link_optimization_item (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL UNIQUE,
     sort_order INTEGER DEFAULT 0,
@@ -293,6 +302,7 @@ const mysql = [
   `CREATE TABLE IF NOT EXISTS payment_selection_monitoring (
     record_id INT PRIMARY KEY,
     link_optimized TINYINT DEFAULT NULL,
+    link_optimization_items TEXT,
     link_status VARCHAR(30) DEFAULT '',
     domestic_sales_count INT DEFAULT NULL,
     added_reviews INT DEFAULT NULL,
@@ -372,6 +382,14 @@ const mysql = [
     update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
   `CREATE TABLE IF NOT EXISTS payment_promotion_method (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    name VARCHAR(200) NOT NULL UNIQUE,
+    sort_order INT DEFAULT 0,
+    active TINYINT DEFAULT 1,
+    create_time DATETIME DEFAULT CURRENT_TIMESTAMP,
+    update_time DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
+  `CREATE TABLE IF NOT EXISTS payment_link_optimization_item (
     id INT AUTO_INCREMENT PRIMARY KEY,
     name VARCHAR(200) NOT NULL UNIQUE,
     sort_order INT DEFAULT 0,

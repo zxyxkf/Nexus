@@ -546,7 +546,7 @@ function appendStatusFilter(where, params, status) {
 }
 
 /** 我发布的任务 */
-async function queryMyPublished({ userId, role, store, permissions = [], filterGroup, selfOnly, reviewView = false, reviewScope = '', paymentOpenView = false, canViewAllPaymentTasks = false, status, styleNumber, keyword, taskNo, designerId, publisherId, dateStart, dateEnd, dateField, sortField, sortOrder, page, pageSize }) {
+async function queryMyPublished({ userId, role, store, permissions = [], filterGroup, selfOnly, reviewView = false, reviewScope = '', paymentOpenView = false, canViewAllPaymentTasks = false, status, styleNumber, styleOrTaskNo, scoreItemId, keyword, taskNo, designerId, publisherId, dateStart, dateEnd, dateField, sortField, sortOrder, page, pageSize }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE 1=1';
   const params = [];
@@ -600,6 +600,8 @@ async function queryMyPublished({ userId, role, store, permissions = [], filterG
 
   where = appendStatusFilter(where, params, status);
   if (styleNumber) { where += ' AND t.style_number LIKE ?'; params.push(`%${styleNumber}%`); }
+  if (styleOrTaskNo) { where += ' AND (t.style_number LIKE ? OR t.task_no LIKE ?)'; params.push(`%${styleOrTaskNo}%`, `%${styleOrTaskNo}%`); }
+  if (scoreItemId) { where += ' AND t.score_item_id = ?'; params.push(scoreItemId); }
   if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`); }
   if (taskNo) { where += ' AND t.task_no LIKE ?'; params.push(`%${taskNo}%`); }
   if (designerId) { where += ' AND t.designer_id = ?'; params.push(designerId); }
@@ -1107,12 +1109,14 @@ async function getSidebarBadgeStats(userId, reviewScope = 'own', store = '') {
       ? 'publisher_id IN (SELECT id FROM sys_user WHERE store = ?)'
       : 'publisher_id = ?';
   const reviewScopeValue = reviewScope === 'store' && store ? store : userId;
-  const params = [userId, userId, userId];
+  const params = [userId, userId, userId, userId, userId];
   if (reviewScope !== 'all') params.push(reviewScopeValue, reviewScopeValue, reviewScopeValue);
   const [rows] = await pool.execute(
     `SELECT
        SUM(CASE WHEN designer_id = ? AND COALESCE(NULLIF(task_group, ''), 'design') = 'design' AND status IN ('accepted', 'rejected') THEN 1 ELSE 0 END) as design_todo_count,
        SUM(CASE WHEN designer_id = ? AND task_group = 'cs' AND status IN ('accepted', 'rejected', 'pending_original', 'pending_original_review') THEN 1 ELSE 0 END) as basic_todo_count,
+       SUM(CASE WHEN designer_id = ? AND task_group = 'cs' AND status IN ('accepted', 'rejected', 'pending_original') THEN 1 ELSE 0 END) as basic_designer_todo_count,
+       SUM(CASE WHEN designer_id = ? AND task_group = 'cs' AND status IN ('doing', 'pending_original_review') THEN 1 ELSE 0 END) as basic_pending_count,
        SUM(CASE WHEN designer_id = ? AND task_group = 'operator' AND status IN ('accepted', 'rejected') THEN 1 ELSE 0 END) as assistant_todo_count,
        SUM(CASE WHEN COALESCE(task_group, 'design') IN ('design', '') AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as design_review_count,
        SUM(CASE WHEN task_group = 'operator' AND status = 'doing' AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as operator_review_count,

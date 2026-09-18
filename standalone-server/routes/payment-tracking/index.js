@@ -5,6 +5,7 @@ const imageRoutes = require('./image-routes');
 const openRoutes = require('./open-routes');
 const categoryRoutes = require('./category-routes');
 const promotionRoutes = require('./promotion-routes');
+const linkOptimizationItemRoutes = require('./link-optimization-item-routes');
 const linkStatusRoutes = require('./link-status-routes');
 const managerReviewRoutes = require('./manager-review-routes');
 
@@ -16,6 +17,7 @@ router.use(workflowRoutes);
 router.use(openRoutes);
 router.use(categoryRoutes);
 router.use(promotionRoutes);
+router.use(linkOptimizationItemRoutes);
 router.use(linkStatusRoutes);
 router.use(managerReviewRoutes);
 

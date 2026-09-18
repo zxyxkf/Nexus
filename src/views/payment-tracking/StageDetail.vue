@@ -283,6 +283,7 @@ function createStageModel(data, code) {
   if (code === 'monitoring') {
     return {
       linkOptimized: stageData.linkOptimized ?? null,
+      linkOptimizationItems: Array.isArray(stageData.linkOptimizationItems) ? [...stageData.linkOptimizationItems] : [],
       linkStatus: stageData.linkStatus ?? '',
       adjustments: (stageData.adjustments || []).map((item, index) => ({
         ...item,
@@ -356,6 +357,7 @@ async function reloadOnVersionConflict(result) {
 }
 
 async function saveCurrentStage(options = {}) {
+  if (await formRef.value?.validateForSave?.() === false) return null
   let confirmDownstreamInvalidation = false
   if (isTerminalHistoricalEdit.value) {
     try {
@@ -437,6 +439,7 @@ async function saveLinkStatus(payload) {
 
 async function advanceStage() {
   try {
+    if (await formRef.value?.validateForSave?.() === false) return
     await formRef.value?.validateForAdvance?.()
     await ElMessageBox.confirm(`确认完成“${stageTitle.value}”并进入下一阶段？`, '进入下一阶段', {
       confirmButtonText: '确认进入',
@@ -464,6 +467,7 @@ async function advanceStage() {
 
 async function endProcess() {
   try {
+    if (await formRef.value?.validateForSave?.() === false) return
     await formRef.value?.validateForEnd?.()
     await ElMessageBox.confirm(
       stageCode.value === 'summary'

@@ -3,12 +3,30 @@
     <section class="form-section">
       <h2>链接优化</h2>
       <div class="link-optimization-layout">
-        <el-form-item label="是否做链接优化">
-          <el-radio-group v-model="model.linkOptimized" :disabled="readonly">
-            <el-radio :value="true">是</el-radio>
-            <el-radio :value="false">否</el-radio>
-          </el-radio-group>
-        </el-form-item>
+        <div class="link-optimization-fields">
+          <el-form-item label="是否做链接优化">
+            <el-radio-group v-model="model.linkOptimized" :disabled="readonly">
+              <el-radio :value="true">是</el-radio>
+              <el-radio :value="false">否</el-radio>
+            </el-radio-group>
+          </el-form-item>
+          <el-form-item v-if="model.linkOptimized === true" label="链接优化项目" :required="!readonly" class="link-optimization-items">
+            <el-select
+              v-model="model.linkOptimizationItems"
+              multiple
+              filterable
+              clearable
+              collapse-tags
+              collapse-tags-tooltip
+              :max-collapse-tags="1"
+              :disabled="readonly || !linkOptimizationOptions.length"
+              :placeholder="linkOptimizationOptions.length ? '请选择链接优化项目' : '暂无可选项目'"
+              class="link-optimization-select"
+            >
+              <el-option v-for="item in linkOptimizationOptions" :key="item.name" :label="item.name" :value="item.name" />
+            </el-select>
+          </el-form-item>
+        </div>
         <ImageGallery
           v-if="model.linkOptimized === true"
           :record-id="record.id"
@@ -48,8 +66,9 @@
 </template>
 
 <script setup>
-import { ref } from 'vue'
+import { computed, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus'
+import { listPaymentLinkOptimizationItemsApi } from '@/api'
 import ImageGallery from '@/components/payment-tracking/ImageGallery.vue'
 import PromotionAdjustments from '@/components/payment-tracking/PromotionAdjustments.vue'
 
@@ -61,10 +80,41 @@ defineProps({
 })
 const emit = defineEmits(['record-updated', 'reload-requested'])
 const formRef = ref(null)
+const configuredLinkOptimizationItems = ref([])
+const linkOptimizationOptions = computed(() => {
+  const options = new Map(configuredLinkOptimizationItems.value.map(item => [item.name, item]))
+  for (const name of model.value.linkOptimizationItems || []) {
+    if (!options.has(name)) options.set(name, { name, historical: true })
+  }
+  return [...options.values()]
+})
+
+async function loadLinkOptimizationItems() {
+  try {
+    const response = await listPaymentLinkOptimizationItemsApi()
+    if (response.code === 0) configuredLinkOptimizationItems.value = response.data || []
+  } catch (error) {
+    console.error('[PaymentTracking] 加载链接优化项目失败:', error)
+  }
+}
+
+watch(() => model.value.linkOptimized, value => {
+  if (value !== true) model.value.linkOptimizationItems = []
+})
+
+onMounted(loadLinkOptimizationItems)
 
 function validationError(message) {
   ElMessage.error(message)
   throw new Error(message)
+}
+
+function validateForSave() {
+  if (model.value.linkOptimized === true && !model.value.linkOptimizationItems?.length) {
+    ElMessage.error('请至少选择一个链接优化项目')
+    return false
+  }
+  return true
 }
 
 async function validateForAdvance() {
@@ -81,7 +131,7 @@ async function validateForEnd() {
   return true
 }
 
-defineExpose({ validateForAdvance, validateForEnd })
+defineExpose({ validateForSave, validateForAdvance, validateForEnd })
 </script>
 
 <style scoped>
@@ -122,6 +172,18 @@ h2::before {
   align-items: start;
   gap: 28px;
   min-width: 0;
+}
+
+.link-optimization-fields {
+  min-width: 0;
+}
+
+.link-optimization-items {
+  margin-top: 14px;
+}
+
+.link-optimization-select {
+  width: 100%;
 }
 
 :deep(.el-form-item) {

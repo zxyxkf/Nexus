@@ -176,7 +176,7 @@ router.post('/delete', requireRole('admin'), async (req, res, next) => {
 /**
  * GET /api/user/designers - 获取美工列表（用于指派任务）
  */
-router.get('/designers', requireAnyPermission(['operator.publish.design', 'operator.tasks.design', 'admin.tasks.design'], 'admin', 'sub_admin', 'operator'), async (req, res, next) => {
+router.get('/designers', requireAnyPermission(['operator.publish.design', 'operator.tasks.design', 'operator.review.design', 'admin.tasks.design'], 'admin', 'sub_admin', 'operator'), async (req, res, next) => {
   try {
     const rows = await userService.getDesignerList();
     res.json({ code: 0, msg: '查询成功', data: rows });

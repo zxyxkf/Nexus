@@ -87,6 +87,14 @@ function presentStageData(stageData) {
       presented[stageCode][field] = presentNullableBoolean(presented[stageCode][field]);
     }
   }
+  if (presented.monitoring) {
+    try {
+      const values = JSON.parse(presented.monitoring.linkOptimizationItems || '[]');
+      presented.monitoring.linkOptimizationItems = Array.isArray(values) ? values : [];
+    } catch (_) {
+      presented.monitoring.linkOptimizationItems = [];
+    }
+  }
   return presented;
 }
 

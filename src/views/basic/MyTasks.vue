@@ -41,12 +41,17 @@
               style="width:150px;"
               @change="handleDateFilterChange"
             />
-            <el-select v-if="!fixedStatus || isTodoRoute" v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
+            <el-select v-if="isBasicDesigner && isPendingRoute" v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
+              <el-option label="全部" value="" />
+              <el-option label="审核中" value="doing" />
+              <el-option label="待审核原图" value="pending_original_review" />
+            </el-select>
+            <el-select v-else-if="!fixedStatus || isTodoRoute" v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
               <el-option label="全部" value="" />
               <el-option label="已接单" value="accepted" />
               <el-option v-if="!isTodoRoute" label="审核中" value="doing" />
               <el-option label="待上传原图" value="pending_original" />
-              <el-option label="待审核原图" value="pending_original_review" />
+              <el-option v-if="!isTodoRoute || !isBasicDesigner" label="待审核原图" value="pending_original_review" />
               <el-option v-if="!isTodoRoute" label="已完成" value="finished" />
               <el-option label="修改中" value="rejected" />
             </el-select>
@@ -438,14 +443,19 @@ const dateField = ref('')
 const publisherList = ref([])
 const fixedStatus = computed(() => route.meta.fixedStatus || '')
 const isTodoRoute = computed(() => fixedStatus.value === 'accepted' && route.path.endsWith('/tasks/todo'))
+const isPendingRoute = computed(() => fixedStatus.value === 'doing' && route.path.endsWith('/tasks/pending'))
 const pageTitle = computed(() => route.meta.title || '我的任务')
 
 function sanitizeStatusFilter() {
   const allowed = !fixedStatus.value
     ? new Set(['accepted', 'doing', 'pending_original', 'pending_original_review', 'finished', 'rejected'])
     : isTodoRoute.value
-      ? new Set(['accepted', 'pending_original', 'pending_original_review', 'rejected'])
-      : new Set()
+      ? new Set(isBasicDesigner.value
+        ? ['accepted', 'pending_original', 'rejected']
+        : ['accepted', 'pending_original', 'pending_original_review', 'rejected'])
+      : isBasicDesigner.value && isPendingRoute.value
+        ? new Set(['doing', 'pending_original_review'])
+        : new Set()
   if (!allowed.has(statusFilter.value)) statusFilter.value = ''
 }
 
@@ -581,8 +591,12 @@ async function loadData(options = {}) {
       page: page.value,
       pageSize: pageSize.value,
       status: isTodoRoute.value
-        ? (statusFilter.value || 'accepted,rejected,pending_original,pending_original_review')
-        : (fixedStatus.value || statusFilter.value || undefined),
+        ? (statusFilter.value || (isBasicDesigner.value
+          ? 'accepted,rejected,pending_original'
+          : 'accepted,rejected,pending_original,pending_original_review'))
+        : (isBasicDesigner.value && isPendingRoute.value
+          ? (statusFilter.value || 'doing,pending_original_review')
+          : (fixedStatus.value || statusFilter.value || undefined)),
       taskGroup: 'cs',
       keyword: keyword.value || undefined,
       publisherId: publisherFilter.value || undefined,

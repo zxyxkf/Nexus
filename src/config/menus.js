@@ -47,9 +47,9 @@ export const MENU_REGISTRY = [
   { group: 'basic_designer', path: '/basic/tasks/todo', icon: 'List', label: '待做任务', permission: 'basic.tasks.cs' },
   { group: 'basic_designer', path: '/basic/tasks/pending', icon: 'Select', label: '待审核任务', permission: 'basic.tasks.cs' },
 
-  { group: 'payment_tracking', path: '/payment-tracking/selections', icon: 'List', label: '选品收集', permission: 'payment.selection.view' },
+  { group: 'payment_tracking', path: '/payment-tracking/selections', icon: 'List', label: '当前打款', permission: 'payment.selection.view' },
   { group: 'payment_tracking', path: '/payment-tracking/manager-reviews', icon: 'Select', label: '店长审核', identity: 'manager-review' },
-  { group: 'payment_tracking', path: '/payment-tracking/records', icon: 'Document', label: '打款记录', permission: 'payment.records.view' },
+  { group: 'payment_tracking', path: '/payment-tracking/records', icon: 'Document', label: '历史打款', permission: 'payment.records.view' },
 
   { group: 'material_library', path: '/material-library/products', icon: 'Picture', label: '素材库', permission: 'material.library' },
 

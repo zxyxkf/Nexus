@@ -55,6 +55,11 @@ export const createPaymentPromotionMethodApi = (data) => request.post('/api/paym
 export const updatePaymentPromotionMethodApi = (id, data) => request.put(`/api/payment-tracking/promotion-methods/${id}`, data)
 export const deletePaymentPromotionMethodApi = (id) => request.delete(`/api/payment-tracking/promotion-methods/${id}`)
 
+export const listPaymentLinkOptimizationItemsApi = (params) => request.get('/api/payment-tracking/link-optimization-items', { params })
+export const createPaymentLinkOptimizationItemApi = (data) => request.post('/api/payment-tracking/link-optimization-items', data)
+export const updatePaymentLinkOptimizationItemApi = (id, data) => request.put(`/api/payment-tracking/link-optimization-items/${id}`, data)
+export const deletePaymentLinkOptimizationItemApi = (id) => request.delete(`/api/payment-tracking/link-optimization-items/${id}`)
+
 export function getPaymentImageUrl(image) {
   if (!image?.id) return ''
   const token = getToken()

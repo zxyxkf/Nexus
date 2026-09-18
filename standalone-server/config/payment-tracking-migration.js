@@ -30,6 +30,7 @@ async function ensureColumns(execute, mode) {
   await ensureColumn(execute, mode, 'payment_selection_testing', 'paid_at', `${date} DEFAULT NULL`);
   await ensureColumn(execute, mode, 'payment_selection_testing', 'promotion_method', `${text} DEFAULT ''`);
   await ensureColumn(execute, mode, 'payment_selection_monitoring', 'link_optimized', `${tinyInt} DEFAULT NULL`);
+  await ensureColumn(execute, mode, 'payment_selection_monitoring', 'link_optimization_items', mode === 'mysql' ? 'TEXT' : "TEXT DEFAULT '[]'");
   await ensureColumn(execute, mode, 'payment_selection_monitoring', 'link_status', `${mode === 'mysql' ? 'VARCHAR(30)' : 'TEXT'} DEFAULT ''`);
   await ensureColumn(execute, mode, 'payment_selection_adjustment', 'client_key', `${mode === 'mysql' ? 'VARCHAR(100)' : 'TEXT'} DEFAULT NULL`);
 

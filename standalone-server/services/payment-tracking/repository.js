@@ -20,7 +20,7 @@ const STAGE_FIELDS = {
     'manager_report_date', 'wei_stock_reported'
   ],
   monitoring: [
-    'link_optimized', 'link_status'
+    'link_optimized', 'link_optimization_items', 'link_status'
   ],
   summary: ['exploded', 'link_maintenance', 'style_definition', 'summary_text', 'notes']
 };
@@ -841,6 +841,61 @@ async function deletePromotionMethod(id) {
   return Number(result.affectedRows || 0) > 0;
 }
 
+async function listLinkOptimizationItems(options = {}) {
+  const activeClause = options.includeInactive ? '' : 'WHERE active = 1';
+  const [rows] = await getPool().execute(
+    `SELECT id, name, sort_order, active, create_time, update_time
+     FROM payment_link_optimization_item ${activeClause}
+     ORDER BY sort_order ASC, name ASC, id ASC`
+  );
+  return rows;
+}
+
+async function findLinkOptimizationItemById(id) {
+  const [rows] = await getPool().execute(
+    `SELECT id, name, sort_order, active, create_time, update_time
+     FROM payment_link_optimization_item WHERE id = ?`,
+    [id]
+  );
+  return rows[0] || null;
+}
+
+async function findLinkOptimizationItemByName(name) {
+  const [rows] = await getPool().execute(
+    `SELECT id, name, sort_order, active, create_time, update_time
+     FROM payment_link_optimization_item WHERE name = ?`,
+    [name]
+  );
+  return rows[0] || null;
+}
+
+async function insertLinkOptimizationItem(data) {
+  const [result] = await getPool().execute(
+    `INSERT INTO payment_link_optimization_item (name, sort_order, active) VALUES (?, ?, ?)`,
+    [data.name, data.sortOrder ?? 0, data.active === false ? 0 : 1]
+  );
+  return findLinkOptimizationItemById(result.insertId);
+}
+
+async function updateLinkOptimizationItem(id, data) {
+  const [result] = await getPool().execute(
+    `UPDATE payment_link_optimization_item
+     SET name = ?, sort_order = ?, active = ?, update_time = CURRENT_TIMESTAMP
+     WHERE id = ?`,
+    [data.name, data.sortOrder ?? 0, data.active === false ? 0 : 1, id]
+  );
+  if (!Number(result.affectedRows || 0)) return null;
+  return findLinkOptimizationItemById(id);
+}
+
+async function deleteLinkOptimizationItem(id) {
+  const [result] = await getPool().execute(
+    'DELETE FROM payment_link_optimization_item WHERE id = ?',
+    [id]
+  );
+  return Number(result.affectedRows || 0) > 0;
+}
+
 module.exports = {
   listRecords,
   countRecords,
@@ -884,6 +939,12 @@ module.exports = {
   insertPromotionMethod,
   updatePromotionMethod,
   deletePromotionMethod,
+  listLinkOptimizationItems,
+  findLinkOptimizationItemById,
+  findLinkOptimizationItemByName,
+  insertLinkOptimizationItem,
+  updateLinkOptimizationItem,
+  deleteLinkOptimizationItem,
   listImages,
   listProductImagesForRecords,
   findLinkStatus,

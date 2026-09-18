@@ -595,6 +595,9 @@ async function getMyPublished(query, user) {
   const group = query.taskGroup || (user.role === 'cs_agent' ? 'cs' : 'design');
   const selfOnly = query.selfOnly === '1' || query.selfOnly === 'true';
   const reviewView = query.reviewView === '1' || query.reviewView === 'true';
+  const operatorDesignReview = reviewView && group === 'design'
+    && ['operator', 'sub_admin'].includes(user.role)
+    && hasPermission(user, 'operator.review.design');
   const reviewScope = reviewView ? reviewScopeForGroup(user, group) : '';
   const allPaymentTasks = canViewAllPaymentTasks(user);
   const paymentOpenView = !reviewView && group === 'design'
@@ -625,6 +628,8 @@ async function getMyPublished(query, user) {
     paymentOpenView,
     canViewAllPaymentTasks: allPaymentTasks,
     status: requestedStatus, styleNumber: query.styleNumber,
+    styleOrTaskNo: operatorDesignReview ? query.styleOrTaskNo : undefined,
+    scoreItemId: operatorDesignReview ? query.scoreItemId : undefined,
     keyword: query.keyword, taskNo: query.taskNo, designerId: query.designerId,
     publisherId: query.publisherId,
     dateStart: query.dateStart, dateEnd: query.dateEnd,
@@ -738,7 +743,15 @@ function visibleSidebarBadges(user, ownStats = {}, reviewStats = {}) {
   const badges = {};
 
   if (hasPermission(user, 'designer.tasks.design')) badges['/designer/tasks/todo'] = Number(reviewStats.design_todo_count || 0);
-  if (hasPermission(user, 'basic.tasks.cs')) badges['/basic/tasks/todo'] = Number(reviewStats.basic_todo_count || 0);
+  if (hasPermission(user, 'basic.tasks.cs')) {
+    const todoCount = user?.role === 'basic_designer'
+      ? reviewStats.basic_designer_todo_count
+      : reviewStats.basic_todo_count;
+    badges['/basic/tasks/todo'] = Number(todoCount || 0);
+    if (user?.role === 'basic_designer') {
+      badges['/basic/tasks/pending'] = Number(reviewStats.basic_pending_count || 0);
+    }
+  }
   if (hasPermission(user, 'assistant.tasks.operator')) badges['/operator-assistant/tasks/todo'] = Number(reviewStats.assistant_todo_count || 0);
 
   if (hasPermission(user, 'operator.review.design')) badges['/operator/review'] = Number(reviewStats.design_review_count || 0);

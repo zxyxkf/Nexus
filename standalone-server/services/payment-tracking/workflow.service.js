@@ -2,6 +2,7 @@ const AppError = require('../../utils/AppError');
 const { executeTransaction } = require('../../config/database');
 const repository = require('./repository');
 const promotionService = require('./promotion.service');
+const linkOptimizationItemService = require('./link-optimization-item.service');
 const recordService = require('./record.service');
 const { notifyReviewers } = require('./manager-review.service');
 const { STAGES, NEXT_STAGE, PERMISSIONS } = require('./constants');
@@ -44,6 +45,7 @@ const FIELD_MAP = {
   },
   monitoring: {
     linkOptimized: 'link_optimized',
+    linkOptimizationItems: 'link_optimization_items',
     linkStatus: 'link_status'
   },
   summary: {
@@ -75,6 +77,13 @@ function validationError(errors) {
   return error;
 }
 
+function assertMonitoringLinkOptimizationItems(data) {
+  if (Number(data.link_optimized) === 1
+    && linkOptimizationItemService.parseStoredNames(data.link_optimization_items).length === 0) {
+    throw validationError({ linkOptimizationItems: '请至少选择一个链接优化项目' });
+  }
+}
+
 function localDateTime(date = new Date()) {
   const pad = value => String(value).padStart(2, '0');
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} `
@@ -89,6 +98,9 @@ function normalizeBoolean(value, field) {
 }
 
 function normalizeValue(field, value) {
+  if (field === 'link_optimization_items') {
+    return JSON.stringify(linkOptimizationItemService.normalizeNames(value));
+  }
   if (BOOLEAN_FIELDS.has(field)) return normalizeBoolean(value, field);
   if (NUMBER_FIELDS.has(field)) {
     if (value === null || value === undefined || value === '') return null;
@@ -215,6 +227,23 @@ async function saveStage(recordId, stageCode, payload, user) {
       await assertAdjustmentOwnership(conn, record.id, changes.adjustments);
     }
 
+    if (stageCode === 'monitoring') {
+      const effectiveLinkOptimized = Object.prototype.hasOwnProperty.call(changes, 'link_optimized')
+        ? changes.link_optimized
+        : existing.link_optimized;
+      if (Number(effectiveLinkOptimized) !== 1) {
+        changes.link_optimization_items = '[]';
+      } else if (Object.prototype.hasOwnProperty.call(changes, 'link_optimization_items')) {
+        const selectedItems = linkOptimizationItemService.parseStoredNames(changes.link_optimization_items);
+        const historicalItems = linkOptimizationItemService.parseStoredNames(existing.link_optimization_items);
+        const validatedItems = await linkOptimizationItemService.assertConfiguredItems(selectedItems, {
+          existingValues: historicalItems
+        });
+        changes.link_optimization_items = JSON.stringify(validatedItems);
+      }
+      assertMonitoringLinkOptimizationItems({ ...merged, ...changes });
+    }
+
     const terminalSnapshot = Number(stage.is_reopened)
       ? deriveExplicitTerminalSnapshot(stageCode, merged)
       : null;
@@ -276,6 +305,7 @@ async function advanceStage(recordId, payload, user) {
     const stage = await repository.findStage(record.id, stageCode, conn);
     if (!stage) throw new AppError(403, '当前阶段尚未进入');
     const data = await repository.loadStageData(record.id, stageCode, conn) || {};
+    if (stageCode === 'monitoring') assertMonitoringLinkOptimizationItems(data);
     if (stageCode === 'selection') {
       const images = await repository.listImages(record.id, 'product_main', conn);
       data.product_image_count = images.length;
@@ -329,6 +359,7 @@ async function endProcess(recordId, payload, user) {
     if (!canManageOwnerRecord(record, user)) throw new AppError(403, '只有填写人或阶段管理人可以结束流程');
 
     const data = await repository.loadStageData(record.id, record.current_stage, conn) || {};
+    if (record.current_stage === 'monitoring') assertMonitoringLinkOptimizationItems(data);
     const endValidation = validateEnd(record.current_stage, data);
     if (!endValidation.ok) throw validationError(endValidation.errors);
     const snapshot = deriveEndSnapshot(record.current_stage, data);

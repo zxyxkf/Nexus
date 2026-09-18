@@ -138,6 +138,52 @@
           </el-table>
         </el-tab-pane>
 
+        <el-tab-pane label="链接优化项目" name="linkOptimizationItem">
+          <template #label>
+            <span>链接优化项目 <el-tag size="small" type="info" style="margin-left:4px;">{{ linkOptimizationItemList.length }}</el-tag></span>
+          </template>
+
+          <div class="filter-bar">
+            <el-button type="primary" @click="openLinkOptimizationItemDialog()"><el-icon><Plus /></el-icon> 新增项目</el-button>
+            <el-button link @click="loadLinkOptimizationItems"><el-icon><Refresh /></el-icon></el-button>
+          </div>
+
+          <el-table
+            data-nexus-column-key="admin-config-payment-link-optimization-item"
+            :data="linkOptimizationItemList"
+            v-loading="linkOptimizationItemLoading"
+            stripe
+            style="width:100%"
+            empty-text="暂无链接优化项目"
+            :max-height="550"
+          >
+            <el-table-column prop="name" label="项目名称" min-width="240" show-overflow-tooltip />
+            <el-table-column label="排序" width="90" align="center">
+              <template #default="{ row }">{{ row.sort_order ?? row.sortOrder ?? 0 }}</template>
+            </el-table-column>
+            <el-table-column label="状态" width="90" align="center">
+              <template #default="{ row }">
+                <el-tag :type="Number(row.active) === 1 ? 'success' : 'info'" size="small">
+                  {{ Number(row.active) === 1 ? '启用' : '停用' }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column label="更新时间" width="180" align="center">
+              <template #default="{ row }">{{ row.update_time || row.updateTime || '-' }}</template>
+            </el-table-column>
+            <el-table-column label="操作" width="150" fixed="right" align="center">
+              <template #default="{ row }">
+                <el-button type="primary" link size="small" @click="openLinkOptimizationItemDialog(row)">编辑</el-button>
+                <el-popconfirm title="确认删除此链接优化项目？" confirm-button-text="删除" @confirm="handleLinkOptimizationItemDelete(row)">
+                  <template #reference>
+                    <el-button type="danger" link size="small">删除</el-button>
+                  </template>
+                </el-popconfirm>
+              </template>
+            </el-table-column>
+          </el-table>
+        </el-tab-pane>
+
         <el-tab-pane label="设计积分项目" name="score">
           <template #label>
             <span>设计积分 <el-tag size="small" type="info" style="margin-left:4px;">{{ scoreList.length }}</el-tag></span>
@@ -381,6 +427,24 @@
       </template>
     </el-dialog>
 
+    <el-dialog v-model="linkOptimizationItemDialogVisible" :title="linkOptimizationItemForm.id ? '编辑链接优化项目' : '新增链接优化项目'" width="460px" :close-on-click-modal="false">
+      <el-form ref="linkOptimizationItemFormRef" :model="linkOptimizationItemForm" :rules="linkOptimizationItemRules" label-width="80px">
+        <el-form-item label="名称" prop="name">
+          <el-input v-model="linkOptimizationItemForm.name" placeholder="请输入链接优化项目名称" maxlength="100" />
+        </el-form-item>
+        <el-form-item label="排序">
+          <el-input-number v-model="linkOptimizationItemForm.sortOrder" :min="0" :max="9999" :precision="0" controls-position="right" style="width:100%;" />
+        </el-form-item>
+        <el-form-item label="状态">
+          <el-switch v-model="linkOptimizationItemForm.active" active-text="启用" inactive-text="停用" />
+        </el-form-item>
+      </el-form>
+      <template #footer>
+        <el-button @click="linkOptimizationItemDialogVisible = false">取消</el-button>
+        <el-button type="primary" @click="handleLinkOptimizationItemSave" :loading="linkOptimizationItemSaving">保存</el-button>
+      </template>
+    </el-dialog>
+
     <!-- 运营积分项目弹窗 -->
     <el-dialog v-model="scoreOpDialogVisible" :title="scoreOpForm.id ? '编辑运营积分项目' : '新增运营积分项目'" width="460px" :close-on-click-modal="false">
       <el-form ref="scoreOpFormRef" :model="scoreOpForm" :rules="scoreRules" label-width="80px">
@@ -425,7 +489,7 @@
 import { ref, computed, onMounted } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Refresh, Plus } from '@element-plus/icons-vue'
-import { getConfigListApi, updateConfigApi, deleteConfigApi, getScoreItemsApi, saveScoreItemApi, deleteScoreItemApi, getAnnouncementListApi, createAnnouncementApi, updateAnnouncementApi, deleteAnnouncementApi, getShopListApi, createShopApi, updateShopApi, deleteShopApi, listPaymentListingCategoriesApi, createPaymentListingCategoryApi, updatePaymentListingCategoryApi, deletePaymentListingCategoryApi, listPaymentPromotionMethodsApi, createPaymentPromotionMethodApi, updatePaymentPromotionMethodApi, deletePaymentPromotionMethodApi } from '@/api'
+import { getConfigListApi, updateConfigApi, deleteConfigApi, getScoreItemsApi, saveScoreItemApi, deleteScoreItemApi, getAnnouncementListApi, createAnnouncementApi, updateAnnouncementApi, deleteAnnouncementApi, getShopListApi, createShopApi, updateShopApi, deleteShopApi, listPaymentListingCategoriesApi, createPaymentListingCategoryApi, updatePaymentListingCategoryApi, deletePaymentListingCategoryApi, listPaymentPromotionMethodsApi, createPaymentPromotionMethodApi, updatePaymentPromotionMethodApi, deletePaymentPromotionMethodApi, listPaymentLinkOptimizationItemsApi, createPaymentLinkOptimizationItemApi, updatePaymentLinkOptimizationItemApi, deletePaymentLinkOptimizationItemApi } from '@/api'
 import { useUserStore } from '@/store'
 
 const userStore = useUserStore()
@@ -1025,6 +1089,86 @@ async function handlePromotionMethodDelete(row) {
   }
 }
 
+// ===== 链接优化项目管理 =====
+const linkOptimizationItemLoading = ref(false)
+const linkOptimizationItemList = ref([])
+const linkOptimizationItemDialogVisible = ref(false)
+const linkOptimizationItemFormRef = ref(null)
+const linkOptimizationItemSaving = ref(false)
+const linkOptimizationItemForm = ref({ id: null, name: '', sortOrder: 0, active: true })
+const linkOptimizationItemRules = {
+  name: [{ required: true, message: '请输入链接优化项目名称', trigger: 'blur' }]
+}
+
+async function loadLinkOptimizationItems() {
+  linkOptimizationItemLoading.value = true
+  try {
+    const res = await listPaymentLinkOptimizationItemsApi({ includeInactive: true })
+    const rows = Array.isArray(res?.data) ? res.data : res?.data?.list
+    if (res?.code === 0 && Array.isArray(rows)) linkOptimizationItemList.value = rows
+  } catch (e) {
+    console.error('[Config] 加载链接优化项目失败:', e)
+  } finally {
+    linkOptimizationItemLoading.value = false
+  }
+}
+
+function openLinkOptimizationItemDialog(row) {
+  linkOptimizationItemForm.value = row
+    ? {
+        id: row.id,
+        name: row.name || '',
+        sortOrder: Number(row.sort_order ?? row.sortOrder ?? 0),
+        active: Number(row.active) !== 0
+      }
+    : { id: null, name: '', sortOrder: 0, active: true }
+  linkOptimizationItemDialogVisible.value = true
+}
+
+async function handleLinkOptimizationItemSave() {
+  const valid = await linkOptimizationItemFormRef.value?.validate().catch(() => false)
+  if (!valid) return
+  const name = String(linkOptimizationItemForm.value.name || '').trim()
+  if (!name) return ElMessage.warning('链接优化项目名称不能为空')
+  linkOptimizationItemSaving.value = true
+  try {
+    const payload = {
+      name,
+      sortOrder: Number(linkOptimizationItemForm.value.sortOrder) || 0,
+      active: Boolean(linkOptimizationItemForm.value.active)
+    }
+    const request = linkOptimizationItemForm.value.id
+      ? updatePaymentLinkOptimizationItemApi(linkOptimizationItemForm.value.id, payload)
+      : createPaymentLinkOptimizationItemApi(payload)
+    const res = await request
+    if (res?.code === 0) {
+      ElMessage.success(res.msg || '保存成功')
+      linkOptimizationItemDialogVisible.value = false
+      await loadLinkOptimizationItems()
+    } else {
+      ElMessage.error(res?.msg || '保存失败')
+    }
+  } catch (e) {
+    console.error('[Config] 保存链接优化项目失败:', e)
+  } finally {
+    linkOptimizationItemSaving.value = false
+  }
+}
+
+async function handleLinkOptimizationItemDelete(row) {
+  try {
+    const res = await deletePaymentLinkOptimizationItemApi(row.id)
+    if (res?.code === 0) {
+      ElMessage.success(res.msg || '已删除')
+      await loadLinkOptimizationItems()
+    } else {
+      ElMessage.error(res?.msg || '删除失败')
+    }
+  } catch (e) {
+    console.error('[Config] 删除链接优化项目失败:', e)
+  }
+}
+
 // ===== 生命周期 =====
 const activeTab = ref('config')
 function onTabChange(tab) {
@@ -1035,6 +1179,7 @@ function onTabChange(tab) {
   if (tab === 'shop' && shopList.value.length === 0) loadShops()
   if (tab === 'listingCategory' && listingCategoryList.value.length === 0) loadListingCategories()
   if (tab === 'promotionMethod' && promotionMethodList.value.length === 0) loadPromotionMethods()
+  if (tab === 'linkOptimizationItem' && linkOptimizationItemList.value.length === 0) loadLinkOptimizationItems()
 }
 
 onMounted(() => {

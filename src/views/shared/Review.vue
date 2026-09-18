@@ -4,7 +4,16 @@
       <template #header>
         <div class="card-header review-card-header">
           <span class="card-title">作品审核</span>
-          <div v-if="isCsAgent" class="review-filters">
+          <div v-if="isOperatorDesignReview" class="review-filters">
+            <el-input v-model="designReviewKeyword" clearable placeholder="搜索款号/任务编号" @keyup.enter="handleFilterChange" @clear="handleFilterChange" />
+            <el-select v-model="designReviewScoreItemId" clearable filterable placeholder="工作项目筛选" @change="handleFilterChange">
+              <el-option v-for="item in designReviewScoreItems" :key="item.id" :label="item.name" :value="item.id" />
+            </el-select>
+            <el-select v-model="designReviewDesignerId" clearable filterable placeholder="筛选美工设计师" @change="handleFilterChange">
+              <el-option v-for="designer in designReviewDesignerList" :key="designer.id" :label="designer.real_name || designer.username" :value="designer.id" />
+            </el-select>
+          </div>
+          <div v-else-if="isCsAgent" class="review-filters">
             <el-input v-model="keywordFilter" clearable placeholder="搜索旺旺ID/款号" @keyup.enter="handleFilterChange" @clear="handleFilterChange" />
             <el-input v-model="taskNoFilter" clearable placeholder="任务编号" @keyup.enter="handleFilterChange" @clear="handleFilterChange" />
             <el-select v-model="designerFilter" clearable filterable placeholder="筛选基础美工" @change="handleFilterChange">
@@ -373,12 +382,13 @@ import { ref, computed, watch, nextTick, onMounted } from 'vue'
 import { useRoute } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document } from '@element-plus/icons-vue'
-import { getMyPublishedApi, reviewTaskApi, reviewOriginalTaskApi, requestCsModificationApi, batchReviewApi, getBasicDesignerListApi, getFileUrl, setupFileDrag, setupFilesDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
+import { getMyPublishedApi, reviewTaskApi, reviewOriginalTaskApi, requestCsModificationApi, batchReviewApi, getBasicDesignerListApi, getDesignerListApi, getScoreItemsApi, getFileUrl, setupFileDrag, setupFilesDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
 import { useRealtime } from '@/composables/useRealtime'
 import { useFileHelpers } from '@/composables/useFileHelpers'
 import { usePersistedTableSort } from '@/composables/usePersistedTableSort'
 import { useTaskDetail } from '@/composables/useTaskDetail'
 import { formatDate, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskScore, scoreReviewTagType } from '@/utils/format'
+import { getUser } from '@/utils/auth'
 import { hasPermission } from '@/utils/permissions'
 import TaskDetail from '@/components/TaskDetail.vue'
 import CsModificationRecords from '@/components/task/CsModificationRecords.vue'
@@ -389,6 +399,12 @@ const route = useRoute()
 const taskGroup = computed(() => route.meta.taskGroup || (route.meta.role === 'cs_agent' ? 'cs' : 'design'))
 const isCsAgent = computed(() => taskGroup.value === 'cs')
 const isOperatorTask = computed(() => taskGroup.value === 'operator')
+const isOperatorDesignReview = computed(() => (
+  ['operator', 'sub_admin'].includes(getUser()?.role)
+  && route.name === 'OperatorReview'
+  && taskGroup.value === 'design'
+  && hasPermission('operator.review.design')
+))
 const designerLabel = computed(() => isCsAgent.value ? '基础美工' : isOperatorTask.value ? '运营助理' : '美工')
 const canOpenPayment = computed(() => taskGroup.value === 'design' && hasPermission('payment.open'))
 const reviewPermission = computed(() => (
@@ -445,6 +461,11 @@ const taskNoFilter = ref('')
 const designerFilter = ref('')
 const statusFilter = ref('')
 const basicDesignerList = ref([])
+const designReviewKeyword = ref('')
+const designReviewScoreItemId = ref('')
+const designReviewDesignerId = ref('')
+const designReviewScoreItems = ref([])
+const designReviewDesignerList = ref([])
 const loadSequence = ref(0)
 
 const { detailVisible, currentTask, openDetail: viewDetail } = useTaskDetail({
@@ -471,7 +492,7 @@ const batchPaymentOpening = ref(false)
 
 function onSelectChange(rows) { selectedRows.value = rows }
 function handleFilterChange() {
-  if (!isCsAgent.value) return
+  if (!isCsAgent.value && !isOperatorDesignReview.value) return
   page.value = 1
   selectedRows.value = []
   tableRef.value?.clearSelection?.()
@@ -486,6 +507,22 @@ async function loadBasicDesigners() {
   } catch (error) {
     console.error('[Review] 加载基础美工列表失败:', error)
   }
+}
+
+async function loadOperatorDesignReviewFilters() {
+  if (!isOperatorDesignReview.value) return
+  await Promise.all([
+    getScoreItemsApi({ taskGroup: 'design' })
+      .then(res => {
+        if (res.code === 0) designReviewScoreItems.value = res.data || []
+      })
+      .catch(error => console.error('[Review] 加载工作项目筛选项失败:', error)),
+    getDesignerListApi()
+      .then(res => {
+        if (res.code === 0) designReviewDesignerList.value = res.data || []
+      })
+      .catch(error => console.error('[Review] 加载美工设计师筛选项失败:', error))
+  ])
 }
 
 function isReviewSelectable(row) {
@@ -668,6 +705,11 @@ async function loadData(options = {}) {
       params.keyword = keywordFilter.value.trim() || undefined
       params.taskNo = taskNoFilter.value.trim() || undefined
       params.designerId = designerFilter.value || undefined
+    } else if (isOperatorDesignReview.value) {
+      params.status = 'doing,pending_original_review'
+      params.styleOrTaskNo = designReviewKeyword.value.trim() || undefined
+      params.scoreItemId = designReviewScoreItemId.value || undefined
+      params.designerId = designReviewDesignerId.value || undefined
     } else {
       params.status = 'doing,pending_original_review'
     }
@@ -855,7 +897,7 @@ async function submitCustomerModification(payload) {
   }
 }
 
-watch(taskGroup, async () => {
+watch(() => [taskGroup.value, isOperatorDesignReview.value], async () => {
   page.value = 1
   list.value = []
   total.value = 0
@@ -865,12 +907,20 @@ watch(taskGroup, async () => {
   designerFilter.value = ''
   statusFilter.value = ''
   basicDesignerList.value = []
-  await loadBasicDesigners()
+  designReviewKeyword.value = ''
+  designReviewScoreItemId.value = ''
+  designReviewDesignerId.value = ''
+  designReviewScoreItems.value = []
+  designReviewDesignerList.value = []
+  await Promise.all([loadBasicDesigners(), loadOperatorDesignReviewFilters()])
   detailVisible.value = false
   currentTask.value = null
   await loadData()
 })
-onMounted(loadBasicDesigners)
+onMounted(() => {
+  loadBasicDesigners()
+  loadOperatorDesignReviewFilters()
+})
 useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || effectSelectionVisible.value || manualScoreVisible.value || reviewLoading.value })
 </script>
 
