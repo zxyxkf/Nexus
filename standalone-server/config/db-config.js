@@ -11,6 +11,11 @@ const { DB_HOST, DB_PORT, DB_USER, DB_PASSWORD, DB_NAME } = require('./env');
 // ===== 配置 =====
 const DB_MODE_KEY = 'design_db_mode';
 
+function getNonNegativeInt(name, fallback, minimum = 0) {
+  const value = Number.parseInt(process.env[name], 10);
+  return Number.isFinite(value) && value >= minimum ? value : fallback;
+}
+
 function getDbConfig() {
   const userDataPath = process.env.DATA_DIR
     ? process.env.DATA_DIR
@@ -40,7 +45,9 @@ function getDbConfig() {
     database: DB_NAME,
     charset: 'utf8mb4',
     waitForConnections: true,
-    connectionLimit: 50,
+    connectionLimit: getNonNegativeInt('DB_CONNECTION_LIMIT', 50, 1),
+    queueLimit: getNonNegativeInt('DB_QUEUE_LIMIT', 100),
+    connectTimeout: getNonNegativeInt('DB_CONNECT_TIMEOUT_MS', 5000, 1000),
     enableKeepAlive: true,
     keepAliveInitialDelay: 10000,
     supportBigNumbers: true,

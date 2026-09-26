@@ -16,6 +16,10 @@ function errorHandler(err, req, res, _next) {
     return res.json({ code: err.status, msg: err.msg || err.message });
   }
 
+  if (err?.code === 'DB_POOL_QUEUE_LIMIT') {
+    return res.status(503).json({ code: 503, msg: '数据库连接繁忙，请稍后重试' });
+  }
+
   // 未预期的系统错误
   console.error('[Error]', err.stack || err.message || err);
   res.status(500).json({ code: 500, msg: '服务器内部错误' });

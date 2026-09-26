@@ -25,6 +25,7 @@ const {
   canViewAllPaymentData
 } = require('./payment-tracking/access');
 const csHandoffService = require('./cs-handoff.service');
+const basicHandoffService = require('./basic-handoff.service');
 const taskStyleSnapshotService = require('./task-style-snapshot.service');
 const {
   requiresManualScore,
@@ -39,6 +40,28 @@ function getTargetRole(taskGroup) {
   if (taskGroup === 'cs') return 'basic_designer';
   if (taskGroup === 'operator') return 'operator_assistant';
   return 'designer';
+}
+
+function resolveDesignerAssignment(taskGroup, designer) {
+  if (!designer) {
+    return {
+      status: 'wait',
+      designerId: null,
+      designerName: null,
+      basicHandoffStatus: '',
+      basicHandoffTime: null
+    };
+  }
+
+  const basicDesignerOffline = taskGroup === 'cs'
+    && (designer.cs_shift_status || 'online') !== 'online';
+  return {
+    status: 'accepted',
+    designerId: basicDesignerOffline ? null : designer.id,
+    designerName: basicDesignerOffline ? null : designer.real_name,
+    basicHandoffStatus: basicDesignerOffline ? 'pooled' : '',
+    basicHandoffTime: basicDesignerOffline ? new Date() : null
+  };
 }
 
 function socketEmit(room, event = 'task:update') {
@@ -148,34 +171,36 @@ async function insertCreatedTask(conn, body, user, taskGroup, title) {
   const targetRole = getTargetRole(taskGroup);
   const taskNo = await taskDao.generateTaskNo(conn, taskGroup);
 
-  let status = 'wait';
-  let designerIdVal = null;
-  let designerNameVal = null;
+  let assignment = resolveDesignerAssignment(taskGroup, null);
 
   if (designerId) {
     const designer = await taskDao.findDesigner(conn, designerId, targetRole);
-    if (designer) {
-      status = 'accepted';
-      designerIdVal = designer.id;
-      designerNameVal = designer.real_name;
-    }
+    assignment = resolveDesignerAssignment(taskGroup, designer);
   }
 
   const insertId = await taskDao.insertTask(conn, {
     taskNo, title, description: description || '', priority: priority || 2,
-    deadline: deadline || null, publisherId: user.id, status,
+    deadline: deadline || null, publisherId: user.id, status: assignment.status,
     publisherName: user.realName || user.username,
     scoreItemId: scoreItemId || null, score: score || 0,
     refPath: taskGroup === 'cs' ? '' : (refPath || ''),
     styleNumber: styleNumber || '', specifiedColor: specifiedColor || '',
     wangwangId: taskGroup === 'cs' ? (wangwangId || '') : '',
-    designerId: designerIdVal, designerName: designerNameVal,
+    designerId: assignment.designerId, designerName: assignment.designerName,
     taskGroup, shopName: shopName || '', quantity: quantity || 1,
     taskFilePath: taskFilePath || '',
-    acceptTime: designerIdVal ? new Date() : null
+    acceptTime: assignment.designerId ? new Date() : (assignment.status === 'accepted' ? new Date() : null),
+    basicHandoffStatus: assignment.basicHandoffStatus,
+    basicHandoffTime: assignment.basicHandoffTime
   });
 
-  return { insertId, assignedId: designerIdVal, taskGroup, title };
+  return {
+    insertId,
+    assignedId: assignment.designerId,
+    basicPooled: assignment.basicHandoffStatus === 'pooled',
+    taskGroup,
+    title
+  };
 }
 
 function isDuplicateKeyError(error) {
@@ -206,12 +231,14 @@ function announceCreatedTask(result, user) {
       publisherId: user.id,
       designerId: actualDesignerId
     }).catch(() => {});
-  } else if (taskGroup === 'cs') {
+  } else if (taskGroup === 'cs' && !result.basicPooled) {
     notifyPublicTaskCreated({ id: taskId, title, task_group: taskGroup, publisher_id: user.id }, user)
       .catch(error => logger.warn('公共任务新增通知发送失败', { taskId, error: error.message }));
   }
 
-  const msg = actualDesignerId
+  const msg = result.basicPooled
+    ? '任务已发布，指定的基础美工当前不在线，已进入基础美工暂存任务'
+    : actualDesignerId
     ? (taskGroup === 'cs' ? '任务已发布并直接分配给基础美工' : taskGroup === 'operator' ? '任务已发布并直接分配给运营助理' : '任务已发布并直接分配给美工')
     : '任务发布成功';
   return { msg, data: { id: taskId } };
@@ -356,7 +383,10 @@ async function assertTaskViewAccess(task, user) {
     || canOpenPaymentTask(task, user)
     || (task.task_group === 'cs'
       && task.handoff_status === 'pooled'
-      && hasPermission(user, 'cs.handoff.tasks'));
+      && hasPermission(user, 'cs.handoff.tasks'))
+    || (task.task_group === 'cs'
+      && task.basic_handoff_status === 'pooled'
+      && hasPermission(user, 'basic.handoff.tasks'));
   if (user.role !== 'admin' && !canViewAllTaskDetail) {
     if (user.role === 'operator' || user.role === 'cs_agent') {
       if (Number(task.publisher_id) !== Number(user.id)) {
@@ -387,7 +417,7 @@ async function assertTaskViewAccess(task, user) {
 async function getTaskFileForUser(fileId, user) {
   const [rows] = await execute(
     `SELECT f.*, t.publisher_id, t.designer_id, t.task_group, t.status,
-            t.handoff_status, COALESCE(u.store, '') AS publisher_store
+            t.handoff_status, t.basic_handoff_status, COALESCE(u.store, '') AS publisher_store
      FROM task_file f
      INNER JOIN task_info t ON t.id = f.task_id
      LEFT JOIN sys_user u ON u.id = t.publisher_id
@@ -424,6 +454,26 @@ async function deleteTask(taskId, user) {
   return { msg: '任务已删除' };
 }
 
+async function deleteCsDraftTask(taskId, user) {
+  if (!taskId) throw new AppError(400, '任务ID不能为空');
+  if (user?.role !== 'cs_agent') throw new AppError(403, '仅客服可以删除客服草稿');
+
+  await executeTransaction(async (conn) => {
+    const task = await taskDao.getTaskForUpdate(conn, taskId);
+    if (!task) throw new AppError(404, '任务不存在');
+    if (task.task_group !== 'cs') throw new AppError(403, '仅客服任务草稿可以删除');
+    if (Number(task.publisher_id) !== Number(user.id)) throw new AppError(403, '无权删除他人发布的草稿');
+    if (task.status !== 'draft') throw new AppError(400, '仅草稿状态可删除');
+
+    await taskDao.deleteTaskDataInTransaction(conn, taskId);
+  });
+
+  socketEmit(`user:${user.id}`);
+  socketEmit('group:cs');
+  logger.info('客服删除草稿任务', { userId: user.id, taskId });
+  return { msg: '草稿已删除' };
+}
+
 async function updateTask(body, user) {
   const { taskId, title, description, priority, deadline, scoreItemId, score, refPath, wangwangId, styleNumber, specifiedColor, designerId, shopName, quantity, taskFilePath } = body;
 
@@ -438,17 +488,11 @@ async function updateTask(body, user) {
     const taskGroup = task.task_group;
     const targetRole = getTargetRole(taskGroup);
 
-    let status = 'wait';
-    let designerIdVal = null;
-    let designerNameVal = null;
+    let assignment = resolveDesignerAssignment(taskGroup, null);
 
     if (designerId) {
       const d = await taskDao.findDesigner(conn, designerId, targetRole);
-      if (d) {
-        status = 'accepted';
-        designerIdVal = d.id;
-        designerNameVal = d.real_name;
-      }
+      assignment = resolveDesignerAssignment(taskGroup, d);
     }
 
     const fields = {
@@ -458,11 +502,15 @@ async function updateTask(body, user) {
       ref_path: taskGroup === 'cs' ? '' : (refPath || ''),
       wangwang_id: taskGroup === 'cs' ? (wangwangId || '') : '',
       style_number: styleNumber || '', specified_color: specifiedColor || '',
-      designer_id: designerIdVal, designer_name: designerNameVal, status,
+      designer_id: assignment.designerId, designer_name: assignment.designerName, status: assignment.status,
       shop_name: shopName || '', quantity: quantity || 1,
       task_file_path: taskFilePath || '',
-      accept_time: designerIdVal ? new Date() : null
+      accept_time: assignment.designerId ? new Date() : (assignment.status === 'accepted' ? new Date() : null)
     };
+    if (taskGroup === 'cs') {
+      fields.basic_handoff_status = assignment.basicHandoffStatus;
+      fields.basic_handoff_time = assignment.basicHandoffTime;
+    }
     await taskDao.updateTaskFields(conn, taskId, fields);
   });
 
@@ -489,18 +537,14 @@ async function reopenFinishedCsTask(body, user) {
 
     previousDesignerId = task.designer_id || null;
     const selectedDesignerId = designerId || task.designer_id;
-    let designerIdVal = null;
-    let designerNameVal = null;
-    let nextStatus = 'wait';
+    let assignment = resolveDesignerAssignment('cs', null);
 
     if (selectedDesignerId) {
       const d = await taskDao.findDesigner(conn, selectedDesignerId, 'basic_designer');
       if (!d) throw new AppError(400, '指定基础美工不存在或不可用');
-      designerIdVal = d.id;
-      designerNameVal = d.real_name;
-      nextStatus = 'accepted';
+      assignment = resolveDesignerAssignment('cs', d);
     }
-    nextDesignerId = designerIdVal;
+    nextDesignerId = assignment.designerId;
 
     let baseScore = Number(score) || 0;
     if (scoreItemId) {
@@ -520,10 +564,12 @@ async function reopenFinishedCsTask(body, user) {
       score: baseScore,
       wangwang_id: wangwangId || '',
       style_number: styleNumber || '',
-      designer_id: designerIdVal,
-      designer_name: designerNameVal,
-      status: nextStatus,
-      accept_time: designerIdVal ? new Date() : null,
+      designer_id: assignment.designerId,
+      designer_name: assignment.designerName,
+      status: assignment.status,
+      accept_time: assignment.designerId ? new Date() : (assignment.status === 'accepted' ? new Date() : null),
+      basic_handoff_status: assignment.basicHandoffStatus,
+      basic_handoff_time: assignment.basicHandoffTime,
       finish_time: null,
       submit_time: null,
       reject_reason: '',
@@ -635,6 +681,7 @@ async function getMyPublished(query, user) {
     dateStart: query.dateStart, dateEnd: query.dateEnd,
     dateField: query.dateField,
     sortField: query.sortField, sortOrder: query.sortOrder,
+    includeStatusCounts: group === 'cs' && ['1', 'true'].includes(String(query.includeStatusCounts).toLowerCase()),
     page, pageSize
   });
   result.list = result.list.map(task => attachAllowedActions(task, user));
@@ -655,6 +702,7 @@ async function getMyAccepted(query, user) {
     dateStart: query.dateStart, dateEnd: query.dateEnd,
     dateField: query.dateField,
     shopName: query.shopName,
+    includeStatusCounts: ['cs', 'design'].includes(query.taskGroup) && ['1', 'true'].includes(String(query.includeStatusCounts).toLowerCase()),
     page, pageSize
   });
   result.list = result.list.map(attachScoreMetadata);
@@ -759,6 +807,9 @@ function visibleSidebarBadges(user, ownStats = {}, reviewStats = {}) {
   if (hasPermission(user, 'cs.review.basic')) badges['/cs/review'] = Number(reviewStats.cs_review_count || 0);
   if (user?.role === 'cs_agent' && hasPermission(user, 'cs.tasks.basic')) badges['/cs/tasks'] = Number(reviewStats.cs_modification_count || 0);
   if (hasPermission(user, 'cs.handoff.tasks')) badges['/cs/handoff-tasks'] = Number(reviewStats.cs_handoff_count || 0);
+  if (user?.role === 'basic_designer' && hasPermission(user, 'basic.handoff.tasks')) {
+    badges['/basic/handoff-tasks'] = Number(reviewStats.basic_handoff_count || 0);
+  }
   if (hasPermission(user, 'score.review.basic')) badges['/basic/score-review'] = Number(reviewStats.score_review_count || 0);
 
   return badges;
@@ -805,6 +856,7 @@ function filterAdminDetailStatsByPermission(data, user) {
 
 async function acceptTask(taskId, user) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
+  await basicHandoffService.assertBasicActionAvailable(user, '接单任务');
 
   return withLock(`accept:${taskId}`, async () => {
     let pooledPublisherId = null;
@@ -838,6 +890,7 @@ async function acceptTask(taskId, user) {
 
 async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedScore, workPath, user, options = {}) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
+  await basicHandoffService.assertBasicActionAvailable(user, '上传或提交任务');
   files = files || [];
   appliedScore = parseFloat(appliedScore) || 0;
   workPath = (workPath || '').trim();
@@ -1084,6 +1137,7 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
 
 async function uploadOriginalFiles(taskId, files, user) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
+  await basicHandoffService.assertBasicActionAvailable(user, '上传原图');
   files = files || [];
   if (!files.length) throw new AppError(400, '请选择原图文件');
 
@@ -1143,6 +1197,7 @@ async function uploadOriginalFiles(taskId, files, user) {
 
 async function completeOriginalUpload(taskId, user) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
+  await basicHandoffService.assertBasicActionAvailable(user, '提交原图');
 
   return withLock(`original-upload:${taskId}`, async () => {
     let taskBrief = null;
@@ -1231,6 +1286,7 @@ async function reviewOriginalTask(taskId, action, user) {
 
 async function withdrawOriginalTask(taskId, user) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
+  await basicHandoffService.assertBasicActionAvailable(user, '撤回原图审核');
 
   let taskBrief = null;
   await executeTransaction(async (conn) => {
@@ -1263,6 +1319,7 @@ async function withdrawOriginalTask(taskId, user) {
 
 async function completeCsModification(taskId, recordId, reply, appliedScore, retainedFileIds, files, user) {
   if (!taskId || !recordId) throw new AppError(400, '任务或修改记录ID不能为空');
+  await basicHandoffService.assertBasicActionAvailable(user, '提交修改');
   const normalizedReply = String(reply || '').trim();
   const normalizedScore = Number(appliedScore);
   if (!Number.isFinite(normalizedScore) || normalizedScore < 1 || normalizedScore > 9999) {
@@ -1484,6 +1541,7 @@ async function requestCsModification(taskId, note, files, user) {
 
 async function transferTask(taskId, newDesignerId, reason, user) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
+  await basicHandoffService.assertBasicActionAvailable(user, '转移任务');
   if (!newDesignerId) throw new AppError(400, '请选择接收人');
   const transferReason = String(reason || '').trim();
   if (!transferReason) throw new AppError(400, '请填写转移原因');
@@ -1525,6 +1583,7 @@ async function transferTask(taskId, newDesignerId, reason, user) {
 
 async function finishTask(taskId, actualQuantity, user) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
+  await basicHandoffService.assertBasicActionAvailable(user, '提交任务');
   const qty = parseInt(actualQuantity) || 0;
 
   await executeTransaction(async (conn) => {
@@ -1868,6 +1927,7 @@ async function withdrawTask(taskId, user) {
 
 async function undoSubmit(taskId, user) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
+  await basicHandoffService.assertBasicActionAvailable(user, '撤回提交');
 
   let reopenedModification = false;
   await executeTransaction(async (conn) => {
@@ -2454,7 +2514,7 @@ async function getAdminDetailStats(user = null) {
 }
 
 module.exports = {
-  createTask, publishTask, snapshotMaterialImages, assertTaskViewAccess, getTaskFileForUser, getTaskDetail, deleteTask, updateTask, reopenFinishedCsTask, updateCsTaskNo, batchDelete, batchReassign,
+  createTask, publishTask, snapshotMaterialImages, assertTaskViewAccess, getTaskFileForUser, getTaskDetail, deleteTask, deleteCsDraftTask, updateTask, reopenFinishedCsTask, updateCsTaskNo, batchDelete, batchReassign,
   getMyPublished, getMyAccepted, getTaskHall, getAllTasks, getAllTasksForUser, searchTasks,
   acceptTask, uploadFiles, uploadOriginalFiles, completeOriginalUpload, reviewOriginalTask, withdrawOriginalTask, completeCsModification, transferTask, finishTask, reviewTask, requestCsModification, batchReview,
   withdrawTask, undoSubmit,

@@ -19,10 +19,20 @@
             <el-select v-model="designerFilter" clearable filterable placeholder="筛选基础美工" @change="handleFilterChange">
               <el-option v-for="designer in basicDesignerList" :key="designer.id" :label="designer.real_name || designer.username" :value="designer.id" />
             </el-select>
-            <el-select v-model="statusFilter" clearable placeholder="筛选状态" @change="handleFilterChange">
-              <el-option label="待审核" value="doing" />
-              <el-option label="待审核原图" value="pending_original_review" />
-            </el-select>
+            <div class="cs-status-filter" role="group" aria-label="审核状态筛选">
+              <button
+                v-for="option in csReviewStatusOptions"
+                :key="option.value"
+                type="button"
+                class="status-filter-button"
+                :class="{ active: statusFilter === option.value }"
+                :aria-pressed="statusFilter === option.value"
+                @click="selectReviewStatus(option.value)"
+              >
+                <span>{{ option.label }}</span>
+                <span class="status-count">{{ getCsReviewStatusCount(option.value) }}</span>
+              </button>
+            </div>
           </div>
         </div>
       </template>
@@ -460,6 +470,12 @@ const keywordFilter = ref('')
 const taskNoFilter = ref('')
 const designerFilter = ref('')
 const statusFilter = ref('')
+const statusCounts = ref({})
+const csReviewStatusOptions = [
+  { label: '全部', value: '' },
+  { label: '待审核', value: 'doing' },
+  { label: '待审核原图', value: 'pending_original_review' }
+]
 const basicDesignerList = ref([])
 const designReviewKeyword = ref('')
 const designReviewScoreItemId = ref('')
@@ -497,6 +513,18 @@ function handleFilterChange() {
   selectedRows.value = []
   tableRef.value?.clearSelection?.()
   loadData()
+}
+
+function selectReviewStatus(status) {
+  statusFilter.value = statusFilter.value === status ? '' : status
+  handleFilterChange()
+}
+
+function getCsReviewStatusCount(status) {
+  if (status) return Number(statusCounts.value[status] || 0)
+  return csReviewStatusOptions
+    .filter(option => option.value)
+    .reduce((totalCount, option) => totalCount + Number(statusCounts.value[option.value] || 0), 0)
 }
 
 async function loadBasicDesigners() {
@@ -702,6 +730,7 @@ async function loadData(options = {}) {
     }
     if (isCsAgent.value) {
       params.status = statusFilter.value || 'doing,pending_original_review'
+      params.includeStatusCounts = 1
       params.keyword = keywordFilter.value.trim() || undefined
       params.taskNo = taskNoFilter.value.trim() || undefined
       params.designerId = designerFilter.value || undefined
@@ -718,6 +747,7 @@ async function loadData(options = {}) {
     if (res.code === 0) {
       list.value = res.data.list || []
       total.value = res.data.total || 0
+      if (isCsAgent.value) statusCounts.value = res.data.statusCounts || {}
     }
   } catch (e) {
     console.error('[Review] 加载审核列表失败:', e)
@@ -906,6 +936,7 @@ watch(() => [taskGroup.value, isOperatorDesignReview.value], async () => {
   taskNoFilter.value = ''
   designerFilter.value = ''
   statusFilter.value = ''
+  statusCounts.value = {}
   basicDesignerList.value = []
   designReviewKeyword.value = ''
   designReviewScoreItemId.value = ''
@@ -929,6 +960,21 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || effectSe
 .review-card-header { gap: 16px; }
 .review-filters { display: flex; flex: 1 1 auto; justify-content: flex-end; gap: 8px; min-width: 0; }
 .review-filters :deep(.el-input), .review-filters :deep(.el-select) { flex: 1 1 160px; min-width: 0; max-width: 230px; }
+.cs-status-filter { display: flex; align-items: center; gap: 6px; flex: 0 0 auto; white-space: nowrap; }
+.status-filter-button {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  height: 32px; padding: 0 11px; border: 1px solid var(--dd-border-light, #dcdfe6);
+  border-radius: 17px; background: var(--el-bg-color, #fff); color: var(--dd-text-secondary, #606266);
+  font: inherit; font-size: 13px; cursor: pointer; transition: border-color .2s, color .2s, background-color .2s;
+}
+.status-count {
+  position: absolute; top: -8px; right: -8px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
+  padding: 0 4px; border: 2px solid #fff; border-radius: 999px;
+  background: #f56c6c; color: #fff; font-size: 11px; line-height: 14px;
+}
+.status-filter-button:hover { border-color: var(--dd-primary, #409eff); color: var(--dd-primary, #409eff); }
+.status-filter-button.active { border-color: var(--dd-primary, #409eff); background: var(--dd-primary, #409eff); color: #fff; }
 .manual-score-pass-wrap { display: inline-flex; }
 .review-file-grid { display: flex; flex-wrap: wrap; gap: 12px; }
 .review-file-item { text-align: center; }

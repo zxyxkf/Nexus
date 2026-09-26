@@ -43,6 +43,7 @@ export const MENU_REGISTRY = [
   { group: 'designer', path: '/designer/tasks/pending', icon: 'Select', label: '待审核任务', permission: 'designer.tasks.design' },
 
   { group: 'basic_designer', path: '/basic/hall', icon: 'ShoppingCart', label: '任务大厅', permission: 'basic.hall.cs' },
+  { group: 'basic_designer', path: '/basic/handoff-tasks', icon: 'FolderOpened', label: '暂存任务', permission: 'basic.handoff.tasks' },
   { group: 'basic_designer', path: '/basic/tasks', icon: 'List', label: '我的任务', permission: 'basic.tasks.cs' },
   { group: 'basic_designer', path: '/basic/tasks/todo', icon: 'List', label: '待做任务', permission: 'basic.tasks.cs' },
   { group: 'basic_designer', path: '/basic/tasks/pending', icon: 'Select', label: '待审核任务', permission: 'basic.tasks.cs' },

@@ -122,7 +122,8 @@ router.get('/batch-download', requireAuth, async (req, res, next) => {
     const placeholders = ids.map(() => '?').join(',');
     const [tasks] = await pool.execute(
       `SELECT t.id, t.task_no, t.title, t.publisher_id, t.designer_id, t.task_group,
-              t.status, t.handoff_status, COALESCE(u.store, '') AS publisher_store
+              t.status, t.handoff_status, t.basic_handoff_status,
+              COALESCE(u.store, '') AS publisher_store
        FROM task_info t
        LEFT JOIN sys_user u ON u.id = t.publisher_id
        WHERE t.id IN (${placeholders})`,

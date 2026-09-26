@@ -3,46 +3,55 @@
     <el-card shadow="never" class="page-card">
       <template #header>
         <div class="page-header">
-          <div>
-            <h1>暂存任务</h1>
-            <p>等待在线客服继承的未完成任务</p>
+          <h1>暂存任务</h1>
+          <div class="page-header-actions">
+            <div class="status-filter" role="group" aria-label="任务状态筛选">
+              <button
+                v-for="option in statusOptions"
+                :key="option.value || 'all'"
+                type="button"
+                class="status-filter-button"
+                :class="{ active: filters.status === option.value }"
+                :aria-pressed="filters.status === option.value"
+                @click="selectStatus(option.value)"
+              >
+                <span>{{ option.label }}</span>
+                <span class="status-count">{{ getStatusCount(option.value) }}</span>
+              </button>
+            </div>
+            <el-input
+              v-model="filters.keyword"
+              class="handoff-search-input"
+              clearable
+              placeholder="搜索任务编号、旺旺ID、款号或工作项目"
+              :prefix-icon="Search"
+              @keyup.enter="handleFilterChange"
+              @clear="handleFilterChange"
+            />
+            <el-select
+              v-if="!isBasicHandoff"
+              v-model="filters.designerId"
+              class="handoff-designer-filter"
+              clearable
+              filterable
+              placeholder="基础美工筛选"
+              @change="handleFilterChange"
+            >
+              <el-option label="全部" value="" />
+              <el-option
+                v-for="designer in basicDesignerList"
+                :key="designer.id"
+                :label="designer.name || designer.real_name || designer.username"
+                :value="String(designer.id)"
+              />
+            </el-select>
+            <el-button :icon="Refresh" :loading="loading" @click="refresh()">刷新</el-button>
+            <el-tag :type="isOnline ? 'success' : 'info'" effect="plain">
+              {{ isOnline ? '当前已上线' : '当前已下线' }}
+            </el-tag>
           </div>
-          <el-tag :type="isOnline ? 'success' : 'info'" effect="plain">
-            {{ isOnline ? '当前已上线' : '当前已下线' }}
-          </el-tag>
         </div>
       </template>
-
-      <div class="toolbar">
-        <el-input
-          v-model="filters.keyword"
-          clearable
-          placeholder="搜索任务编号、旺旺ID、款号或工作项目"
-          :prefix-icon="Search"
-          @keyup.enter="handleFilterChange"
-          @clear="handleFilterChange"
-        />
-        <el-select v-model="filters.status" clearable placeholder="状态筛选" @change="handleFilterChange">
-          <el-option label="全部" value="" />
-          <el-option v-for="option in statusOptions" :key="option.value" :label="option.label" :value="option.value" />
-        </el-select>
-        <el-select
-          v-model="filters.designerId"
-          clearable
-          filterable
-          placeholder="基础美工筛选"
-          @change="handleFilterChange"
-        >
-          <el-option label="全部" value="" />
-          <el-option
-            v-for="designer in basicDesignerList"
-            :key="designer.id"
-            :label="designer.name || designer.real_name || designer.username"
-            :value="String(designer.id)"
-          />
-        </el-select>
-        <el-button :icon="Refresh" :loading="loading" @click="refresh()">刷新</el-button>
-      </div>
 
       <el-table :data="tasks" v-loading="loading" stripe empty-text="暂无暂存任务" highlight-current-row>
         <el-table-column prop="task_no" label="任务编号" min-width="150" show-overflow-tooltip />
@@ -122,7 +131,7 @@
           </template>
         </el-table-column>
         <el-table-column prop="handoff_time" label="暂存时间" width="170">
-          <template #default="{ row }">{{ formatDate(row.handoff_time) }}</template>
+          <template #default="{ row }">{{ formatDate(isBasicHandoff ? row.basic_handoff_time : row.handoff_time) }}</template>
         </el-table-column>
         <el-table-column label="操作" width="170" align="center" fixed="right">
           <template #default="{ row }">
@@ -176,9 +185,10 @@
 
 <script setup>
 import { computed, onMounted, reactive, ref } from 'vue'
+import { useRoute } from 'vue-router'
 import { ElMessage } from 'element-plus'
 import { Document, Refresh, Search, UserFilled, View } from '@element-plus/icons-vue'
-import { claimCsHandoffTaskApi, getBasicDesignerListApi, getCsHandoffTasksApi, preloadFilesForDrag, setupFilesDrag } from '@/api'
+import { claimBasicHandoffTaskApi, claimCsHandoffTaskApi, getBasicDesignerListApi, getBasicHandoffTasksApi, getCsHandoffTasksApi, preloadFilesForDrag, setupFilesDrag } from '@/api'
 import { useUserStore } from '@/store'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate } from '@/utils/format'
 import { useRealtime } from '@/composables/useRealtime'
@@ -187,23 +197,27 @@ import { useFileHelpers } from '@/composables/useFileHelpers'
 import Pagination from '@/components/Pagination.vue'
 import TaskDetail from '@/components/TaskDetail.vue'
 
+const route = useRoute()
 const userStore = useUserStore()
+const isBasicHandoff = computed(() => route.meta.handoffRole === 'basic_designer')
 const tasks = ref([])
 const total = ref(0)
+const statusCounts = ref({})
 const claimingIds = ref(new Set())
 const filters = reactive({ keyword: '', status: '', designerId: '', page: 1, pageSize: 15 })
 const basicDesignerList = ref([])
 const statusOptions = [
+  { label: '全部', value: '' },
   { label: '已接单', value: 'accepted' },
+  { label: '待上传原图', value: 'pending_original' },
   { label: '待审核', value: 'doing' },
-  { label: '修改中', value: 'rejected' },
-  { label: '草稿', value: 'draft' }
+  { label: '修改中', value: 'rejected' }
 ]
 
 const isOnline = computed(() => (userStore.userInfo?.csShiftStatus || 'online') === 'online')
 const canClaim = computed(() => (
-  userStore.isCsAgent
-  && userStore.hasPermission('cs.handoff.claim')
+  (isBasicHandoff.value ? userStore.isBasicDesigner : userStore.isCsAgent)
+  && userStore.hasPermission(isBasicHandoff.value ? 'basic.handoff.claim' : 'cs.handoff.claim')
   && isOnline.value
 ))
 
@@ -217,13 +231,17 @@ const {
 })
 
 async function loadTasks() {
-  const response = await getCsHandoffTasksApi({
-    ...filters,
-    designerId: filters.designerId || undefined
-  })
+  const response = isBasicHandoff.value
+    ? await getBasicHandoffTasksApi({ ...filters, includeStatusCounts: 1 })
+    : await getCsHandoffTasksApi({
+      ...filters,
+      includeStatusCounts: 1,
+      designerId: filters.designerId || undefined
+    })
   if (response.code !== 0) return
   tasks.value = response.data?.list || []
   total.value = Number(response.data?.total || 0)
+  statusCounts.value = response.data?.statusCounts || {}
 }
 
 const { loading, refresh } = useRealtime(loadTasks, 3000, {
@@ -233,6 +251,18 @@ const { loading, refresh } = useRealtime(loadTasks, 3000, {
 function handleFilterChange() {
   filters.page = 1
   refresh()
+}
+
+function selectStatus(status) {
+  filters.status = status
+  handleFilterChange()
+}
+
+function getStatusCount(status) {
+  if (status) return Number(statusCounts.value[status] || 0)
+  return statusOptions
+    .filter(option => option.value)
+    .reduce((totalCount, option) => totalCount + Number(statusCounts.value[option.value] || 0), 0)
 }
 
 function handlePageSizeChange() {
@@ -267,13 +297,17 @@ function statusType(status) {
   return STATUS_TAG_TYPE[status] || 'info'
 }
 
-onMounted(loadBasicDesigners)
+onMounted(() => {
+  if (!isBasicHandoff.value) loadBasicDesigners()
+})
 
 async function claimTask(task) {
   if (!task?.id || !canClaim.value) return
   claimingIds.value = new Set([...claimingIds.value, task.id])
   try {
-    const response = await claimCsHandoffTaskApi(task.id)
+    const response = isBasicHandoff.value
+      ? await claimBasicHandoffTaskApi(task.id)
+      : await claimCsHandoffTaskApi(task.id)
     if (response.code !== 0) return
     ElMessage.success('任务已继承到我的任务')
     if (Number(currentTask.value?.id) === Number(task.id)) closeDetail()
@@ -303,12 +337,29 @@ async function claimTask(task) {
 }
 
 .page-header h1 {
+  flex: 0 0 auto;
   margin: 0;
   color: var(--dd-text-primary, #303133);
   font-size: 18px;
   line-height: 1.4;
   letter-spacing: 0;
 }
+
+.page-header-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 10px;
+  flex: 1;
+  min-width: 0;
+}
+
+.handoff-search-input {
+  flex: 0 0 150px;
+  width: 150px;
+}
+
+.handoff-designer-filter { flex: 0 0 150px; }
 
 .file-badge {
   display: inline-flex;
@@ -324,18 +375,51 @@ async function claimTask(task) {
   font-size: 10px;
 }
 
-.page-header p {
-  margin: 4px 0 0;
-  color: var(--dd-text-secondary, #606266);
-  font-size: 13px;
+.status-filter {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  white-space: nowrap;
 }
 
-.toolbar {
-  display: grid;
-  grid-template-columns: minmax(260px, 1fr) 150px 150px auto;
-  gap: 10px;
-  margin-bottom: 14px;
+.status-filter-button {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  height: 32px;
+  padding: 0 11px;
+  border: 1px solid var(--dd-border-light, #dcdfe6);
+  border-radius: 17px;
+  background: var(--el-bg-color, #fff);
+  color: var(--dd-text-secondary, #606266);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+  transition: border-color .2s, color .2s, background-color .2s;
 }
+
+.status-count {
+  position: absolute;
+  top: -8px;
+  right: -8px;
+  z-index: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 18px;
+  height: 18px;
+  padding: 0 4px;
+  border: 2px solid #fff;
+  border-radius: 999px;
+  background: #f56c6c;
+  color: #fff;
+  font-size: 11px;
+  line-height: 14px;
+}
+
+.status-filter-button:hover { border-color: var(--dd-primary, #409eff); color: var(--dd-primary, #409eff); }
+.status-filter-button.active { border-color: var(--dd-primary, #409eff); background: var(--dd-primary, #409eff); color: #fff; }
 
 .pagination-wrap {
   display: flex;
@@ -360,8 +444,8 @@ async function claimTask(task) {
 }
 
 @media (max-width: 760px) {
-  .toolbar {
-    grid-template-columns: 1fr;
-  }
+  .page-header { align-items: flex-start; flex-wrap: wrap; }
+  .page-header-actions { width: 100%; flex-wrap: wrap; justify-content: flex-start; }
+  .handoff-search-input { flex-basis: 100%; }
 }
 </style>

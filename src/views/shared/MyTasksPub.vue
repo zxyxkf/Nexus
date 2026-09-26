@@ -2,7 +2,7 @@
   <div class="page-container">
     <el-card shadow="never" class="page-card">
       <template #header>
-        <div class="card-header">
+        <div class="card-header" :class="{ 'cs-my-tasks-header': isCsAgent }">
           <span class="card-title">我的任务</span>
           <div class="header-right">
             <el-input
@@ -59,15 +59,27 @@
               <el-option label="全部" value="" />
               <el-option v-for="p in publisherList" :key="p.id" :label="p.real_name || p.username" :value="String(p.id)" />
             </el-select>
-            <el-select v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="handleFilterChange">
+            <div v-if="isCsAgent" class="cs-status-filter" role="group" aria-label="任务状态筛选">
+              <button
+                v-for="option in csStatusOptions"
+                :key="option.value || 'all'"
+                type="button"
+                class="status-filter-button"
+                :class="{ active: statusFilter === option.value }"
+                :aria-pressed="statusFilter === option.value"
+                @click="selectStatus(option.value)"
+              >
+                <span>{{ option.label }}</span>
+                <span class="status-count">{{ getCsStatusCount(option.value) }}</span>
+              </button>
+            </div>
+            <el-select v-else v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="handleFilterChange">
               <el-option label="全部" value="" />
               <el-option label="待接单" value="wait" />
               <el-option label="已接单" value="accepted" />
-              <el-option :label="isCsAgent ? '审核中' : '作图中'" value="doing" />
-              <el-option v-if="isCsAgent" label="待上传原图" value="pending_original" />
-              <el-option v-if="isCsAgent" label="待审核原图" value="pending_original_review" />
+              <el-option label="作图中" value="doing" />
               <el-option label="已完成" value="finished" />
-              <el-option :label="isCsAgent ? '修改中' : '已驳回'" value="rejected" />
+              <el-option label="已驳回" value="rejected" />
               <el-option label="草稿" value="draft" />
             </el-select>
             <el-date-picker
@@ -311,7 +323,7 @@
             <template #default="{ row }">{{ formatDate(row.create_time) }}</template>
           </el-table-column>
         </template>
-        <el-table-column label="操作" :width="canOpenPayment ? 330 : 260" align="center" fixed="right">
+        <el-table-column label="操作" :width="canOpenPayment ? 330 : isCsAgent ? 300 : 260" align="center" fixed="right">
           <template #default="{ row }">
             <el-button type="primary" link size="small" @click="viewDetail(row)">详情</el-button>
             <el-button
@@ -325,6 +337,7 @@
             >开启打款</el-button>
             <el-button v-if="(row.status === 'wait' || row.status === 'accepted')" type="warning" link size="small" @click="handleWithdraw(row)">撤回</el-button>
             <el-button v-if="row.status === 'draft'" type="success" link size="small" @click="openEditDialog(row)">编辑</el-button>
+            <el-button v-if="isCsAgent && row.status === 'draft'" type="danger" link size="small" @click="handleDeleteDraft(row)">删除</el-button>
             <el-button v-if="isCsAgent && row.status === 'finished'" type="danger" link size="small" @click="openReopenDialog(row)">重开</el-button>
             <el-button v-if="canUpdateCsTaskNo && row.status === 'finished'" type="primary" link size="small" @click="openTaskNoDialog(row)">改编号</el-button>
             <el-button v-if="row.designer_id && row.status === 'accepted'" type="warning" link size="small" @click="urgeTask(row)">催促</el-button>
@@ -363,6 +376,7 @@
           >开启打款</el-button>
           <el-button v-if="(currentTask.status === 'wait' || currentTask.status === 'accepted')" type="warning" size="small" @click="handleWithdraw(currentTask)">撤回</el-button>
           <el-button v-if="currentTask.status === 'draft'" type="success" size="small" @click="openEditDialog(currentTask)">编辑</el-button>
+          <el-button v-if="isCsAgent && currentTask.status === 'draft'" type="danger" size="small" @click="handleDeleteDraft(currentTask)">删除</el-button>
           <el-button v-if="isCsAgent && currentTask.status === 'finished'" type="danger" size="small" @click="openReopenDialog(currentTask)">重开</el-button>
           <el-button v-if="canUpdateCsTaskNo && currentTask.status === 'finished'" type="primary" size="small" @click="openTaskNoDialog(currentTask)">改编号</el-button>
           <el-button v-if="currentTask.designer_id && currentTask.status === 'accepted'" type="warning" size="small" @click="urgeTask(currentTask)">催促</el-button>
@@ -444,7 +458,7 @@ import { ref, computed, watch, onMounted, onUnmounted } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { Document, Search, Plus } from '@element-plus/icons-vue'
-import { getMyPublishedApi, urgeTaskApi, getFileUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, reopenFinishedCsTaskApi, updateCsTaskNoApi, uploadFilesApi, setupFileDrag, setupFilesDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
+import { getMyPublishedApi, urgeTaskApi, getFileUrl, saveFileToDisk, withdrawTaskApi, updateTaskApi, deleteCsDraftTaskApi, reopenFinishedCsTaskApi, updateCsTaskNoApi, uploadFilesApi, setupFileDrag, setupFilesDrag, preloadFilesForDrag, openPaymentFromTaskApi, openPaymentBatchApi } from '@/api'
 import { getScoreItemsApi } from '@/api'
 import { getBasicDesignerListApi, getDesignerListApi, getOperatorAssistantListApi, getPublisherListApi } from '@/api'
 import { STATUS_MAP, STATUS_TAG_TYPE, formatDate, formatFileSize, formatScoreReviewApprovedScore, formatScoreReviewStatus, formatScoreValue, formatTaskScore, scoreReviewTagType } from '@/utils/format'
@@ -496,6 +510,17 @@ function handleSortChange({ prop, order }) {
   loadData()
 }
 const statusFilter = ref('')
+const statusCounts = ref({})
+const csStatusOptions = [
+  { label: '全部', value: '' },
+  { label: '待接单', value: 'wait' },
+  { label: '已接单', value: 'accepted' },
+  { label: '审核中', value: 'doing' },
+  { label: '待上传原图', value: 'pending_original' },
+  { label: '待审核原图', value: 'pending_original_review' },
+  { label: '已完成', value: 'finished' },
+  { label: '修改中', value: 'rejected' }
+]
 const styleNumberFilter = ref('')
 const keywordFilter = ref('')
 const taskNoFilter = ref('')
@@ -603,6 +628,18 @@ function handleFilterChange() {
   loadData()
 }
 
+function selectStatus(status) {
+  statusFilter.value = status
+  handleFilterChange()
+}
+
+function getCsStatusCount(status) {
+  if (status) return Number(statusCounts.value[status] || 0)
+  return csStatusOptions
+    .filter(option => option.value)
+    .reduce((totalCount, option) => totalCount + Number(statusCounts.value[option.value] || 0), 0)
+}
+
 async function handleOpenPayment(row) {
   if (!row.allowedActions?.openPayment || !getWorkImages(row.files).length || isPaymentOpened(row.payment_tracking_opened)) return
   paymentOpeningIds.value = new Set([...paymentOpeningIds.value, row.id])
@@ -680,11 +717,13 @@ async function loadData(options = {}) {
       dateEnd: dateRange.value?.[1] || undefined,
       dateField: dateField.value || undefined,
       sortField: sortKey.value || undefined,
-      sortOrder: sortOrder.value === 'ascending' ? 'asc' : sortOrder.value === 'descending' ? 'desc' : undefined
+      sortOrder: sortOrder.value === 'ascending' ? 'asc' : sortOrder.value === 'descending' ? 'desc' : undefined,
+      includeStatusCounts: isCsAgent.value ? 1 : undefined
     })
     if (res.code === 0) {
       list.value = res.data.list
       total.value = Number(res.data.total) || 0
+      if (isCsAgent.value) statusCounts.value = res.data.statusCounts || {}
       const openTaskId = route.query.openTask
       if (openTaskId) {
         const task = list.value.find(t => t.id == openTaskId)
@@ -775,6 +814,25 @@ async function handleWithdraw(row) {
       loadData()
     } else {
       ElMessage.error(res.msg)
+    }
+  } catch {}
+}
+
+async function handleDeleteDraft(row) {
+  if (!isCsAgent.value || row?.status !== 'draft') return
+  try {
+    await ElMessageBox.confirm(
+      `确认删除草稿任务「${row.title}」？删除后不可恢复。`,
+      '删除草稿',
+      { type: 'warning', confirmButtonText: '确认删除', cancelButtonText: '取消' }
+    )
+    const res = await deleteCsDraftTaskApi({ taskId: row.id })
+    if (res.code === 0) {
+      ElMessage.success(res.msg || '草稿已删除')
+      if (Number(currentTask.value?.id) === Number(row.id)) detailVisible.value = false
+      await loadData()
+    } else {
+      ElMessage.error(res.msg || '删除失败')
     }
   } catch {}
 }
@@ -1017,5 +1075,21 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || editVisi
 .task-progress-fill { height: 100%; background: linear-gradient(90deg, var(--dd-primary), var(--dd-success)); border-radius: 2px; transition: width 0.5s ease; }
 .multiline-value { white-space: pre-wrap; word-break: break-word; }
 .file-download-btn { position: absolute; right: 4px; bottom: 4px; background: rgba(255, 255, 255, 0.9); border-radius: 4px; }
+.cs-my-tasks-header .header-right { flex: 1; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+.cs-status-filter { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; white-space: nowrap; }
+.status-filter-button {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  height: 32px; padding: 0 11px; border: 1px solid var(--dd-border-light, #dcdfe6);
+  border-radius: 17px; background: var(--el-bg-color, #fff); color: var(--dd-text-secondary, #606266);
+  font: inherit; font-size: 13px; cursor: pointer; transition: border-color .2s, color .2s, background-color .2s;
+}
+.status-count {
+  position: absolute; top: -8px; right: -8px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
+  padding: 0 4px; border: 2px solid #fff; border-radius: 999px;
+  background: #f56c6c; color: #fff; font-size: 11px; line-height: 14px;
+}
+.status-filter-button:hover { border-color: var(--dd-primary, #409eff); color: var(--dd-primary, #409eff); }
+.status-filter-button.active { border-color: var(--dd-primary, #409eff); background: var(--dd-primary, #409eff); color: #fff; }
 :global(.payment-batch-result .el-message-box__message) { white-space: pre-line; }
 </style>

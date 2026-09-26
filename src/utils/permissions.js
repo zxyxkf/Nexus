@@ -27,9 +27,9 @@ const ROLE_PERMISSION_FALLBACK = {
     'task.upload.work', 'task.view.own', 'task.download.file', 'notification.center'
   ],
   basic_designer: [
-    'basic.hall.cs', 'basic.tasks.cs', 'stats.personal', 'dashboard.cs',
+    'basic.hall.cs', 'basic.handoff.tasks', 'basic.tasks.cs', 'stats.personal', 'dashboard.cs',
     'task.upload.work', 'task.view.own', 'task.download.file', 'notification.center',
-    'score.review.basic', 'score.records.basic'
+    'score.review.basic', 'score.records.basic', 'basic.handoff.claim', 'basic.shift.toggle'
   ],
   operator_assistant: [
     'assistant.hall.operator', 'assistant.tasks.operator', 'stats.personal', 'dashboard.operator',
@@ -61,6 +61,8 @@ const PERMISSION_IMPLICATIONS = {
   'designer.hall.design': ['task.view.own', 'task.download.file'],
   'designer.tasks.design': ['task.upload.work', 'task.view.own', 'task.download.file'],
   'basic.hall.cs': ['task.view.own', 'task.download.file'],
+  'basic.handoff.tasks': ['task.view.own', 'task.download.file'],
+  'basic.handoff.claim': ['basic.handoff.tasks', 'task.view.own', 'task.download.file'],
   'basic.tasks.cs': ['task.upload.work', 'task.view.own', 'task.download.file'],
   'assistant.hall.operator': ['task.view.own', 'task.download.file'],
   'assistant.tasks.operator': ['task.upload.work', 'task.view.own', 'task.download.file'],

@@ -1,6 +1,7 @@
 const express = require('express');
 const { requireAnyPermission } = require('../../middleware/auth');
 const csHandoffService = require('../../services/cs-handoff.service');
+const basicHandoffService = require('../../services/basic-handoff.service');
 
 const router = express.Router();
 
@@ -28,6 +29,34 @@ router.get('/cs-handoff', requireAnyPermission(['cs.handoff.tasks'], 'cs_agent',
 router.post('/cs-handoff/:taskId/claim', requireAnyPermission(['cs.handoff.claim'], 'cs_agent'), async (req, res, next) => {
   try {
     const data = await csHandoffService.claimPooledTask(req.params.taskId, req.user);
+    res.json({ code: 0, msg: '任务继承成功', data });
+  } catch (err) { next(err); }
+});
+
+router.get('/basic-shift/status', requireAnyPermission(['basic.shift.toggle'], 'basic_designer'), async (req, res, next) => {
+  try {
+    const status = await basicHandoffService.getShiftStatus(req.user);
+    res.json({ code: 0, msg: '查询成功', data: { status } });
+  } catch (err) { next(err); }
+});
+
+router.post('/basic-shift/status', requireAnyPermission(['basic.shift.toggle'], 'basic_designer'), async (req, res, next) => {
+  try {
+    const data = await basicHandoffService.setShiftStatus(req.body.status, req.user);
+    res.json({ code: 0, msg: data.status === 'online' ? '已上线' : '已下线', data });
+  } catch (err) { next(err); }
+});
+
+router.get('/basic-handoff', requireAnyPermission(['basic.handoff.tasks'], 'basic_designer', 'admin', 'sub_admin'), async (req, res, next) => {
+  try {
+    const data = await basicHandoffService.listPooledTasks(req.query, req.user);
+    res.json({ code: 0, msg: '查询成功', data });
+  } catch (err) { next(err); }
+});
+
+router.post('/basic-handoff/:taskId/claim', requireAnyPermission(['basic.handoff.claim'], 'basic_designer'), async (req, res, next) => {
+  try {
+    const data = await basicHandoffService.claimPooledTask(req.params.taskId, req.user);
     res.json({ code: 0, msg: '任务继承成功', data });
   } catch (err) { next(err); }
 });

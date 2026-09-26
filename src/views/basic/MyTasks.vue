@@ -41,11 +41,20 @@
               style="width:150px;"
               @change="handleDateFilterChange"
             />
-            <el-select v-if="isBasicDesigner && isPendingRoute" v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
-              <el-option label="全部" value="" />
-              <el-option label="审核中" value="doing" />
-              <el-option label="待审核原图" value="pending_original_review" />
-            </el-select>
+            <div v-if="isBasicDesigner" class="basic-status-filter" role="group" aria-label="任务状态筛选">
+              <button
+                v-for="option in basicStatusOptions"
+                :key="option.value || 'all'"
+                type="button"
+                class="status-filter-button"
+                :class="{ active: statusFilter === option.value }"
+                :aria-pressed="statusFilter === option.value"
+                @click="selectBasicStatus(option.value)"
+              >
+                <span>{{ option.label }}</span>
+                <span class="status-count">{{ getBasicStatusCount(option.value) }}</span>
+              </button>
+            </div>
             <el-select v-else-if="!fixedStatus || isTodoRoute" v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
               <el-option label="全部" value="" />
               <el-option label="已接单" value="accepted" />
@@ -432,6 +441,7 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(15)
 const statusFilter = ref('')
+const statusCounts = ref({})
 const keyword = ref('')
 const publisherFilter = ref('')
 const dateFilter = ref('')
@@ -445,6 +455,32 @@ const fixedStatus = computed(() => route.meta.fixedStatus || '')
 const isTodoRoute = computed(() => fixedStatus.value === 'accepted' && route.path.endsWith('/tasks/todo'))
 const isPendingRoute = computed(() => fixedStatus.value === 'doing' && route.path.endsWith('/tasks/pending'))
 const pageTitle = computed(() => route.meta.title || '我的任务')
+const basicStatusOptions = computed(() => {
+  if (isPendingRoute.value) {
+    return [
+      { label: '全部', value: '' },
+      { label: '审核中', value: 'doing' },
+      { label: '待审核原图', value: 'pending_original_review' }
+    ]
+  }
+  if (isTodoRoute.value) {
+    return [
+      { label: '全部', value: '' },
+      { label: '已接单', value: 'accepted' },
+      { label: '待上传原图', value: 'pending_original' },
+      { label: '修改中', value: 'rejected' }
+    ]
+  }
+  return [
+    { label: '全部', value: '' },
+    { label: '已接单', value: 'accepted' },
+    { label: '审核中', value: 'doing' },
+    { label: '待上传原图', value: 'pending_original' },
+    { label: '待审核原图', value: 'pending_original_review' },
+    { label: '已完成', value: 'finished' },
+    { label: '修改中', value: 'rejected' }
+  ]
+})
 
 function sanitizeStatusFilter() {
   const allowed = !fixedStatus.value
@@ -528,6 +564,18 @@ function handleSortChange({ prop, order }) {
   sortOrder.value = order || ''
 }
 
+function selectBasicStatus(status) {
+  statusFilter.value = status
+  loadData()
+}
+
+function getBasicStatusCount(status) {
+  if (status) return Number(statusCounts.value[status] || 0)
+  return basicStatusOptions.value
+    .filter(option => option.value)
+    .reduce((totalCount, option) => totalCount + Number(statusCounts.value[option.value] || 0), 0)
+}
+
 function statusLabel(s) {
   if (s === 'doing') return '审核中'
   if (s === 'rejected') return '修改中'
@@ -602,11 +650,13 @@ async function loadData(options = {}) {
       publisherId: publisherFilter.value || undefined,
       dateStart: dateFilter.value || undefined,
       dateEnd: dateFilter.value || undefined,
-      dateField: dateField.value || undefined
+      dateField: dateField.value || undefined,
+      includeStatusCounts: isBasicDesigner.value ? 1 : undefined
     })
     if (res.code === 0) {
       list.value = res.data.list
       total.value = Number(res.data.total) || 0
+      if (isBasicDesigner.value) statusCounts.value = res.data.statusCounts || {}
       const openTaskId = route.query.openTask
       if (openTaskId) {
         const task = list.value.find(t => t.id == openTaskId)
@@ -911,6 +961,21 @@ useRealtime(loadData, 3000, { shouldPause: () => detailVisible.value || uploadVi
 
 <style scoped>
 .page-container { max-width: none; padding: 0 8px; }
+.basic-status-filter { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; white-space: nowrap; }
+.status-filter-button {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  height: 32px; padding: 0 11px; border: 1px solid var(--dd-border-light, #dcdfe6);
+  border-radius: 17px; background: var(--el-bg-color, #fff); color: var(--dd-text-secondary, #606266);
+  font: inherit; font-size: 13px; cursor: pointer; transition: border-color .2s, color .2s, background-color .2s;
+}
+.status-count {
+  position: absolute; top: -8px; right: -8px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
+  padding: 0 4px; border: 2px solid #fff; border-radius: 999px;
+  background: #f56c6c; color: #fff; font-size: 11px; line-height: 14px;
+}
+.status-filter-button:hover { border-color: var(--dd-primary, #409eff); color: var(--dd-primary, #409eff); }
+.status-filter-button.active { border-color: var(--dd-primary, #409eff); background: var(--dd-primary, #409eff); color: #fff; }
 .file-badge {
   display: flex; flex-direction: column; align-items: center; gap: 2px;
   cursor: pointer; color: var(--dd-text-secondary); padding: 4px 0;

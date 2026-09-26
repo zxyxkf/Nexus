@@ -128,7 +128,7 @@ router.post('/login', loginLimiter, async (req, res, next) => {
           store: user.store || '',
           isTeamLead: user.is_team_lead || 0,
           isStoreManager: user.is_store_manager || 0,
-          csShiftStatus: user.role === 'cs_agent' ? (user.cs_shift_status || 'online') : undefined,
+          csShiftStatus: ['cs_agent', 'basic_designer'].includes(user.role) ? (user.cs_shift_status || 'online') : undefined,
           permissions
         }
       }
@@ -208,7 +208,7 @@ router.post('/refresh', async (req, res, next) => {
           store: record.store || '',
           isTeamLead: record.is_team_lead || 0,
           isStoreManager: record.is_store_manager || 0,
-          csShiftStatus: record.role === 'cs_agent' ? (record.cs_shift_status || 'online') : undefined,
+          csShiftStatus: ['cs_agent', 'basic_designer'].includes(record.role) ? (record.cs_shift_status || 'online') : undefined,
           permissions
         }
       }

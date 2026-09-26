@@ -134,6 +134,12 @@ const routes = [
         meta: { title: '任务大厅', roles: ['basic_designer', 'admin'], permission: 'basic.hall.cs', role: 'basic_designer' }
       },
       {
+        path: 'basic/handoff-tasks',
+        name: 'BasicHandoffTasks',
+        component: () => import('@/views/cs/HandoffTasks.vue'),
+        meta: { title: '暂存任务', roles: ['basic_designer', 'admin'], permission: 'basic.handoff.tasks', handoffRole: 'basic_designer', taskGroup: 'cs' }
+      },
+      {
         path: 'basic/tasks',
         name: 'BasicTasks',
         component: () => import('@/views/basic/MyTasks.vue'),

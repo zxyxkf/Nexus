@@ -7,6 +7,7 @@ const router = express.Router();
 
 const { requireAuth, requirePermission, optionalAuth } = require('../middleware/auth');
 const AppError = require('../utils/AppError');
+const logger = require('../utils/business-logger');
 const service = require('../services/material-library.service');
 const { fixFilenameEncoding } = require('../utils/upload');
 
@@ -200,6 +201,35 @@ router.get('/search', async (req, res, next) => {
       limit: req.query.limit
     }));
   } catch (err) { next(err); }
+});
+
+// Record unexpected material-library failures before the global handler returns a generic 500.
+router.use((err, req, _res, next) => {
+  const isExpectedError = err instanceof AppError
+    || (err && typeof err === 'object' && err.status);
+
+  if (!isExpectedError) {
+    const files = Array.isArray(req.files) ? req.files : [];
+    const totalFileBytes = files.reduce((total, file) => total + (Number(file.size) || 0), 0);
+
+    logger.error('素材库接口异常', {
+      method: req.method,
+      path: req.originalUrl,
+      userId: req.user?.id ?? null,
+      role: req.user?.role ?? null,
+      productId: req.params?.productId ?? null,
+      styleId: req.params?.styleId ?? null,
+      imageId: req.params?.imageId ?? null,
+      fileCount: files.length,
+      totalFileBytes,
+      errorName: err?.name || 'Error',
+      errorMessage: err?.message || String(err),
+      errorCode: err?.code ?? null,
+      errorStack: err?.stack || null
+    });
+  }
+
+  next(err);
 });
 
 module.exports = router;

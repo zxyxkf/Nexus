@@ -13,6 +13,7 @@ const PERMISSIONS = [
   { code: 'designer.hall.design', name: '美工任务大厅', type: 'page', group: '美工设计师' },
   { code: 'designer.tasks.design', name: '美工任务记录', type: 'page', group: '美工设计师' },
   { code: 'basic.hall.cs', name: '基础美工任务大厅', type: 'page', group: '基础美工' },
+  { code: 'basic.handoff.tasks', name: '基础美工暂存任务', type: 'page', group: '基础美工' },
   { code: 'basic.tasks.cs', name: '基础美工任务记录', type: 'page', group: '基础美工' },
   { code: 'assistant.hall.operator', name: '运营助理任务大厅', type: 'page', group: '运营助理' },
   { code: 'assistant.tasks.operator', name: '运营助理任务记录', type: 'page', group: '运营助理' },
@@ -40,6 +41,8 @@ const PERMISSIONS = [
   { code: 'cs.task_no.update', name: '修改基础美工任务编号', type: 'action', group: '客服基础美工' },
   { code: 'cs.handoff.claim', name: '继承客服暂存任务', type: 'action', group: '客服基础美工' },
   { code: 'cs.shift.toggle', name: '切换客服上线状态', type: 'action', group: '客服基础美工' },
+  { code: 'basic.handoff.claim', name: '继承基础美工暂存任务', type: 'action', group: '基础美工' },
+  { code: 'basic.shift.toggle', name: '切换基础美工上线状态', type: 'action', group: '基础美工' },
   { code: 'task.review.own', name: '审核自己发布的任务', type: 'action', group: '任务操作' },
   { code: 'task.review.store', name: '审核同店铺任务', type: 'action', group: '任务操作' },
   { code: 'task.review.all', name: '审核全部任务', type: 'action', group: '任务操作' },
@@ -82,7 +85,8 @@ const ROLE_DEFAULTS = {
     'task.upload.work', 'task.view.own', 'task.download.file', 'notification.center'
   ],
   basic_designer: [
-    'basic.hall.cs', 'basic.tasks.cs', 'stats.personal', 'dashboard.cs',
+    'basic.hall.cs', 'basic.handoff.tasks', 'basic.tasks.cs', 'stats.personal', 'dashboard.cs',
+    'basic.handoff.claim', 'basic.shift.toggle',
     'task.upload.work', 'task.view.own', 'task.download.file', 'notification.center'
   ],
   operator_assistant: [
@@ -117,6 +121,8 @@ const PERMISSION_IMPLICATIONS = {
   'designer.hall.design': ['task.view.own', 'task.download.file'],
   'designer.tasks.design': ['task.upload.work', 'task.view.own', 'task.download.file'],
   'basic.hall.cs': ['task.view.own', 'task.download.file'],
+  'basic.handoff.tasks': ['task.view.own', 'task.download.file'],
+  'basic.handoff.claim': ['basic.handoff.tasks', 'task.view.own', 'task.download.file'],
   'basic.tasks.cs': ['task.upload.work', 'task.view.own', 'task.download.file'],
   'assistant.hall.operator': ['task.view.own', 'task.download.file'],
   'assistant.tasks.operator': ['task.upload.work', 'task.view.own', 'task.download.file'],

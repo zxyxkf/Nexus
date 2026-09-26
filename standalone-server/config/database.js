@@ -128,7 +128,9 @@ const CREATE_TABLES_SQL = {
       work_path TEXT DEFAULT '',
       selected_effect_file_ids TEXT DEFAULT '',
       handoff_status TEXT DEFAULT '',
-      handoff_time TEXT
+      handoff_time TEXT,
+      basic_handoff_status TEXT DEFAULT '',
+      basic_handoff_time TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS task_file (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -365,7 +367,9 @@ const CREATE_TABLES_SQL = {
       work_path VARCHAR(1000) DEFAULT '',
       selected_effect_file_ids VARCHAR(5000) DEFAULT '',
       handoff_status VARCHAR(20) DEFAULT '',
-      handoff_time DATETIME NULL
+      handoff_time DATETIME NULL,
+      basic_handoff_status VARCHAR(20) DEFAULT '',
+      basic_handoff_time DATETIME NULL
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     `CREATE TABLE IF NOT EXISTS task_file (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -604,20 +608,12 @@ async function initDatabase() {
 
     // 建表
     const tableSqls = CREATE_TABLES_SQL[mode] || CREATE_TABLES_SQL.sqlite;
-    for (const sql of getMaterialLibrarySchema(mode)) {
-      try { await dbEngine.execute(sql); } catch (err) {
-        console.warn('[DB] material library schema warning:', err.message);
-      }
-    }
-    for (const sql of tableSqls) {
-      try { await dbEngine.execute(sql); } catch (err) {
-        console.warn('[DB] 建表警告:', err.message);
-      }
-    }
+    for (const sql of getMaterialLibrarySchema(mode)) await executeMigration(sql);
+    for (const sql of tableSqls) await executeMigration(sql);
 
     try {
       await migratePaymentTracking({
-        execute: (sql, params = []) => dbEngine.execute(sql, params),
+        execute: executeMigration,
         mode
       });
     } catch (err) {
@@ -687,6 +683,8 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN urge_time DATETIME`,
       `ALTER TABLE task_info ADD COLUMN handoff_status VARCHAR(20) DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN handoff_time DATETIME NULL`,
+      `ALTER TABLE task_info ADD COLUMN basic_handoff_status VARCHAR(20) DEFAULT ''`,
+      `ALTER TABLE task_info ADD COLUMN basic_handoff_time DATETIME NULL`,
       `CREATE TABLE IF NOT EXISTS task_transfer_record (
         id INT AUTO_INCREMENT PRIMARY KEY,
         task_id INT NOT NULL,
@@ -773,6 +771,8 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN urge_time TEXT`,
       `ALTER TABLE task_info ADD COLUMN handoff_status TEXT DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN handoff_time TEXT`,
+      `ALTER TABLE task_info ADD COLUMN basic_handoff_status TEXT DEFAULT ''`,
+      `ALTER TABLE task_info ADD COLUMN basic_handoff_time TEXT`,
       `CREATE TABLE IF NOT EXISTS task_transfer_record (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         task_id INTEGER NOT NULL,
@@ -812,7 +812,22 @@ async function initDatabase() {
       `DELETE FROM sys_score_item WHERE name IN ('补单表格整理后发财务审核','走钉钉申请一天请补单款项','销售额填写','出评数量检查，催评价','补单+备注插旗','找评价+做评价','补退款单','返款','补单平台售后问题处理','中差评检查、差评处理','评价加精和置顶——种草','修改商品编码','聚水潭铺货上架产品','手动创建商品','昨日上新产品检查','上新产品数据表填写','新品运营/新品橱窗报名','营销托管','品牌新享','搜集主图图片','查询客服聊天记录','竞店上新统计','每月店铺动销率统计','每月销售额拆解表完成进度数据填写','新品推广数据记录','表格/数据统计')`
     ];
     for (const sql of alterSqls) {
-      try { await dbEngine.execute(sql); } catch (err) {}
+      await executeMigration(sql);
+    }
+
+    // 将上一版误用 handoff_status 保存的基础美工暂存状态迁移到独立字段。
+    try {
+      await dbEngine.execute(
+        `UPDATE task_info
+         SET basic_handoff_status = 'pooled',
+             basic_handoff_time = COALESCE(basic_handoff_time, handoff_time),
+             handoff_status = '',
+             handoff_time = NULL
+         WHERE handoff_status = 'basic_pooled'
+           AND COALESCE(basic_handoff_status, '') = ''`
+      );
+    } catch (err) {
+      console.warn('[DB] 基础美工暂存状态迁移警告:', err.message);
     }
 
     try { await ensureTaskNoAllowsDuplicates(mode); } catch (err) {
@@ -845,6 +860,17 @@ async function initDatabase() {
   } catch (err) {
     console.error('[DB] 初始化失败:', err.message);
     throw err;
+  }
+}
+
+async function executeMigration(sql, params = []) {
+  try {
+    return await dbEngine.execute(sql, params, { suppressExpectedMigrationErrors: true });
+  } catch (error) {
+    if (dbEngine.isExpectedMigrationError(sql, error)) {
+      return [{ affectedRows: 0, insertId: 0 }, undefined];
+    }
+    throw error;
   }
 }
 
@@ -965,17 +991,25 @@ async function executeTransaction(callback) {
   const mode = getMode();
 
   if (mode === 'mysql') {
-    const conn = await dbEngine.mysqlPool.getConnection();
+    const startedAt = Date.now();
+    const conn = await dbEngine.acquireMysqlConnection();
+    let transactionError = null;
     try {
       await conn.beginTransaction();
       const result = await callback(conn);
       await conn.commit();
       return result;
     } catch (err) {
-      await conn.rollback();
+      transactionError = err;
+      try {
+        await conn.rollback();
+      } catch (rollbackError) {
+        console.error('[DB] MySQL 事务回滚失败:', rollbackError.message);
+      }
       throw err;
     } finally {
-      conn.release();
+      dbEngine.recordMysqlTransaction(Date.now() - startedAt, transactionError);
+      dbEngine.releaseMysqlConnection(conn);
     }
   }
 
@@ -998,5 +1032,6 @@ module.exports = {
   getMode,
   close,
   getPool,
+  getPoolStats: dbEngine.getPoolStats,
   executeTransaction
 };

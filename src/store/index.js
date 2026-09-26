@@ -103,6 +103,11 @@ export const useUserStore = defineStore('user', {
       this.applyAuth(this.token, { ...this.userInfo, csShiftStatus: status })
     },
 
+    updateShiftStatus(status) {
+      if (!this.userInfo || !['cs_agent', 'basic_designer'].includes(this.userInfo.role)) return
+      this.applyAuth(this.token, { ...this.userInfo, csShiftStatus: status })
+    },
+
     // 带缓存的用户列表查询
     async getUserList(params = {}, force = false) {
       if (force) invalidate(this, 'userList')

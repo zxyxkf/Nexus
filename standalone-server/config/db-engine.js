@@ -13,12 +13,128 @@ let dbMode = null; // 'mysql' | 'sqlite'
 let mysqlPool = null;
 let sqliteDb = null;
 let SQL = null; // sql.js 库引用
+let mysqlPoolLimit = 0;
+let mysqlQueueLimit = 0;
+let mysqlConnectTimeout = 0;
+const mysqlPoolStats = {
+  activeConnections: 0,
+  waitingForConnection: 0,
+  totalQueries: 0,
+  slowQueries: 0,
+  transactions: 0,
+  slowTransactions: 0,
+  errors: 0,
+  lastErrorAt: null
+};
 
 const PRODUCTION_MYSQL_STARTUP_ATTEMPTS = 10;
 const PRODUCTION_MYSQL_RETRY_DELAY_MS = 3000;
 
 function wait(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
+}
+
+function getSlowQueryThresholdMs() {
+  const value = Number.parseInt(process.env.DB_SLOW_QUERY_MS, 10);
+  return Number.isFinite(value) && value > 0 ? value : 1000;
+}
+
+function summarizeSql(sql) {
+  const normalized = String(sql || '').replace(/\s+/g, ' ').trim();
+  return normalized.length > 240 ? `${normalized.slice(0, 237)}...` : normalized;
+}
+
+function recordMysqlError(operation, durationMs, error) {
+  mysqlPoolStats.errors += 1;
+  mysqlPoolStats.lastErrorAt = new Date().toISOString();
+  console.error('[DB] MySQL 操作失败:', {
+    operation,
+    durationMs,
+    errorCode: error?.code || null,
+    errorMessage: error?.message || String(error)
+  });
+}
+
+function recordMysqlQuery(sql, startedAt, error = null) {
+  const durationMs = Date.now() - startedAt;
+  mysqlPoolStats.totalQueries += 1;
+  if (error) recordMysqlError(summarizeSql(sql), durationMs, error);
+  if (durationMs >= getSlowQueryThresholdMs()) {
+    mysqlPoolStats.slowQueries += 1;
+    console.warn(`[DB] MySQL 慢查询 ${durationMs}ms: ${summarizeSql(sql)}`);
+  }
+}
+
+async function acquireMysqlConnection() {
+  if (!mysqlPool) throw new Error('MySQL 连接池尚未初始化');
+  const startedAt = Date.now();
+  mysqlPoolStats.waitingForConnection += 1;
+  try {
+    const conn = await mysqlPool.getConnection();
+    const waitMs = Date.now() - startedAt;
+    if (waitMs >= getSlowQueryThresholdMs()) {
+      console.warn(`[DB] MySQL 获取连接等待 ${waitMs}ms`);
+    }
+    mysqlPoolStats.activeConnections += 1;
+    return conn;
+  } catch (error) {
+    if (error?.message === 'Queue limit reached.') error.code = 'DB_POOL_QUEUE_LIMIT';
+    recordMysqlError('POOL_ACQUIRE', Date.now() - startedAt, error);
+    throw error;
+  } finally {
+    mysqlPoolStats.waitingForConnection = Math.max(0, mysqlPoolStats.waitingForConnection - 1);
+  }
+}
+
+function releaseMysqlConnection(conn) {
+  try {
+    conn?.release();
+  } finally {
+    mysqlPoolStats.activeConnections = Math.max(0, mysqlPoolStats.activeConnections - 1);
+  }
+}
+
+function recordMysqlTransaction(durationMs, error = null) {
+  mysqlPoolStats.transactions += 1;
+  if (error) recordMysqlError('TRANSACTION', durationMs, error);
+  if (durationMs >= getSlowQueryThresholdMs()) {
+    mysqlPoolStats.slowTransactions += 1;
+    console.warn(`[DB] MySQL 慢事务 ${durationMs}ms`);
+  }
+}
+
+function isExpectedMigrationError(sql, error) {
+  const normalizedSql = String(sql || '').trim().toUpperCase();
+  const code = error?.code;
+  const message = String(error?.message || '').toLowerCase();
+
+  if (code === 'ER_DUP_FIELDNAME') return normalizedSql.startsWith('ALTER TABLE');
+  if (code === 'ER_DUP_KEYNAME') return /^CREATE\s+(UNIQUE\s+)?INDEX\b/.test(normalizedSql);
+  if (code === 'ER_TABLE_EXISTS_ERROR') return normalizedSql.startsWith('CREATE TABLE');
+
+  // SQLite reports schema idempotency failures through the message instead of a stable code.
+  if (normalizedSql.startsWith('ALTER TABLE') && message.includes('duplicate column name')) return true;
+  if (/^CREATE\s+(UNIQUE\s+)?INDEX\b/.test(normalizedSql) && message.includes('already exists')) return true;
+
+  return false;
+}
+
+function getPoolStats() {
+  return {
+    mode: dbMode,
+    connectionLimit: mysqlPoolLimit,
+    queueLimit: mysqlQueueLimit,
+    connectTimeoutMs: mysqlConnectTimeout,
+    activeConnections: mysqlPoolStats.activeConnections,
+    waitingForConnection: mysqlPoolStats.waitingForConnection,
+    totalQueries: mysqlPoolStats.totalQueries,
+    slowQueries: mysqlPoolStats.slowQueries,
+    transactions: mysqlPoolStats.transactions,
+    slowTransactions: mysqlPoolStats.slowTransactions,
+    errors: mysqlPoolStats.errors,
+    lastErrorAt: mysqlPoolStats.lastErrorAt,
+    slowQueryThresholdMs: getSlowQueryThresholdMs()
+  };
 }
 
 async function verifyMySqlConnection(config) {
@@ -66,6 +182,12 @@ async function activateMySql(config) {
   }
 
   mysqlPool = pool;
+  mysqlPoolLimit = Number(mysqlPoolConfig.connectionLimit) || 0;
+  mysqlQueueLimit = Number(mysqlPoolConfig.queueLimit) || 0;
+  mysqlConnectTimeout = Number(mysqlPoolConfig.connectTimeout) || 0;
+  Object.keys(mysqlPoolStats).forEach(key => {
+    mysqlPoolStats[key] = key === 'lastErrorAt' ? null : 0;
+  });
   dbMode = 'mysql';
   console.log('[DB] MySQL 模式已激活（高并发生产模式）');
   return { mode: 'mysql', pool: mysqlPool };
@@ -215,7 +337,7 @@ function transformSql(sql) {
  * 执行 SQL 查询（统一接口，兼容 mysql2 返回格式 [rows, fields]）
  * MySQL 模式自动内联 LIMIT/OFFSET 参数（mysql2 不支持参数化 LIMIT）
  */
-async function execute(sql, params = []) {
+async function execute(sql, params = [], options = {}) {
   if (dbMode === 'mysql') {
     let finalSql = sql;
     let finalParams = params;
@@ -228,22 +350,27 @@ async function execute(sql, params = []) {
       finalParams = params.slice(0, -2);
     }
 
-    // 对于写操作，显式获取连接以确保 charset 正确传递
+    const conn = await acquireMysqlConnection();
+    const startedAt = Date.now();
     const trimmed = finalSql.trim().toUpperCase();
     const isMutation = trimmed.startsWith('INSERT') || trimmed.startsWith('UPDATE') || trimmed.startsWith('DELETE') || trimmed.startsWith('REPLACE');
-    if (isMutation) {
-      const conn = await mysqlPool.getConnection();
-      try {
-        await conn.query('SET NAMES utf8mb4');
-        const [rows, fields] = await conn.query(finalSql, finalParams);
-        return [rows, fields];
-      } finally {
-        conn.release();
+    try {
+      // 连接池已在连接初始化时设置 utf8mb4，避免每次写操作重复发送 SET NAMES。
+      const [rows, fields] = isMutation
+        ? await conn.query(finalSql, finalParams)
+        : await conn.execute(finalSql, finalParams);
+      recordMysqlQuery(finalSql, startedAt);
+      return [rows, fields];
+    } catch (error) {
+      if (options.suppressExpectedMigrationErrors && isExpectedMigrationError(finalSql, error)) {
+        recordMysqlQuery(finalSql, startedAt);
+        return [{ affectedRows: 0, insertId: 0 }, undefined];
       }
+      recordMysqlQuery(finalSql, startedAt, error);
+      throw error;
+    } finally {
+      releaseMysqlConnection(conn);
     }
-
-    const [rows, fields] = await mysqlPool.execute(finalSql, finalParams);
-    return [rows, fields];
   } else {
     const transformedSql = transformSql(sql);
     const stmt = sqliteDb.prepare(transformedSql);
@@ -325,6 +452,12 @@ module.exports = {
   initEngine,
   execute,
   getMode,
+  getPoolStats,
+  getSlowQueryThresholdMs,
+  isExpectedMigrationError,
+  acquireMysqlConnection,
+  releaseMysqlConnection,
+  recordMysqlTransaction,
   close,
   saveSqlite,
   restoreFromSnapshot,

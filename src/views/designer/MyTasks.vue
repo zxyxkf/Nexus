@@ -2,7 +2,7 @@
   <div class="page-container">
     <el-card shadow="never" class="page-card">
       <template #header>
-        <div class="card-header">
+        <div class="card-header designer-my-tasks-header">
           <span class="card-title">{{ pageTitle }}</span>
           <div class="header-right">
             <el-input
@@ -15,13 +15,20 @@
             >
               <template #prefix><el-icon><Search /></el-icon></template>
             </el-input>
-            <el-select v-if="!fixedStatus" v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
-              <el-option label="全部" value="" />
-              <el-option label="已接单" value="accepted" />
-              <el-option label="待审核" value="doing" />
-              <el-option label="已完成" value="finished" />
-              <el-option label="已驳回" value="rejected" />
-            </el-select>
+            <div v-if="!fixedStatus" class="designer-status-filter" role="group" aria-label="任务状态筛选">
+              <button
+                v-for="option in designerStatusOptions"
+                :key="option.value || 'all'"
+                type="button"
+                class="status-filter-button"
+                :class="{ active: statusFilter === option.value }"
+                :aria-pressed="statusFilter === option.value"
+                @click="selectStatus(option.value)"
+              >
+                <span>{{ option.label }}</span>
+                <span class="status-count">{{ getDesignerStatusCount(option.value) }}</span>
+              </button>
+            </div>
             <el-date-picker
               v-model="dateRange"
               type="daterange"
@@ -269,6 +276,14 @@ const total = ref(0)
 const page = ref(1)
 const pageSize = ref(15)
 const statusFilter = ref('')
+const statusCounts = ref({})
+const designerStatusOptions = [
+  { label: '全部', value: '' },
+  { label: '已接单', value: 'accepted' },
+  { label: '待审核', value: 'doing' },
+  { label: '已完成', value: 'finished' },
+  { label: '已驳回', value: 'rejected' }
+]
 const styleNumberFilter = ref('')
 const dateRange = ref(null)
 const publisherFilter = ref('')
@@ -453,7 +468,8 @@ async function loadData(options = {}) {
       dateEnd: dateRange.value?.[1] || undefined,
       dateField: dateField.value || undefined,
       publisherId: publisherFilter.value || undefined,
-      scoreItemId: scoreItemFilter.value || undefined
+      scoreItemId: scoreItemFilter.value || undefined,
+      includeStatusCounts: !fixedStatus.value ? 1 : undefined
     })
     if (res.code === 0) {
       list.value = res.data.list
@@ -461,6 +477,7 @@ async function loadData(options = {}) {
         inlinePathValues.value = {}
       }
       total.value = Number(res.data.total) || 0
+      if (!fixedStatus.value) statusCounts.value = res.data.statusCounts || {}
       // 从通知跳转打开任务详情
       const openTaskId = route.query.openTask
       if (openTaskId) {
@@ -476,6 +493,19 @@ async function loadData(options = {}) {
 }
 
 // 已在当前页面时，监听 query 变化打开详情
+function selectStatus(status) {
+  statusFilter.value = status
+  page.value = 1
+  loadData()
+}
+
+function getDesignerStatusCount(status) {
+  if (status) return Number(statusCounts.value[status] || 0)
+  return designerStatusOptions
+    .filter(option => option.value)
+    .reduce((totalCount, option) => totalCount + Number(statusCounts.value[option.value] || 0), 0)
+}
+
 watch(() => route.query.openTask, (newTaskId) => {
   if (newTaskId && list.value.length > 0) {
     const task = list.value.find(t => t.id == newTaskId)
@@ -698,6 +728,23 @@ useRealtime(loadData, 3000, {
 }
 .file-card-size { font-size: 11px; color: var(--dd-text-secondary); }
 .multiline-value { white-space: pre-wrap; word-break: break-word; }
+.designer-my-tasks-header .header-right { flex: 1; min-width: 0; flex-wrap: wrap; justify-content: flex-end; }
+.designer-my-tasks-header .header-right :deep(.el-date-editor--daterange) { flex: 0 0 240px; width: 240px !important; min-width: 240px; }
+.designer-status-filter { display: flex; align-items: center; gap: 6px; flex-wrap: nowrap; white-space: nowrap; }
+.status-filter-button {
+  position: relative; display: inline-flex; align-items: center; justify-content: center;
+  height: 32px; padding: 0 11px; border: 1px solid var(--dd-border-light, #dcdfe6);
+  border-radius: 17px; background: var(--el-bg-color, #fff); color: var(--dd-text-secondary, #606266);
+  font: inherit; font-size: 13px; cursor: pointer; transition: border-color .2s, color .2s, background-color .2s;
+}
+.status-count {
+  position: absolute; top: -8px; right: -8px; z-index: 1;
+  display: inline-flex; align-items: center; justify-content: center; min-width: 18px; height: 18px;
+  padding: 0 4px; border: 2px solid #fff; border-radius: 999px;
+  background: #f56c6c; color: #fff; font-size: 11px; line-height: 14px;
+}
+.status-filter-button:hover { border-color: var(--dd-primary, #409eff); color: var(--dd-primary, #409eff); }
+.status-filter-button.active { border-color: var(--dd-primary, #409eff); background: var(--dd-primary, #409eff); color: #fff; }
 
 /* 催促任务置顶高亮 */
 :deep(.row-urged td) { color: #9f1d2a; font-weight: 600; }

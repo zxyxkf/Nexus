@@ -122,6 +122,13 @@ router.post('/delete', requireRole('admin', 'sub_admin'), async (req, res, next)
   } catch (err) { next(err); }
 });
 
+router.post('/delete-cs-draft', requireRole('cs_agent'), async (req, res, next) => {
+  try {
+    const result = await taskService.deleteCsDraftTask(req.body.taskId, req.user);
+    res.json({ code: 0, ...result });
+  } catch (err) { next(err); }
+});
+
 // 编辑草稿并重新发布
 router.put('/update', requireAnyPermission(['task.create.design', 'task.create.operator', 'task.create.cs'], 'operator', 'admin', 'cs_agent'), async (req, res, next) => {
   try {

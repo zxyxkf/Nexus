@@ -189,14 +189,14 @@
           </el-tag>
 
           <el-button
-            v-if="canToggleCsShift"
+            v-if="canToggleShift"
             class="cs-shift-toggle"
             :type="csShiftStatus === 'online' ? 'success' : 'info'"
             :icon="csShiftStatus === 'online' ? CircleCheck : CircleClose"
             :loading="shiftUpdating"
             plain
             size="small"
-            @click="toggleCsShift"
+            @click="toggleShift"
           >{{ csShiftStatus === 'online' ? '已上线' : '已下线' }}</el-button>
 
           <!-- 用户下拉 -->
@@ -306,7 +306,7 @@ import { ref, computed, onMounted, onUnmounted, watch } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { useUserStore } from '@/store'
-import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, onConnectionChange, getOnlineStatus, getTaskDetailApi, getMyStatsApi, getPaymentManagerReviewCountApi, getCsShiftStatusApi, setCsShiftStatusApi } from '@/api'
+import { changePasswordApi, getNotificationList, getUnreadCount, readNotification, onConnectionChange, getOnlineStatus, getTaskDetailApi, getMyStatsApi, getPaymentManagerReviewCountApi, getCsShiftStatusApi, setCsShiftStatusApi, getBasicShiftStatusApi, setBasicShiftStatusApi } from '@/api'
 import { ROLE_LABEL, ROLE_TAG_TYPE } from '@/utils/format'
 import { useConfig } from '@/composables/useConfig'
 import { HomeFilled, Bell, Moon, Sunny, User, Connection, WarningFilled, Camera, CircleCheck, CircleClose } from '@element-plus/icons-vue'
@@ -341,32 +341,38 @@ const homeRoute = computed(() => {
   return { path: '/dashboard' }
 })
 
-const canToggleCsShift = computed(() => (
-  userStore.isCsAgent && userStore.hasPermission('cs.shift.toggle')
+const canToggleShift = computed(() => (
+  userStore.isCsAgent
+    ? userStore.hasPermission('cs.shift.toggle')
+    : userStore.isBasicDesigner && userStore.hasPermission('basic.shift.toggle')
 ))
 const csShiftStatus = computed(() => userStore.userInfo?.csShiftStatus || 'online')
 const canBatchSubmit = computed(() => (
   userStore.isBasicDesigner && userStore.hasPermission('task.upload.work')
 ))
 
-async function loadCsShiftStatus() {
-  if (!canToggleCsShift.value) return
+async function loadShiftStatus() {
+  if (!canToggleShift.value) return
   try {
-    const response = await getCsShiftStatusApi()
-    if (response.code === 0) userStore.updateCsShiftStatus(response.data?.status || 'online')
+    const response = userStore.isBasicDesigner
+      ? await getBasicShiftStatusApi()
+      : await getCsShiftStatusApi()
+    if (response.code === 0) userStore.updateShiftStatus(response.data?.status || 'online')
   } catch (error) {
-    console.error('[Layout] 加载客服上线状态失败:', error)
+    console.error('[Layout] 加载上线状态失败:', error)
   }
 }
 
-async function toggleCsShift() {
+async function toggleShift() {
   if (shiftUpdating.value) return
   const nextStatus = csShiftStatus.value === 'online' ? 'offline' : 'online'
   shiftUpdating.value = true
   try {
-    const response = await setCsShiftStatusApi(nextStatus)
+    const response = userStore.isBasicDesigner
+      ? await setBasicShiftStatusApi(nextStatus)
+      : await setCsShiftStatusApi(nextStatus)
     if (response.code !== 0) return
-    userStore.updateCsShiftStatus(response.data?.status || nextStatus)
+    userStore.updateShiftStatus(response.data?.status || nextStatus)
     const movedCount = Number(response.data?.movedTaskCount || 0)
     ElMessage.success(nextStatus === 'online'
       ? '已上线'
@@ -554,7 +560,7 @@ onMounted(() => {
   updateClock()
   timeTimer = setInterval(updateClock, 1000)
   loadTodoCount()
-  loadCsShiftStatus()
+  loadShiftStatus()
   todoRefreshTimer = setInterval(loadTodoCount, 60000)
   window.addEventListener('nexus:task-updated', scheduleTodoCountRefresh)
   window.addEventListener('nexus:payment-updated', scheduleTodoCountRefresh)

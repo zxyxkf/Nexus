@@ -39,6 +39,13 @@ function cleanName(value, label) {
   return name;
 }
 
+function isDuplicateKeyError(error) {
+  return error?.code === 'ER_DUP_ENTRY'
+    || error?.errno === 1062
+    || error?.errno === 19
+    || String(error?.message || '').toLowerCase().includes('unique constraint failed');
+}
+
 function publicImage(image) {
   return {
     ...image,
@@ -129,7 +136,14 @@ async function listStyles(user, productId, keyword = '') {
 async function createStyle(user, productId, name) {
   assertAccess(user);
   if (!await dao.getProduct(productId)) throw new AppError(404, '商品库不存在');
-  return dao.createStyle(productId, cleanName(name, '款式名称'), user.id);
+  try {
+    return await dao.createStyle(productId, cleanName(name, '款式名称'), user.id);
+  } catch (error) {
+    if (isDuplicateKeyError(error)) {
+      throw new AppError(409, '该商品库中已存在同名款式');
+    }
+    throw error;
+  }
 }
 
 async function renameStyle(user, id, name) {
@@ -273,25 +287,37 @@ async function saveUploadedImages(user, styleId, files = []) {
   return withMaterialStorageLock(async () => {
     const created = [];
     const copiedPaths = [];
+    const preparedFiles = [];
     try {
+      const style = await dao.getStyle(styleId);
+      if (!style) throw new AppError(404, '款式不存在');
+
+      // 先完成文件复制，避免数据库事务在磁盘操作期间长期占用连接。
+      for (const [index, file] of files.entries()) {
+        const originalName = safeMaterialFilename(file.originalname, `material-image-${index + 1}.bin`);
+        const relative = copyUsingOriginalName(file.path, style.product_name, style.name, originalName);
+        copiedPaths.push(relative);
+        preparedFiles.push({ file, originalName, relative });
+      }
+
       await executeTransaction(async conn => {
-        const style = await dao.getStyle(styleId, conn);
-        if (!style) throw new AppError(404, '款式不存在');
+        const currentStyle = await dao.getStyle(styleId, conn);
+        if (!currentStyle) throw new AppError(404, '款式不存在');
+        if (currentStyle.product_name !== style.product_name || currentStyle.name !== style.name) {
+          throw new AppError(409, '款式在上传过程中发生变化，请重新上传');
+        }
         let order = await dao.getNextSortOrder(styleId, conn);
-        for (const file of files) {
-          const originalName = safeMaterialFilename(file.originalname, `material-image-${order}.bin`);
-          const relative = copyUsingOriginalName(file.path, style.product_name, style.name, originalName);
-          copiedPaths.push(relative);
+        for (const prepared of preparedFiles) {
           const image = await dao.createImage({
             styleId,
-            originalName,
-            displayName: originalName,
-            color: inferColor(originalName),
+            originalName: prepared.originalName,
+            displayName: prepared.originalName,
+            color: inferColor(prepared.originalName),
             colorSource: 'auto',
             sortOrder: order++,
-            filePath: relative,
-            fileSize: file.size,
-            mimeType: file.mimetype,
+            filePath: prepared.relative,
+            fileSize: prepared.file.size,
+            mimeType: prepared.file.mimetype,
             createdBy: user.id
           }, conn);
           created.push(publicImage(image));

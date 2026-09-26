@@ -8,7 +8,7 @@ const cors = require('cors');
 const rateLimit = require('express-rate-limit');
 const path = require('path');
 const fs = require('fs');
-const { initDatabase, getPool } = require('./config/database');
+const { initDatabase, getPool, getPoolStats } = require('./config/database');
 const { initStorageConfig } = require('./utils/share');
 const { isProduction, UPLOAD_DIR } = require('./config/env');
 const releasesDir = path.join(__dirname, 'releases');
@@ -145,7 +145,7 @@ app.use('/api/announcement', announcementRoutes);
 
   // 健康检查
   app.get('/api/health', (req, res) => {
-    res.json({ code: 0, msg: 'ok', time: new Date().toISOString() });
+    res.json({ code: 0, msg: 'ok', time: new Date().toISOString(), database: getPoolStats() });
   });
 
   // SPA fallback（仅生产模式）

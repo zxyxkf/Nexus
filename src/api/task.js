@@ -164,6 +164,7 @@ export const getAdminDetailStatsApi = () => request.get('/api/task/stats/admin/d
 export const withdrawTaskApi = (data) => taskMutation(request.post('/api/task/withdraw', data))
 export const undoSubmitApi = (data) => taskMutation(request.post('/api/task/undo-submit', data))
 export const updateTaskApi = (data) => taskMutation(request.put('/api/task/update', data))
+export const deleteCsDraftTaskApi = (data) => taskMutation(request.post('/api/task/delete-cs-draft', data))
 export const reopenFinishedCsTaskApi = (data) => taskMutation(request.post('/api/task/reopen-finished-cs', data))
 export const updateCsTaskNoApi = (data) => taskMutation(request.put('/api/task/cs-task-no', data))
 export const batchReviewApi = (data) => taskMutation(request.post('/api/task/batch-review', data))

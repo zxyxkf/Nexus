@@ -118,7 +118,7 @@ function parseSelectedEffectFileIds(value) {
 /** 查找指定角色的设计师（事务内，用于直接分配） */
 async function findDesigner(conn, id, role) {
   const [rows] = await conn.execute(
-    `SELECT id, real_name FROM sys_user WHERE id = ? AND role = ? AND status = 1`,
+    `SELECT id, real_name, cs_shift_status FROM sys_user WHERE id = ? AND role = ? AND status = 1`,
     [id, role]
   );
   return rows[0] || null;
@@ -131,15 +131,17 @@ async function insertTask(conn, data) {
        (task_no, title, description, priority, deadline, publisher_id, status,
         publisher_name, score_item_id, score, ref_path, style_number,
         specified_color, wangwang_id, designer_id, designer_name,
-        task_group, shop_name, quantity, task_file_path, accept_time)
-     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        task_group, shop_name, quantity, task_file_path, accept_time,
+        basic_handoff_status, basic_handoff_time)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
     [
       data.taskNo, data.title, data.description, data.priority, data.deadline,
       data.publisherId, data.status, data.publisherName,
       data.scoreItemId, data.score, data.refPath, data.styleNumber,
       data.specifiedColor, data.wangwangId, data.designerId, data.designerName,
       data.taskGroup, data.shopName, data.quantity, data.taskFilePath,
-      data.acceptTime || null
+      data.acceptTime || null,
+      data.basicHandoffStatus || '', data.basicHandoffTime || null
     ]
   );
   return result.insertId;
@@ -245,6 +247,7 @@ async function getTaskForUpdate(conn, taskId) {
             t.designer_id, t.designer_name, t.task_group,
             t.score_item_id, t.score, t.applied_score, t.score_review_status, t.score_review_score,
             t.handoff_status, t.handoff_time,
+            t.basic_handoff_status, t.basic_handoff_time,
             COALESCE(u.store, '') AS publisher_store
      FROM task_info t
      LEFT JOIN sys_user u ON u.id = t.publisher_id
@@ -422,13 +425,21 @@ async function deleteFileRecords(conn, fileIds) {
   return Number(result.affectedRows || 0);
 }
 
+async function deleteTaskDataWithExecutor(executor, taskId) {
+  await executor(`DELETE FROM task_reject_record WHERE task_id = ?`, [taskId]);
+  await executor(`DELETE FROM task_transfer_record WHERE task_id = ?`, [taskId]);
+  await executor(`DELETE FROM task_file WHERE task_id = ?`, [taskId]);
+  await executor(`DELETE FROM sys_comment WHERE task_id = ?`, [taskId]);
+  await executor(`DELETE FROM sys_score_record WHERE task_id = ?`, [taskId]);
+  await executor(`DELETE FROM task_info WHERE id = ?`, [taskId]);
+}
+
 async function deleteTaskData(taskId) {
-  await execute(`DELETE FROM task_reject_record WHERE task_id = ?`, [taskId]);
-  await execute(`DELETE FROM task_transfer_record WHERE task_id = ?`, [taskId]);
-  await execute(`DELETE FROM task_file WHERE task_id = ?`, [taskId]);
-  await execute(`DELETE FROM sys_comment WHERE task_id = ?`, [taskId]);
-  await execute(`DELETE FROM sys_score_record WHERE task_id = ?`, [taskId]);
-  await execute(`DELETE FROM task_info WHERE id = ?`, [taskId]);
+  await deleteTaskDataWithExecutor(execute, taskId);
+}
+
+async function deleteTaskDataInTransaction(conn, taskId) {
+  await deleteTaskDataWithExecutor((sql, params) => conn.execute(sql, params), taskId);
 }
 
 /** 批量删除 */
@@ -546,7 +557,7 @@ function appendStatusFilter(where, params, status) {
 }
 
 /** 我发布的任务 */
-async function queryMyPublished({ userId, role, store, permissions = [], filterGroup, selfOnly, reviewView = false, reviewScope = '', paymentOpenView = false, canViewAllPaymentTasks = false, status, styleNumber, styleOrTaskNo, scoreItemId, keyword, taskNo, designerId, publisherId, dateStart, dateEnd, dateField, sortField, sortOrder, page, pageSize }) {
+async function queryMyPublished({ userId, role, store, permissions = [], filterGroup, selfOnly, reviewView = false, reviewScope = '', paymentOpenView = false, canViewAllPaymentTasks = false, status, styleNumber, styleOrTaskNo, scoreItemId, keyword, taskNo, designerId, publisherId, dateStart, dateEnd, dateField, sortField, sortOrder, page, pageSize, includeStatusCounts = false }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE 1=1';
   const params = [];
@@ -598,7 +609,6 @@ async function queryMyPublished({ userId, role, store, permissions = [], filterG
     where += " AND COALESCE(t.handoff_status, '') <> 'pooled'";
   }
 
-  where = appendStatusFilter(where, params, status);
   if (styleNumber) { where += ' AND t.style_number LIKE ?'; params.push(`%${styleNumber}%`); }
   if (styleOrTaskNo) { where += ' AND (t.style_number LIKE ? OR t.task_no LIKE ?)'; params.push(`%${styleOrTaskNo}%`, `%${styleOrTaskNo}%`); }
   if (scoreItemId) { where += ' AND t.score_item_id = ?'; params.push(scoreItemId); }
@@ -609,6 +619,10 @@ async function queryMyPublished({ userId, role, store, permissions = [], filterG
   if (dateStart) { where += ` AND ${dateColumn} >= ?`; params.push(dateStart + ' 00:00:00'); }
   if (dateEnd) { where += ` AND ${dateColumn} <= ?`; params.push(dateEnd + ' 23:59:59'); }
 
+  const statusCountWhere = where;
+  const statusCountParams = [...params];
+  where = appendStatusFilter(where, params, status);
+
   const result = await paginate({
     countSql: `SELECT COUNT(*) as total FROM task_info t ${where}`,
     countParams: params,
@@ -616,16 +630,38 @@ async function queryMyPublished({ userId, role, store, permissions = [], filterG
     dataParams: [...params, pageSize, offset],
     page, pageSize
   });
+  if (includeStatusCounts) {
+    const [rows] = await execute(
+      `SELECT t.status, COUNT(*) AS count FROM task_info t ${statusCountWhere} GROUP BY t.status`,
+      statusCountParams
+    );
+    result.statusCounts = Object.fromEntries(rows.map(row => [row.status, Number(row.count)]));
+  }
   result.list = await attachFilesToTasksForList(result.list);
   return result;
 }
 
-async function queryPooledCsTasks({ keyword, status, designerId, page, pageSize }) {
+async function queryPooledCsTasks({
+  handoffStatus = 'pooled',
+  handoffStatusField = 'handoff_status',
+  handoffTimeField = 'handoff_time',
+  keyword,
+  status,
+  designerId,
+  page,
+  pageSize,
+  includeStatusCounts = false
+}) {
   const offset = (page - 1) * pageSize;
-  let where = "WHERE t.task_group = 'cs' AND t.handoff_status = 'pooled'";
-  const params = [];
+  const statusField = handoffStatusField === 'basic_handoff_status'
+    ? 'basic_handoff_status'
+    : 'handoff_status';
+  const timeField = handoffTimeField === 'basic_handoff_time'
+    ? 'basic_handoff_time'
+    : 'handoff_time';
+  let where = `WHERE t.task_group = 'cs' AND t.${statusField} = ?`;
+  const params = [handoffStatus];
 
-  where = appendStatusFilter(where, params, status);
   if (designerId) {
     where += ' AND t.designer_id = ?';
     params.push(designerId);
@@ -636,22 +672,33 @@ async function queryPooledCsTasks({ keyword, status, designerId, page, pageSize 
     params.push(value, value, value, value, value);
   }
 
+  const statusCountWhere = where;
+  const statusCountParams = [...params];
+  where = appendStatusFilter(where, params, status);
+
   const result = await paginate({
     countSql: `SELECT COUNT(*) as total FROM task_info t ${where}`,
     countParams: params,
     dataSql: `SELECT ${TASK_SELECT} FROM task_info t ${TASK_JOIN} ${where}
-              ORDER BY t.handoff_time DESC, t.update_time DESC, t.id DESC
+              ORDER BY t.${timeField} DESC, t.update_time DESC, t.id DESC
               LIMIT ? OFFSET ?`,
     dataParams: [...params, pageSize, offset],
     page,
     pageSize
   });
+  if (includeStatusCounts) {
+    const [rows] = await execute(
+      `SELECT t.status, COUNT(*) AS count FROM task_info t ${statusCountWhere} GROUP BY t.status`,
+      statusCountParams
+    );
+    result.statusCounts = Object.fromEntries(rows.map(row => [row.status, Number(row.count)]));
+  }
   result.list = await attachFilesToTasksForList(result.list);
   return result;
 }
 
 /** 我接单的任务 */
-async function queryMyAccepted({ userId, role, permissions = [], taskGroup, status, keyword, publisherId, scoreItemId, dateStart, dateEnd, dateField, shopName, page, pageSize }) {
+async function queryMyAccepted({ userId, role, permissions = [], taskGroup, status, keyword, publisherId, scoreItemId, dateStart, dateEnd, dateField, shopName, page, pageSize, includeStatusCounts = false }) {
   const offset = (page - 1) * pageSize;
   let where = 'WHERE t.designer_id = ?';
   const params = [userId];
@@ -672,13 +719,16 @@ async function queryMyAccepted({ userId, role, permissions = [], taskGroup, stat
     params.push(group);
   }
 
-  where = appendStatusFilter(where, params, status);
   if (keyword) { where += ' AND (t.wangwang_id LIKE ? OR t.style_number LIKE ? OR t.title LIKE ? OR t.task_no LIKE ?)'; params.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`); }
   if (publisherId) { where += ' AND t.publisher_id = ?'; params.push(publisherId); }
   if (scoreItemId) { where += ' AND t.score_item_id = ?'; params.push(scoreItemId); }
   if (dateStart) { where += ` AND ${dateColumn} >= ?`; params.push(dateStart + ' 00:00:00'); }
   if (dateEnd) { where += ` AND ${dateColumn} <= ?`; params.push(dateEnd + ' 23:59:59'); }
   if (shopName) { where += ' AND t.shop_name = ?'; params.push(shopName); }
+
+  const statusCountWhere = where;
+  const statusCountParams = [...params];
+  where = appendStatusFilter(where, params, status);
 
   const result = await paginate({
     countSql: `SELECT COUNT(*) as total FROM task_info t ${where}`,
@@ -692,6 +742,13 @@ async function queryMyAccepted({ userId, role, permissions = [], taskGroup, stat
     dataParams: [...params, pageSize, offset],
     page, pageSize
   });
+  if (includeStatusCounts) {
+    const [rows] = await execute(
+      `SELECT t.status, COUNT(*) AS count FROM task_info t ${statusCountWhere} GROUP BY t.status`,
+      statusCountParams
+    );
+    result.statusCounts = Object.fromEntries(rows.map(row => [row.status, Number(row.count)]));
+  }
   result.list = await attachFilesToTasksForList(result.list);
   return result;
 }
@@ -1123,7 +1180,8 @@ async function getSidebarBadgeStats(userId, reviewScope = 'own', store = '') {
        SUM(CASE WHEN task_group = 'cs' AND status IN ('doing', 'pending_original_review') AND ${reviewOwnerSql} THEN 1 ELSE 0 END) as cs_review_count,
        SUM(CASE WHEN task_group = 'cs' AND status = 'rejected' AND publisher_id = ? AND COALESCE(handoff_status, '') <> 'pooled' THEN 1 ELSE 0 END) as cs_modification_count,
        SUM(CASE WHEN task_group = 'cs' AND score_review_status = 'pending' AND status IN ('doing', 'finished') THEN 1 ELSE 0 END) as score_review_count,
-       SUM(CASE WHEN task_group = 'cs' AND handoff_status = 'pooled' THEN 1 ELSE 0 END) as cs_handoff_count
+       SUM(CASE WHEN task_group = 'cs' AND handoff_status = 'pooled' THEN 1 ELSE 0 END) as cs_handoff_count,
+       SUM(CASE WHEN task_group = 'cs' AND basic_handoff_status = 'pooled' THEN 1 ELSE 0 END) as basic_handoff_count
      FROM task_info`,
     [...params, userId]
   );
@@ -1175,6 +1233,7 @@ module.exports = {
   getInitialWorkFilesForUpdate,
   deleteFileRecords,
   deleteTaskData,
+  deleteTaskDataInTransaction,
   batchDeleteTasks,
   batchReassignTasks,
   // 文件
