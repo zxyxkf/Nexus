@@ -25,7 +25,10 @@
         <el-col :span="24">
           <el-card shadow="never" class="chart-card">
             <template #header>
-              <div class="card-header"><span class="card-title">美工本月积分排行</span></div>
+              <div class="card-header dashboard-stat-header">
+                <span class="card-title">美工积分排行</span>
+                <DashboardRangeFilter :value="dashboardFilters.designerRank" :show-presets="false" @change="updateRangeFilter('designerRank', $event)" />
+              </div>
             </template>
             <div ref="designerCurrentMonthRef" style="height:300px;"></div>
           </el-card>
@@ -91,11 +94,14 @@
         <el-col :span="24">
           <el-card shadow="never" class="chart-card">
             <template #header>
-              <div class="card-header"><span class="card-title">美工日统计 ({{ currentMonthTitle }}，完成 / 待审核)</span></div>
+              <div class="card-header dashboard-stat-header">
+                <span class="card-title">美工日统计 ({{ dailyTitle(dashboardFilters.designerDaily) }}，完成 / 待审核)</span>
+                <DashboardMonthFilter :value="dashboardFilters.designerDaily" @change="updateMonthFilter('designerDaily', $event)" />
+              </div>
             </template>
             <el-table :data="designerDailyData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
               <el-table-column prop="name" label="美工" fixed="left" min-width="90" />
-              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
+              <el-table-column v-for="d in designerMonthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
                 <template #default="{ row }">
                   <div class="daily-score-cell">
                     <el-button link type="primary" @click="openDailyTasks('design', d, row, 'finished')">{{ row[`${d.key}_finished`] }}</el-button>
@@ -116,11 +122,7 @@
             <template #header>
               <div class="card-header project-stat-header">
                 <span class="card-title">项目类型完成统计</span>
-                <el-radio-group v-model="projectPeriod" size="small">
-                  <el-radio-button value="all">全部</el-radio-button>
-                  <el-radio-button value="current">当月</el-radio-button>
-                  <el-radio-button value="last">上月</el-radio-button>
-                </el-radio-group>
+                <DashboardRangeFilter :value="dashboardFilters.project" @change="updateRangeFilter('project', $event)" />
               </div>
             </template>
             <el-table :data="projectFlatData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
@@ -170,7 +172,10 @@
         <el-col :span="24">
           <el-card shadow="never" class="chart-card">
             <template #header>
-              <div class="card-header"><span class="card-title">运营助理本月积分排行</span></div>
+              <div class="card-header dashboard-stat-header">
+                <span class="card-title">运营助理积分排行</span>
+                <DashboardRangeFilter :value="dashboardFilters.operatorAssistantRank" :show-presets="false" @change="updateRangeFilter('operatorAssistantRank', $event)" />
+              </div>
             </template>
             <div ref="opAssistantCurrentMonthRef" style="height:300px;"></div>
           </el-card>
@@ -236,11 +241,14 @@
         <el-col :span="24">
           <el-card shadow="never" class="chart-card">
             <template #header>
-              <div class="card-header"><span class="card-title">运营助理日统计 ({{ currentMonthTitle }}，完成 / 待审核)</span></div>
+              <div class="card-header dashboard-stat-header">
+                <span class="card-title">运营助理日统计 ({{ dailyTitle(dashboardFilters.operatorAssistantDaily) }}，完成 / 待审核)</span>
+                <DashboardMonthFilter :value="dashboardFilters.operatorAssistantDaily" @change="updateMonthFilter('operatorAssistantDaily', $event)" />
+              </div>
             </template>
             <el-table :data="operatorAssistantDailyData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
               <el-table-column prop="name" label="助理" fixed="left" min-width="90" />
-              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
+              <el-table-column v-for="d in operatorAssistantMonthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
                 <template #default="{ row }">
                   <div class="daily-score-cell">
                     <el-button link type="primary" @click="openDailyTasks('operator', d, row, 'finished')">{{ row[`${d.key}_finished`] }}</el-button>
@@ -293,7 +301,10 @@
         <el-col :span="24">
           <el-card shadow="never" class="chart-card">
             <template #header>
-              <div class="card-header"><span class="card-title">基础美工本月效果图&原图数量</span></div>
+              <div class="card-header dashboard-stat-header">
+                <span class="card-title">基础美工效果图&原图数量</span>
+                <DashboardRangeFilter :value="dashboardFilters.basicImage" @change="updateRangeFilter('basicImage', $event)" />
+              </div>
             </template>
             <div ref="basicImageCurrentMonthRef" style="height:300px;"></div>
           </el-card>
@@ -317,7 +328,10 @@
         <el-col :span="24">
           <el-card shadow="never" class="chart-card">
             <template #header>
-              <div class="card-header"><span class="card-title">基础美工本月积分排行</span></div>
+              <div class="card-header dashboard-stat-header">
+                <span class="card-title">基础美工积分排行</span>
+                <DashboardRangeFilter :value="dashboardFilters.basicRank" @change="updateRangeFilter('basicRank', $event)" />
+              </div>
             </template>
             <div ref="basicCurrentMonthRef" style="height:300px;"></div>
           </el-card>
@@ -368,11 +382,14 @@
         <el-col :span="24">
           <el-card shadow="never" class="chart-card">
             <template #header>
-              <div class="card-header"><span class="card-title">基础美工日统计 ({{ currentMonthTitle }}，完成 / 待审核)</span></div>
+              <div class="card-header dashboard-stat-header">
+                <span class="card-title">基础美工日统计 ({{ dailyTitle(dashboardFilters.basicDaily) }}，完成 / 待审核)</span>
+                <DashboardMonthFilter :value="dashboardFilters.basicDaily" @change="updateMonthFilter('basicDaily', $event)" />
+              </div>
             </template>
             <el-table :data="basicDesignerDailyData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
               <el-table-column prop="name" label="基础美工" fixed="left" min-width="90" />
-              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
+              <el-table-column v-for="d in basicMonthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center">
                 <template #default="{ row }">
                   <div class="daily-score-cell">
                     <el-button link type="primary" @click="openDailyTasks('cs', d, row, 'finished')">{{ row[`${d.key}_finished`] }}</el-button>
@@ -391,11 +408,14 @@
         <el-col :span="24">
           <el-card shadow="never" class="chart-card">
             <template #header>
-              <div class="card-header"><span class="card-title">基础美工效果图&原图日统计（{{ currentMonthTitle }}）</span></div>
+              <div class="card-header dashboard-stat-header">
+                <span class="card-title">基础美工效果图&原图日统计（{{ dailyTitle(dashboardFilters.basicImageDaily) }}）</span>
+                <DashboardMonthFilter :value="dashboardFilters.basicImageDaily" @change="updateMonthFilter('basicImageDaily', $event)" />
+              </div>
             </template>
             <el-table :data="basicDesignerImageDailyData" stripe size="small" class="dashboard-wide-table" style="width:100%;">
               <el-table-column prop="name" label="基础美工" fixed="left" min-width="90" />
-              <el-table-column v-for="d in monthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center" />
+              <el-table-column v-for="d in basicImageMonthDays" :key="d.key" :prop="d.key" :label="d.label" width="92" align="center" />
             </el-table>
           </el-card>
         </el-col>
@@ -435,6 +455,8 @@ import { getDashboardStatsApi, getAdminDetailStatsApi } from '@/api'
 import { exportDashboardApi } from '@/api/export'
 import { getUser } from '@/utils/auth'
 import { hasPermission } from '@/utils/permissions'
+import DashboardRangeFilter from './components/DashboardRangeFilter.vue'
+import DashboardMonthFilter from './components/DashboardMonthFilter.vue'
 
 const route = useRoute()
 const router = useRouter()
@@ -483,17 +505,43 @@ const showDesignSection = computed(() => allowedGroups.value.includes('design'))
 const showOperatorSection = computed(() => allowedGroups.value.includes('operator'))
 const showCsSection = computed(() => allowedGroups.value.includes('cs'))
 const nowForView = new Date()
-const currentMonthTitle = `${nowForView.getFullYear()}年${nowForView.getMonth() + 1}月`
-const projectPeriod = ref('all')
-const projectCountKey = computed(() => ({
-  all: 'count',
-  current: 'current_month_count',
-  last: 'last_month_count'
-}[projectPeriod.value] || 'count'))
-const monthDays = computed(() => {
-  const count = new Date(nowForView.getFullYear(), nowForView.getMonth() + 1, 0).getDate()
-  return Array.from({ length: count }, (_, i) => ({ key: `d${i + 1}`, label: `${i + 1}日` }))
+const dashboardFilters = ref({
+  designerRank: { preset: 'current' },
+  designerDaily: { year: nowForView.getFullYear(), month: nowForView.getMonth() + 1 },
+  project: { preset: 'current' },
+  operatorAssistantRank: { preset: 'current' },
+  operatorAssistantDaily: { year: nowForView.getFullYear(), month: nowForView.getMonth() + 1 },
+  basicImage: { preset: 'current' },
+  basicRank: { preset: 'current' },
+  basicDaily: { year: nowForView.getFullYear(), month: nowForView.getMonth() + 1 },
+  basicImageDaily: { year: nowForView.getFullYear(), month: nowForView.getMonth() + 1 }
 })
+
+function monthDaysFor(filter) {
+  const year = Number(filter?.year) || nowForView.getFullYear()
+  const month = Number(filter?.month) || nowForView.getMonth() + 1
+  const count = new Date(year, month, 0).getDate()
+  return Array.from({ length: count }, (_, i) => ({ key: `d${i + 1}`, label: `${i + 1}日` }))
+}
+const monthDays = computed(() => monthDaysFor({ year: nowForView.getFullYear(), month: nowForView.getMonth() + 1 }))
+const designerMonthDays = computed(() => monthDaysFor(dashboardFilters.value.designerDaily))
+const operatorAssistantMonthDays = computed(() => monthDaysFor(dashboardFilters.value.operatorAssistantDaily))
+const basicMonthDays = computed(() => monthDaysFor(dashboardFilters.value.basicDaily))
+const basicImageMonthDays = computed(() => monthDaysFor(dashboardFilters.value.basicImageDaily))
+
+function dailyTitle(filter) {
+  return `${filter?.year || nowForView.getFullYear()}年${filter?.month || nowForView.getMonth() + 1}月`
+}
+
+function updateRangeFilter(key, value) {
+  dashboardFilters.value = { ...dashboardFilters.value, [key]: { ...value } }
+  loadDetailStats()
+}
+
+function updateMonthFilter(key, value) {
+  dashboardFilters.value = { ...dashboardFilters.value, [key]: { ...value } }
+  loadDetailStats()
+}
 
 const statCards = [
   { key: 'total', label: '任务总量', color: '#4361ee' },
@@ -541,8 +589,9 @@ const monthlyFlatData = computed(() => {
 
 const allProjectNames = computed(() => {
   const names = new Set()
-  if (!detailStats.value.designerStats) return []
-  for (const d of detailStats.value.designerStats) {
+  const source = detailStats.value.dashboardProjectStats || detailStats.value.designerStats
+  if (!source) return []
+  for (const d of source) {
     if (!d.project_stats) continue
     for (const p of d.project_stats) {
       if (p.project_name) names.add(p.project_name)
@@ -553,12 +602,13 @@ const allProjectNames = computed(() => {
 
 const projectFlatData = computed(() => {
   const rows = []
-  if (!detailStats.value.designerStats) return rows
-  for (const d of detailStats.value.designerStats) {
+  const source = detailStats.value.dashboardProjectStats || detailStats.value.designerStats
+  if (!source) return rows
+  for (const d of source) {
     const row = { designer_name: d.name }
     if (d.project_stats) {
       for (const p of d.project_stats) {
-        row[p.project_name] = Number(p[projectCountKey.value] || 0)
+        row[p.project_name] = Number(p.count || 0)
       }
     }
     for (const p of allProjectNames.value) {
@@ -626,12 +676,12 @@ const operatorAssistantMonthlyData = computed(() => {
 
 const operatorPublishData = computed(() => buildPublisherRows(detailStats.value.operatorPublishStats))
 
-function buildDailyRows(source, nameKey = 'name') {
+function buildDailyRows(source, nameKey = 'name', days = monthDays.value) {
   if (!source?.length) return []
   return source.map(item => {
     const userId = item.user_id || item.userId || item.id
     const row = { id: userId, userId, name: item[nameKey] || item.name }
-    for (const day of monthDays.value) {
+    for (const day of days) {
       row[day.key] = '0 / 0'
       row[`${day.key}_finished`] = 0
       row[`${day.key}_pending`] = 0
@@ -646,18 +696,30 @@ function buildDailyRows(source, nameKey = 'name') {
   })
 }
 
-const designerDailyData = computed(() => buildDailyRows(detailStats.value.designerDailyStats))
-const operatorAssistantDailyData = computed(() => buildDailyRows(detailStats.value.operatorAssistantDailyStats))
-const basicDesignerDailyData = computed(() => buildDailyRows(detailStats.value.basicDesignerDailyStats))
+const designerDailyData = computed(() => buildDailyRows(
+  detailStats.value.dashboardDesignerDailyStats || detailStats.value.designerDailyStats,
+  'name',
+  designerMonthDays.value
+))
+const operatorAssistantDailyData = computed(() => buildDailyRows(
+  detailStats.value.dashboardOperatorAssistantDailyStats || detailStats.value.operatorAssistantDailyStats,
+  'name',
+  operatorAssistantMonthDays.value
+))
+const basicDesignerDailyData = computed(() => buildDailyRows(
+  detailStats.value.dashboardBasicDesignerDailyStats || detailStats.value.basicDesignerDailyStats,
+  'name',
+  basicMonthDays.value
+))
 
-function buildBasicDesignerImageDailyRows(source) {
+function buildBasicDesignerImageDailyRows(source, days = monthDays.value) {
   if (!source?.length) return []
   return source.map(item => {
     const row = {
       id: item.user_id || item.id,
       name: item.name || item.username || '-'
     }
-    for (const day of monthDays.value) row[day.key] = '0 / 0'
+    for (const day of days) row[day.key] = '0 / 0'
     for (const stat of item.daily_stats || []) {
       row[`d${stat.day}`] = `${Number(stat.effect_count || 0)} / ${Number(stat.original_count || 0)}`
     }
@@ -665,7 +727,10 @@ function buildBasicDesignerImageDailyRows(source) {
   })
 }
 
-const basicDesignerImageDailyData = computed(() => buildBasicDesignerImageDailyRows(detailStats.value.basicDesignerImageDailyStats))
+const basicDesignerImageDailyData = computed(() => buildBasicDesignerImageDailyRows(
+  detailStats.value.dashboardBasicDesignerImageDailyStats || detailStats.value.basicDesignerImageDailyStats,
+  basicImageMonthDays.value
+))
 
 async function exportDashboardReport() {
   const blob = await exportDashboardApi({ groups: allowedGroups.value.join(',') })
@@ -714,7 +779,13 @@ function openDailyTasks(group, dayInfo, row, status = 'finished') {
     ElMessage.warning('日期参数异常，请刷新后重试')
     return
   }
-  const date = `${nowForView.getFullYear()}-${String(nowForView.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
+  const dailyFilterKey = {
+    design: 'designerDaily',
+    operator: 'operatorAssistantDaily',
+    cs: 'basicDaily'
+  }[group]
+  const dailyFilter = dashboardFilters.value[dailyFilterKey] || {}
+  const date = `${dailyFilter.year || nowForView.getFullYear()}-${String(dailyFilter.month || nowForView.getMonth() + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`
   const extraQuery = target.query?.(row) || {}
   const dateField = status === 'doing' ? 'submit' : 'finish'
   const drilldownKey = `${group}-${status}-${row?.userId || 'all'}-${date}-${Date.now()}`
@@ -741,10 +812,11 @@ function openDailyTasks(group, dayInfo, row, status = 'finished') {
   })
 }
 
-function initCharts(data) {
+function initCharts(data, options = {}) {
+  const includeCurrent = options.includeCurrent !== false
   nextTick(() => {
     // 美工本月积分排行
-    if (designerCurrentMonthRef.value && data.designerCurrentMonthRank?.length) {
+    if (includeCurrent && designerCurrentMonthRef.value && data.designerCurrentMonthRank?.length) {
       designerCurrentMonthChart = designerCurrentMonthChart || echarts.init(designerCurrentMonthRef.value)
       designerCurrentMonthChart.setOption({
         tooltip: { trigger: 'axis' },
@@ -757,7 +829,7 @@ function initCharts(data) {
         yAxis: { type: 'value', minInterval: 1 },
         series: [{
           type: 'bar',
-          name: '本月积分',
+          name: '积分',
           data: data.designerCurrentMonthRank.map(d => d.current_month_score),
           itemStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -800,7 +872,7 @@ function initCharts(data) {
     }
 
     // 基础美工本月积分排行
-    if (basicCurrentMonthRef.value && data.basicDesignerCurrentMonthRank?.length) {
+    if (includeCurrent && basicCurrentMonthRef.value && data.basicDesignerCurrentMonthRank?.length) {
       basicCurrentMonthChart = basicCurrentMonthChart || echarts.init(basicCurrentMonthRef.value)
       basicCurrentMonthChart.setOption({
         tooltip: { trigger: 'axis' },
@@ -813,7 +885,7 @@ function initCharts(data) {
         yAxis: { type: 'value', minInterval: 1 },
         series: [{
           type: 'bar',
-          name: '本月积分',
+          name: '积分',
           data: data.basicDesignerCurrentMonthRank.map(d => d.current_month_score),
           itemStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -856,7 +928,7 @@ function initCharts(data) {
     }
 
     // 运营助理本月积分排行
-    if (opAssistantCurrentMonthRef.value && data.operatorAssistantCurrentMonthRank?.length) {
+    if (includeCurrent && opAssistantCurrentMonthRef.value && data.operatorAssistantCurrentMonthRank?.length) {
       opAssistantCurrentMonthChart = opAssistantCurrentMonthChart || echarts.init(opAssistantCurrentMonthRef.value)
       opAssistantCurrentMonthChart.setOption({
         tooltip: { trigger: 'axis' },
@@ -869,7 +941,7 @@ function initCharts(data) {
         yAxis: { type: 'value', minInterval: 1 },
         series: [{
           type: 'bar',
-          name: '本月积分',
+          name: '积分',
           data: data.operatorAssistantCurrentMonthRank.map(d => d.current_month_score),
           itemStyle: {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
@@ -914,9 +986,8 @@ function initCharts(data) {
   })
 }
 
-function initBasicDesignerImageCharts() {
+function initBasicDesignerImageCharts(monthly = detailStats.value.basicDesignerImageMonthlyStats || { current: [], last: [] }) {
   nextTick(() => {
-    const monthly = detailStats.value.basicDesignerImageMonthlyStats || { current: [], last: [] }
     const render = (element, chart, rows, title) => {
       if (!element) return chart
       const instance = chart || echarts.init(element)
@@ -955,8 +1026,8 @@ function initBasicDesignerImageCharts() {
     basicImageCurrentMonthChart = render(
       basicImageCurrentMonthRef.value,
       basicImageCurrentMonthChart,
-      monthly.current,
-      '基础美工本月效果图&原图数量'
+      detailStats.value.dashboardBasicDesignerImageStats || monthly.current,
+      '基础美工效果图&原图数量'
     )
     basicImageLastMonthChart = render(
       basicImageLastMonthRef.value,
@@ -975,7 +1046,7 @@ async function loadData(options = {}) {
       designStats.value = res.data.designStats
       csStats.value = res.data.csStats
       operatorStats.value = res.data.operatorStats
-      initCharts(res.data)
+      initCharts(res.data, { includeCurrent: false })
     }
   } catch (e) {
     console.warn('[Dashboard] 加载失败:', e.message)
@@ -984,10 +1055,22 @@ async function loadData(options = {}) {
 
 async function loadDetailStats() {
   try {
-    const res = await getAdminDetailStatsApi()
+    const res = await getAdminDetailStatsApi({ filters: JSON.stringify(dashboardFilters.value) })
     if (res.code === 0) {
       detailStats.value = res.data
-      initBasicDesignerImageCharts()
+      const filteredRanks = {
+        designerCurrentMonthRank: (res.data.dashboardDesignerRank || []).map(row => ({ ...row, current_month_score: row.score })),
+        operatorAssistantCurrentMonthRank: (res.data.dashboardOperatorAssistantRank || []).map(row => ({ ...row, current_month_score: row.score })),
+        basicDesignerCurrentMonthRank: (res.data.dashboardBasicDesignerRank || []).map(row => ({ ...row, current_month_score: row.score }))
+      }
+      initCharts({ ...res.data, ...filteredRanks })
+      if (!filteredRanks.designerCurrentMonthRank.length) designerCurrentMonthChart?.clear()
+      if (!filteredRanks.operatorAssistantCurrentMonthRank.length) opAssistantCurrentMonthChart?.clear()
+      if (!filteredRanks.basicDesignerCurrentMonthRank.length) basicCurrentMonthChart?.clear()
+      initBasicDesignerImageCharts({
+        current: res.data.basicDesignerImageMonthlyStats?.current || [],
+        last: res.data.basicDesignerImageMonthlyStats?.last || []
+      })
     }
   } catch (e) {
     console.warn('[Dashboard] 加载综合统计失败:', e.message)
@@ -1036,6 +1119,13 @@ onUnmounted(() => {
 
 <style scoped>
 .project-stat-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.dashboard-stat-header {
   display: flex;
   align-items: center;
   justify-content: space-between;

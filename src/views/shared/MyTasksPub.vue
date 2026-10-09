@@ -70,7 +70,7 @@
                 @click="selectStatus(option.value)"
               >
                 <span>{{ option.label }}</span>
-                <span class="status-count">{{ getCsStatusCount(option.value) }}</span>
+                <span v-if="getCsStatusCount(option.value) > 0" class="status-count">{{ getCsStatusCount(option.value) }}</span>
               </button>
             </div>
             <el-select v-else v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="handleFilterChange">

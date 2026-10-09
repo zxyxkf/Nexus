@@ -52,7 +52,7 @@
                 @click="selectBasicStatus(option.value)"
               >
                 <span>{{ option.label }}</span>
-                <span class="status-count">{{ getBasicStatusCount(option.value) }}</span>
+                <span v-if="getBasicStatusCount(option.value) > 0" class="status-count">{{ getBasicStatusCount(option.value) }}</span>
               </button>
             </div>
             <el-select v-else-if="!fixedStatus || isTodoRoute" v-model="statusFilter" placeholder="状态筛选" clearable style="width:130px;" @change="loadData">
@@ -263,6 +263,11 @@
             type="warning"
             @click="openUpload(currentTask)"
           >上传作品</el-button>
+          <el-button
+            v-if="currentTask.status === 'pending_original'"
+            type="success"
+            @click="openOriginalUpload(currentTask)"
+          >上传原图</el-button>
         </template>
         <template #modifications>
           <CsModificationRecords
@@ -353,6 +358,9 @@
       <el-form-item label="申请分数" style="margin-top:12px;">
         <el-input-number v-model="appliedScore" :min="1" :step="0.5" :precision="1" style="width:100%;" placeholder="默认为1分，大于1需组长审核" />
         <div class="form-hint">默认1分无需审核；大于1分需组长审核通过后生效</div>
+      </el-form-item>
+      <el-form-item label="疑问说明">
+        <el-input v-model="firstUploadNote" type="textarea" :rows="3" :maxlength="2000" show-word-limit placeholder="首次上传时可填写需要客服确认的问题（选填）" />
       </el-form-item>
       <el-progress v-if="uploadLoading" :percentage="uploadProgress" style="margin-top:12px;" />
       <template #footer>
@@ -508,6 +516,7 @@ const retainedWorkImageList = computed(() => retainedWorkFiles.value
   .map(file => file._previewSrc || getFileUrl(file)))
 
 const appliedScore = ref(1)
+const firstUploadNote = ref('')
 const transferVisible = ref(false)
 const transferLoading = ref(false)
 const transferTask = ref(null)
@@ -717,6 +726,7 @@ function openUpload(row) {
     file.file_category === 'work' && !file.reject_record_id
   ))
   appliedScore.value = Number(row.applied_score) > 0 ? Number(row.applied_score) : 1
+  firstUploadNote.value = row.first_upload_note || ''
   uploadVisible.value = true
 }
 
@@ -768,6 +778,7 @@ async function handleUpload() {
   try {
     const uploadOptions = {
       appliedScore: appliedScore.value,
+      firstUploadNote: firstUploadNote.value,
       retainedFileIds: retainedWorkFiles.value.map(file => file.id),
       onUploadProgress: (event) => {
         if (event.total) uploadProgress.value = Math.min(99, Math.round((event.loaded * 100) / event.total))

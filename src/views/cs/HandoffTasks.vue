@@ -16,7 +16,7 @@
                 @click="selectStatus(option.value)"
               >
                 <span>{{ option.label }}</span>
-                <span class="status-count">{{ getStatusCount(option.value) }}</span>
+                <span v-if="getStatusCount(option.value) > 0" class="status-count">{{ getStatusCount(option.value) }}</span>
               </button>
             </div>
             <el-input

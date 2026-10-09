@@ -130,7 +130,8 @@ const CREATE_TABLES_SQL = {
       handoff_status TEXT DEFAULT '',
       handoff_time TEXT,
       basic_handoff_status TEXT DEFAULT '',
-      basic_handoff_time TEXT
+      basic_handoff_time TEXT,
+      first_upload_note TEXT
     )`,
     `CREATE TABLE IF NOT EXISTS task_file (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -369,7 +370,8 @@ const CREATE_TABLES_SQL = {
       handoff_status VARCHAR(20) DEFAULT '',
       handoff_time DATETIME NULL,
       basic_handoff_status VARCHAR(20) DEFAULT '',
-      basic_handoff_time DATETIME NULL
+      basic_handoff_time DATETIME NULL,
+      first_upload_note TEXT
     ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`,
     `CREATE TABLE IF NOT EXISTS task_file (
       id INT AUTO_INCREMENT PRIMARY KEY,
@@ -685,6 +687,7 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN handoff_time DATETIME NULL`,
       `ALTER TABLE task_info ADD COLUMN basic_handoff_status VARCHAR(20) DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN basic_handoff_time DATETIME NULL`,
+      `ALTER TABLE task_info ADD COLUMN first_upload_note TEXT`,
       `CREATE TABLE IF NOT EXISTS task_transfer_record (
         id INT AUTO_INCREMENT PRIMARY KEY,
         task_id INT NOT NULL,
@@ -773,6 +776,7 @@ async function initDatabase() {
       `ALTER TABLE task_info ADD COLUMN handoff_time TEXT`,
       `ALTER TABLE task_info ADD COLUMN basic_handoff_status TEXT DEFAULT ''`,
       `ALTER TABLE task_info ADD COLUMN basic_handoff_time TEXT`,
+      `ALTER TABLE task_info ADD COLUMN first_upload_note TEXT`,
       `CREATE TABLE IF NOT EXISTS task_transfer_record (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         task_id INTEGER NOT NULL,

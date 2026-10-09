@@ -63,16 +63,15 @@ function clearToastTimers(id) {
 }
 
 function scheduleLayout() {
-  requestAnimationFrame(() => {
-    const root = rootEl()
-    const height = Math.max(1, Math.ceil(root.scrollHeight))
-    ipcRenderer.send('toast:resize-window', { height })
-    if (toasts.length > 0) {
-      ipcRenderer.send('toast:show-window', { height })
-    } else {
-      ipcRenderer.send('toast:hide-window')
-    }
-  })
+  // Chromium can pause animation frames while this window is hidden.
+  const root = rootEl()
+  const height = Math.max(1, Math.ceil(root.scrollHeight))
+  ipcRenderer.send('toast:resize-window', { height })
+  if (toasts.length > 0) {
+    ipcRenderer.send('toast:show-window', { height })
+  } else {
+    ipcRenderer.send('toast:hide-window')
+  }
 }
 
 function removeToast(id, animate = true) {

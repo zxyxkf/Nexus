@@ -30,7 +30,7 @@
                 @click="selectReviewStatus(option.value)"
               >
                 <span>{{ option.label }}</span>
-                <span class="status-count">{{ getCsReviewStatusCount(option.value) }}</span>
+                <span v-if="getCsReviewStatusCount(option.value) > 0" class="status-count">{{ getCsReviewStatusCount(option.value) }}</span>
               </button>
             </div>
           </div>

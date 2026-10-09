@@ -140,8 +140,11 @@
           />
         </section>
 
-        <section v-if="workFiles.length" class="task-detail-media-section">
-          <h3 v-if="workImageFiles.length">{{ workImageLabel }} ({{ workImageFiles.length }})</h3>
+        <section v-if="workFiles.length || (isCsTask && task.first_upload_note)" class="task-detail-media-section">
+          <h3 v-if="workImageFiles.length || (isCsTask && task.first_upload_note)">{{ workImageLabel }} ({{ workImageFiles.length }})</h3>
+          <p v-if="isCsTask && task.first_upload_note" class="task-detail-upload-note">
+            <strong>疑问说明：</strong>{{ task.first_upload_note }}
+          </p>
           <div v-if="workImageFiles.length" class="task-detail-image-grid">
             <TaskDetailImage
               v-for="(file, index) in workImageFiles"
@@ -254,7 +257,11 @@ const refPreviewList = computed(() => currentContext.value === 'source-task'
 const workPreviewList = computed(() => currentContext.value === 'source-task'
   ? sourcePreviewList.value
   : workImageFiles.value.map(file => file._previewSrc || getFileUrl(file)))
-const hasGeneralMedia = computed(() => refFiles.value.length > 0 || workFiles.value.length > 0)
+const hasGeneralMedia = computed(() => (
+  refFiles.value.length > 0
+  || workFiles.value.length > 0
+  || (isCsTask.value && Boolean(props.task?.first_upload_note))
+))
 const isOperatorTask = computed(() => props.taskGroup === 'operator')
 const isCsTask = computed(() => props.taskGroup === 'cs')
 const showStatusTimeline = computed(() => !['hall', 'score-review'].includes(currentContext.value))
@@ -697,6 +704,19 @@ function statusType(status) {
   font-size: 13px;
   letter-spacing: 0;
 }
+
+.task-detail-upload-note {
+  margin: -2px 0 12px;
+  padding: 9px 11px;
+  border-left: 3px solid #409eff;
+  background: #f4f8ff;
+  color: #596579;
+  line-height: 1.6;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.task-detail-upload-note strong { color: #253047; }
 
 .task-detail-image-grid {
   display: grid;

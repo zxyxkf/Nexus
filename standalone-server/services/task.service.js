@@ -848,6 +848,15 @@ function filterAdminDetailStatsByPermission(data, user) {
     operatorStats: allowed.has('design') ? data.operatorStats : [],
     operatorPublishStats: allowed.has('operator') ? data.operatorPublishStats : [],
     csAgentStats: allowed.has('cs') ? data.csAgentStats : [],
+    dashboardDesignerRank: allowed.has('design') ? data.dashboardDesignerRank : [],
+    dashboardOperatorAssistantRank: allowed.has('operator') ? data.dashboardOperatorAssistantRank : [],
+    dashboardBasicDesignerRank: allowed.has('cs') ? data.dashboardBasicDesignerRank : [],
+    dashboardProjectStats: allowed.has('design') ? data.dashboardProjectStats : [],
+    dashboardBasicDesignerImageStats: allowed.has('cs') ? data.dashboardBasicDesignerImageStats : [],
+    dashboardDesignerDailyStats: allowed.has('design') ? data.dashboardDesignerDailyStats : [],
+    dashboardOperatorAssistantDailyStats: allowed.has('operator') ? data.dashboardOperatorAssistantDailyStats : [],
+    dashboardBasicDesignerDailyStats: allowed.has('cs') ? data.dashboardBasicDesignerDailyStats : [],
+    dashboardBasicDesignerImageDailyStats: allowed.has('cs') ? data.dashboardBasicDesignerImageDailyStats : [],
     scoreItems
   };
 }
@@ -905,6 +914,8 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
   const rejectRecordId = options.rejectRecordId ? Number(options.rejectRecordId) : null;
   const hasModificationReply = Object.prototype.hasOwnProperty.call(options, 'modificationReply');
   const modificationReply = String(options.modificationReply || '').trim();
+  const firstUploadNote = String(options.firstUploadNote || '').trim();
+  if (firstUploadNote.length > 2000) throw new AppError(400, '疑问说明不能超过2000个字符');
   const hasRetainedFileIds = Object.prototype.hasOwnProperty.call(options, 'retainedFileIds');
   const retainedFileIds = [...new Set((options.retainedFileIds || [])
     .map(Number)
@@ -1075,6 +1086,9 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
           extraFields.score_review_reason = '';
           extraFields.score_review_time = null;
           extraFields.score_review_score = 0;
+          if (taskGroup === 'cs' && task.status === 'accepted') {
+            extraFields.first_upload_note = firstUploadNote;
+          }
         }
         if (hasWorkPathField) extraFields.work_path = workPath;
         await taskDao.updateTaskStatus(conn, taskId, 'doing', extraFields);
@@ -1101,6 +1115,7 @@ async function uploadFiles(taskId, files, fileCategory, actualQuantity, appliedS
         score_review_reason: '',
         score_review_time: null,
         score_review_score: 0,
+        first_upload_note: firstUploadNote,
         urge_time: null
       });
       submitted = true;
@@ -1195,9 +1210,13 @@ async function uploadOriginalFiles(taskId, files, user) {
   return { msg: `原图上传成功（${files.length}个文件）` };
 }
 
-async function completeOriginalUpload(taskId, user) {
+async function completeOriginalUpload(taskId, user, appliedScore = 1) {
   if (!taskId) throw new AppError(400, '任务ID不能为空');
   await basicHandoffService.assertBasicActionAvailable(user, '提交原图');
+  const normalizedScore = Number(appliedScore);
+  if (!Number.isFinite(normalizedScore) || normalizedScore < 1 || normalizedScore > 9999) {
+    throw new AppError(400, '申请分数必须在1到9999之间');
+  }
 
   return withLock(`original-upload:${taskId}`, async () => {
     let taskBrief = null;
@@ -1217,7 +1236,13 @@ async function completeOriginalUpload(taskId, user) {
 
       await taskDao.updateTaskStatus(conn, taskId, 'pending_original_review', {
         finish_time: null,
-        urge_time: null
+        urge_time: null,
+        applied_score: normalizedScore,
+        score: 1,
+        score_review_status: '',
+        score_review_reason: '',
+        score_review_time: null,
+        score_review_score: 0
       });
       taskBrief = { ...task, id: taskId, status: 'pending_original_review' };
     });
@@ -2262,6 +2287,98 @@ function localDateTimeString(date) {
   return `${y}-${m}-${d} ${h}:${min}:${s}`;
 }
 
+function resolveDashboardRange(filter = {}, refDate = new Date()) {
+  const now = refDate instanceof Date ? refDate : new Date(refDate);
+  const currentStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+  const preset = filter?.preset || 'current';
+
+  if (preset === 'all') return { start: null, end: null };
+  if (preset === 'current') return { start: currentStart, end: nextMonthStart };
+  if (preset === 'last') return { start: lastMonthStart, end: currentStart };
+
+  if (preset === 'custom' && Array.isArray(filter?.start) && filter.start.length === 2) {
+    filter = { ...filter, start: filter.start[0], end: filter.start[1] };
+  }
+  if (preset !== 'custom' || !filter?.start || !filter?.end) {
+    return { start: currentStart, end: nextMonthStart };
+  }
+
+  const mode = filter.mode === 'month' ? 'month' : 'day';
+  const start = mode === 'month'
+    ? parseDateTime(`${String(filter.start).slice(0, 7)}-01 00:00:00`)
+    : parseDateTime(`${String(filter.start).slice(0, 10)} 00:00:00`);
+  const endValue = mode === 'month'
+    ? parseDateTime(`${String(filter.end).slice(0, 7)}-01 00:00:00`)
+    : parseDateTime(`${String(filter.end).slice(0, 10)} 00:00:00`);
+  if (!start || !endValue || endValue < start) return { start: currentStart, end: nextMonthStart };
+
+  const end = mode === 'month'
+    ? new Date(endValue.getFullYear(), endValue.getMonth() + 1, 1)
+    : new Date(endValue.getFullYear(), endValue.getMonth(), endValue.getDate() + 1);
+  return { start, end };
+}
+
+function resolveDashboardMonth(filter = {}, refDate = new Date()) {
+  const year = Number(filter?.year);
+  const month = Number(filter?.month);
+  const targetYear = Number.isInteger(year) && year >= 2000 && year <= 2100 ? year : refDate.getFullYear();
+  const targetMonth = Number.isInteger(month) && month >= 1 && month <= 12 ? month : refDate.getMonth() + 1;
+  return new Date(targetYear, targetMonth - 1, 1);
+}
+
+function taskBelongsToGroup(task, taskGroup) {
+  if (task.task_group === taskGroup) return true;
+  return taskGroup === 'design' && !task.task_group;
+}
+
+function isInDashboardRange(date, range) {
+  return date && (!range.start || date >= range.start) && (!range.end || date < range.end);
+}
+
+function buildScoreRangeStats(users, tasks, range, taskGroup) {
+  const userMap = new Map((users || []).map(user => [Number(user.id), {
+    id: user.id,
+    name: user.name || user.username,
+    score: 0
+  }]));
+
+  for (const task of tasks || []) {
+    if (task.status !== 'finished' || task.score_review_status === 'pending' || !taskBelongsToGroup(task, taskGroup)) continue;
+    const user = userMap.get(Number(task.designer_id));
+    const finishTime = parseDateTime(task.finish_time);
+    if (!user || !isInDashboardRange(finishTime, range)) continue;
+    user.score += scoreForStats(task, taskGroup);
+  }
+
+  return [...userMap.values()]
+    .map(row => ({ ...row, current_month_score: Math.round(row.score * 100) / 100 }))
+    .filter(row => row.score !== 0)
+    .sort((a, b) => b.score - a.score || String(a.name || '').localeCompare(String(b.name || ''), 'zh-Hans-CN'));
+}
+
+function buildProjectRangeStats(users, tasks, scoreItems, range) {
+  const projectItems = (scoreItems || []).filter(item => item.source === 'design');
+  return (users || []).map(user => {
+    const counts = new Map(projectItems.map(item => [Number(item.id), {
+      project_name: item.name,
+      count: 0
+    }]));
+    for (const task of tasks || []) {
+      if (Number(task.designer_id) !== Number(user.id) || task.status !== 'finished' || !taskBelongsToGroup(task, 'design')) continue;
+      const finishTime = parseDateTime(task.finish_time);
+      const project = counts.get(Number(task.score_item_id));
+      if (project && isInDashboardRange(finishTime, range)) project.count += 1;
+    }
+    return {
+      id: user.id,
+      name: user.name || user.username,
+      project_stats: [...counts.values()]
+    };
+  });
+}
+
 function aggregateBasicDesignerImageStats(rows, users, start, end) {
   const result = new Map((users || []).map(user => [Number(user.id), {
     id: user.id,
@@ -2273,7 +2390,7 @@ function aggregateBasicDesignerImageStats(rows, users, start, end) {
   for (const row of rows || []) {
     const uploadedAt = parseDateTime(row.create_time);
     const userId = Number(row.uploader_id);
-    if (!uploadedAt || uploadedAt < start || uploadedAt >= end || !result.has(userId)) continue;
+    if (!uploadedAt || (start && uploadedAt < start) || (end && uploadedAt >= end) || !result.has(userId)) continue;
     const target = result.get(userId);
     if (row.file_category === 'work') target.effect_count += 1;
     if (row.file_category === 'original') target.original_count += 1;
@@ -2470,12 +2587,26 @@ async function getDashboardStats(user = null) {
   return user ? filterDashboardStatsByPermission(data, user) : data;
 }
 
-async function getAdminDetailStats(user = null) {
+async function getAdminDetailStats(user = null, filters = {}) {
   const now = new Date();
   const thisYear = now.getFullYear();
   const lastMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
   const thisMonthStart = new Date(now.getFullYear(), now.getMonth(), 1);
   const nextMonthStart = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+
+  const basicImageRange = resolveDashboardRange(filters.basicImage, now);
+  const basicImageDailyMonth = resolveDashboardMonth(filters.basicImageDaily, now);
+  let imageQueryStart = lastMonthStart;
+  let imageQueryEnd = nextMonthStart;
+  if (!basicImageRange.start || !basicImageRange.end) {
+    imageQueryStart = null;
+    imageQueryEnd = null;
+  } else {
+    imageQueryStart = new Date(Math.min(imageQueryStart, basicImageRange.start));
+    imageQueryEnd = new Date(Math.max(imageQueryEnd, basicImageRange.end));
+    imageQueryStart = new Date(Math.min(imageQueryStart, basicImageDailyMonth));
+    imageQueryEnd = new Date(Math.max(imageQueryEnd, new Date(basicImageDailyMonth.getFullYear(), basicImageDailyMonth.getMonth() + 1, 1)));
+  }
 
   const [designers, basicDesigners, operatorAssistants, scoreItems, allTasks, basicDesignerFileRows] = await Promise.all([
     taskDao.getUsersByRoleWithUsername('designer'),
@@ -2484,8 +2615,8 @@ async function getAdminDetailStats(user = null) {
     taskDao.getScoreItems(),
     taskDao.getAllTasksForStats(),
     taskDao.getBasicDesignerFileStats({
-      start: localDateTimeString(lastMonthStart),
-      end: localDateTimeString(nextMonthStart)
+      start: imageQueryStart ? localDateTimeString(imageQueryStart) : undefined,
+      end: imageQueryEnd ? localDateTimeString(imageQueryEnd) : undefined
     })
   ]);
 
@@ -2493,6 +2624,13 @@ async function getAdminDetailStats(user = null) {
   const designTasks = allTasks.filter(t => t.task_group === 'design' || !t.task_group)
   const operatorTasks = allTasks.filter(t => t.task_group === 'operator')
   const csTasks = allTasks.filter(t => t.task_group === 'cs')
+  const designerRankRange = resolveDashboardRange(filters.designerRank, now);
+  const operatorAssistantRankRange = resolveDashboardRange(filters.operatorAssistantRank, now);
+  const basicDesignerRankRange = resolveDashboardRange(filters.basicRank, now);
+  const projectRange = resolveDashboardRange(filters.project, now);
+  const designerDailyMonth = resolveDashboardMonth(filters.designerDaily, now);
+  const operatorAssistantDailyMonth = resolveDashboardMonth(filters.operatorAssistantDaily, now);
+  const basicDesignerDailyMonth = resolveDashboardMonth(filters.basicDaily, now);
   const data = {
     designerStats: buildDesignerStats(designers, allTasks, scoreItems, now, 'design'),
     basicDesignerStats: buildDesignerStats(basicDesigners, allTasks, scoreItems, now, 'cs'),
@@ -2508,7 +2646,21 @@ async function getAdminDetailStats(user = null) {
     operatorStats: buildPublisherMonthlyStats(designTasks, thisYear),
     operatorPublishStats: buildPublisherMonthlyStats(operatorTasks, thisYear),
     csAgentStats: buildPublisherMonthlyStats(csTasks, thisYear),
-    scoreItems: scoreItems.map(si => si.name)
+    scoreItems: scoreItems.map(si => si.name),
+    dashboardDesignerRank: buildScoreRangeStats(designers, allTasks, designerRankRange, 'design'),
+    dashboardOperatorAssistantRank: buildScoreRangeStats(operatorAssistants, allTasks, operatorAssistantRankRange, 'operator'),
+    dashboardBasicDesignerRank: buildScoreRangeStats(basicDesigners, allTasks, basicDesignerRankRange, 'cs'),
+    dashboardProjectStats: buildProjectRangeStats(designers, allTasks, scoreItems, projectRange),
+    dashboardBasicDesignerImageStats: aggregateBasicDesignerImageStats(
+      basicDesignerFileRows,
+      basicDesigners,
+      basicImageRange.start,
+      basicImageRange.end
+    ),
+    dashboardDesignerDailyStats: buildDailyScoreStats(designers, allTasks, designerDailyMonth, 'design'),
+    dashboardOperatorAssistantDailyStats: buildDailyScoreStats(operatorAssistants, allTasks, operatorAssistantDailyMonth, 'operator'),
+    dashboardBasicDesignerDailyStats: buildDailyScoreStats(basicDesigners, allTasks, basicDesignerDailyMonth, 'cs'),
+    dashboardBasicDesignerImageDailyStats: buildBasicDesignerImageDailyStats(basicDesignerFileRows, basicDesigners, basicImageDailyMonth)
   };
   return user ? filterAdminDetailStatsByPermission(data, user) : data;
 }

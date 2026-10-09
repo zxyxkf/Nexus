@@ -25,7 +25,15 @@ router.get('/stats/dashboard', requireAnyPermission(['dashboard.design', 'dashbo
 // 管理端综合统计
 router.get('/stats/admin/detail', requireAnyPermission(['dashboard.design', 'dashboard.operator', 'dashboard.cs'], 'admin', 'sub_admin', 'designer', 'basic_designer', 'operator_assistant', 'operator', 'cs_agent'), async (req, res, next) => {
   try {
-    const data = await taskService.getAdminDetailStats(req.user);
+    let filters = {};
+    if (req.query.filters) {
+      try {
+        filters = JSON.parse(req.query.filters);
+      } catch (error) {
+        filters = {};
+      }
+    }
+    const data = await taskService.getAdminDetailStats(req.user, filters);
     res.json({ code: 0, msg: '查询成功', data });
   } catch (err) { next(err); }
 });

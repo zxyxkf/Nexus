@@ -26,7 +26,7 @@
                 @click="selectStatus(option.value)"
               >
                 <span>{{ option.label }}</span>
-                <span class="status-count">{{ getDesignerStatusCount(option.value) }}</span>
+                <span v-if="getDesignerStatusCount(option.value) > 0" class="status-count">{{ getDesignerStatusCount(option.value) }}</span>
               </button>
             </div>
             <el-date-picker

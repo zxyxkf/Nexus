@@ -48,6 +48,11 @@
 
     <SelectedFilePreviewGrid :files="selectedFiles" @remove="removeSelected" />
 
+    <el-form-item label="申请分数" class="original-score-field">
+      <el-input-number v-model="appliedScore" :min="1" :max="9999" :step="0.5" :precision="1" style="width:100%;" placeholder="默认为1分，大于1需组长审核" />
+      <div class="form-hint">默认1分无需审核；大于1分需组长审核通过后生效</div>
+    </el-form-item>
+
     <el-progress v-if="uploading" :percentage="progress" :status="progress === 100 ? 'success' : undefined" />
     <div class="original-upload-actions">
       <el-button v-if="!autoComplete" type="primary" :loading="uploading" :disabled="!rawFiles.length" @click="uploadSelected">上传所选原图</el-button>
@@ -77,6 +82,7 @@ const uploading = ref(false)
 const completing = ref(false)
 const progress = ref(0)
 const hasUploadedBatch = ref(false)
+const appliedScore = ref(1)
 
 const existingFiles = computed(() => (props.task.files || []).filter(file => file.file_category === 'original'))
 const existingImages = computed(() => existingFiles.value.filter(file => file.file_type === 'image').map(file => file._previewSrc || getFileUrl(file)))
@@ -90,6 +96,7 @@ watch(() => [props.task.id, props.task.status], () => {
   selectedFiles.value = []
   hasUploadedBatch.value = existingFiles.value.length > 0
   progress.value = 0
+  appliedScore.value = Number(props.task.applied_score) > 0 ? Number(props.task.applied_score) : 1
 }, { immediate: true })
 
 function existingImageIndex(file) {
@@ -147,7 +154,7 @@ async function completeUpload() {
       const uploaded = await uploadFilesInternal({ notify: false })
       if (!uploaded) return
     }
-    const response = await completeOriginalUploadApi(props.task.id)
+    const response = await completeOriginalUploadApi(props.task.id, appliedScore.value)
     if (response.code !== 0) throw new Error(response.msg || '完成原图上传失败')
     ElMessage.success(response.msg || '原图上传已完成')
     emit('completed', props.task.id)
@@ -176,4 +183,6 @@ async function completeUpload() {
 .original-upload :deep(.el-upload-dragger) { padding: 18px 12px; }
 .original-upload-actions { justify-content: flex-end; gap: 10px; margin-top: 14px; }
 .original-upload-panel :deep(.el-progress) { margin-top: 12px; }
+.original-score-field { margin-top: 12px; }
+.form-hint { margin-top: 4px; color: var(--dd-text-muted, #909399); font-size: 12px; line-height: 1.4; }
 </style>

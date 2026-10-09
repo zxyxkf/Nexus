@@ -101,6 +101,9 @@ export const uploadFilesApi = (taskId, files, fileCategory = 'work', extraData =
   if (Object.prototype.hasOwnProperty.call(extraData, 'retainedFileIds')) {
     formData.append('retainedFileIds', JSON.stringify(extraData.retainedFileIds || []))
   }
+  if (Object.prototype.hasOwnProperty.call(extraData, 'firstUploadNote')) {
+    formData.append('firstUploadNote', extraData.firstUploadNote ?? '')
+  }
   appendSafeFiles(formData, files)
   return taskMutation(request.post('/api/task/upload-files', formData, {
     timeout: 120000,
@@ -151,8 +154,8 @@ export const uploadOriginalFilesApi = (taskId, files, extraData = {}) => {
     onUploadProgress: extraData.onUploadProgress
   }))
 }
-export const completeOriginalUploadApi = (taskId) => taskMutation(
-  request.post('/api/task/complete-original-upload', { taskId })
+export const completeOriginalUploadApi = (taskId, appliedScore = 1) => taskMutation(
+  request.post('/api/task/complete-original-upload', { taskId, appliedScore })
 )
 export const reviewOriginalTaskApi = (data) => taskMutation(request.post('/api/task/review-original', data))
 export const withdrawOriginalTaskApi = (data) => taskMutation(request.post('/api/task/withdraw-original', data))
@@ -160,7 +163,7 @@ export const getAllTasksApi = (params) => request.get('/api/task/all', { params 
 export const getTaskDetailApi = (params) => request.get('/api/task/detail', { params })
 export const getMyStatsApi = () => request.get('/api/task/stats/my')
 export const getDashboardStatsApi = () => request.get('/api/task/stats/dashboard')
-export const getAdminDetailStatsApi = () => request.get('/api/task/stats/admin/detail')
+export const getAdminDetailStatsApi = (params) => request.get('/api/task/stats/admin/detail', { params })
 export const withdrawTaskApi = (data) => taskMutation(request.post('/api/task/withdraw', data))
 export const undoSubmitApi = (data) => taskMutation(request.post('/api/task/undo-submit', data))
 export const updateTaskApi = (data) => taskMutation(request.put('/api/task/update', data))

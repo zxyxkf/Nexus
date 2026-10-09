@@ -107,7 +107,11 @@ router.post('/upload-original', requireAnyPermission(['task.upload.work'], 'basi
 
 router.post('/complete-original-upload', requireAnyPermission(['task.upload.work'], 'basic_designer'), async (req, res, next) => {
   try {
-    const result = await taskService.completeOriginalUpload(Number(req.body.taskId), req.user);
+    const result = await taskService.completeOriginalUpload(
+      Number(req.body.taskId),
+      req.user,
+      req.body.appliedScore
+    );
     res.json({ code: 0, ...result });
   } catch (error) {
     next(error);
@@ -161,7 +165,13 @@ router.post('/upload-files', requireAnyPermission(['task.upload.work', 'task.cre
         const replaceExisting = req.body.replaceExisting === '1' || req.body.replaceExisting === 'true';
         const saveOnly = req.body.saveOnly === '1' || req.body.saveOnly === 'true';
         const rejectRecordId = req.body.rejectRecordId ? parseInt(req.body.rejectRecordId) : null;
-        const uploadOptions = { replaceExisting, hasWorkPathField, saveOnly, rejectRecordId };
+        const uploadOptions = {
+          replaceExisting,
+          hasWorkPathField,
+          saveOnly,
+          rejectRecordId,
+          firstUploadNote: req.body.firstUploadNote
+        };
         if (Object.prototype.hasOwnProperty.call(req.body, 'retainedFileIds')) {
           uploadOptions.retainedFileIds = parseIdArray(req.body.retainedFileIds, '保留文件');
         }
